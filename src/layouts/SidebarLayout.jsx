@@ -24,7 +24,7 @@ const SidebarLayout = ({ children }) => {
         <div className="flex h-screen bg-slate-50 font-sans">
             {/* Sidebar */}
             <aside className="w-64 bg-slate-950 text-white flex flex-col shadow-xl z-20 relative overflow-hidden">
-                <WarpBackground speed={0.5} starCount={80} backgroundColor="#020617" />
+                <WarpBackground speed={0.2} starCount={80} backgroundColor="#020617" />
 
                 {/* Content Overlay */}
                 <div className="relative z-10 flex flex-col h-full">

@@ -126,7 +126,7 @@ const MentorMatch = () => {
             {/* RIGHT COLUMN: AI Recommendations with Warp Speed */}
             <div className="w-5/12 bg-slate-950 rounded-2xl border border-slate-800 p-8 overflow-y-auto relative overflow-hidden group">
                 {/* Background Animation */}
-                <WarpBackground />
+                <WarpBackground speed={4} starCount={400} />
 
                 {/* Content Overlay */}
                 <div className="relative z-10 h-full">

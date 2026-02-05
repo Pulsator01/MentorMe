@@ -68,7 +68,7 @@ const StudentDashboard = () => {
                     <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden group">
                         {/* Deep Space Background */}
                         <div className="absolute inset-0 bg-slate-900 opacity-0 group-hover:opacity-100 transition-opacity duration-700 z-0">
-                            <WarpBackground speed={0.8} starCount={150} backgroundColor="#0f172a" />
+                            <WarpBackground speed={0.4} starCount={150} backgroundColor="#0f172a" />
                         </div>
 
                         <div className="relative z-10">
