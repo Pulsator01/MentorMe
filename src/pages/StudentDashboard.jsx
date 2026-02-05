@@ -1,4 +1,4 @@
-import React from 'react';
+import WarpBackground from '../components/WarpBackground';
 import ReadinessGauge from '../components/ReadinessGauge';
 import NudgeFeed from '../components/NudgeFeed';
 import { ArrowRight, Zap } from 'lucide-react';
@@ -65,21 +65,28 @@ const StudentDashboard = () => {
                 <div className="col-span-12 lg:col-span-4 space-y-6">
 
                     {/* WIDGET 1: Readiness Vitals */}
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Readiness Vitals</h3>
-
-                        <div className="flex flex-col items-center justify-center py-4">
-                            <ReadinessGauge trl={startup.trl} brl={startup.brl} size="md" />
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 relative overflow-hidden group">
+                        {/* Deep Space Background */}
+                        <div className="absolute inset-0 bg-slate-900 opacity-0 group-hover:opacity-100 transition-opacity duration-700 z-0">
+                            <WarpBackground speed={0.8} starCount={150} backgroundColor="#0f172a" />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 mt-4 mb-6">
-                            <div className="text-center p-2 bg-slate-50 rounded-lg">
-                                <div className="text-xl font-bold text-plaksha-blue">{startup.trl}</div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TRL</div>
+                        <div className="relative z-10">
+                            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 group-hover:text-white transition-colors">Readiness Vitals</h3>
+
+                            <div className="flex flex-col items-center justify-center py-4">
+                                <ReadinessGauge trl={startup.trl} brl={startup.brl} size="md" />
                             </div>
-                            <div className="text-center p-2 bg-slate-50 rounded-lg">
-                                <div className="text-xl font-bold text-plaksha-blue">{startup.brl}</div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">BRL</div>
+
+                            <div className="grid grid-cols-2 gap-4 mt-4 mb-6">
+                                <div className="text-center p-2 bg-slate-50 rounded-lg group-hover:bg-white/10 transition-colors">
+                                    <div className="text-xl font-bold text-plaksha-blue group-hover:text-white transition-colors">{startup.trl}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-slate-300">TRL</div>
+                                </div>
+                                <div className="text-center p-2 bg-slate-50 rounded-lg group-hover:bg-white/10 transition-colors">
+                                    <div className="text-xl font-bold text-plaksha-blue group-hover:text-white transition-colors">{startup.brl}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider group-hover:text-slate-300">BRL</div>
+                                </div>
                             </div>
                         </div>
                     </div>
