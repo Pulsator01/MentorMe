@@ -38,6 +38,7 @@ const SidebarLayout = ({ children }) => {
                             <li key={item.path}>
                                 <NavLink
                                     to={item.path}
+                                    end={item.path === '/admin' || item.path === '/student'}
                                     className={({ isActive }) =>
                                         cn(
                                             'flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200',
