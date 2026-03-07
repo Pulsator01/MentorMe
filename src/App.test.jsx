@@ -71,4 +71,32 @@ describe('MentorMe app flows', () => {
 
     expect(await screen.findByText(/session confirmed for mar 10, 2026/i)).toBeInTheDocument()
   })
+
+  it('keeps returned requests visible so founders can revise them', async () => {
+    renderAtRoute('/admin')
+
+    const reviewCard = await screen.findByTestId('request-card-req-002')
+    fireEvent.click(within(reviewCard).getByRole('button', { name: /return/i }))
+
+    expect(await screen.findByText(/needs work/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('link', { name: /founder studio/i })[0])
+
+    expect(await screen.findByText(/ecodrone systems is in needs work/i)).toBeInTheDocument()
+    expect(screen.getByText(/revise brief/i)).toBeInTheDocument()
+  })
+
+  it('lets the mentor desk switch between mentors and scope requests correctly', async () => {
+    renderAtRoute('/mentor')
+
+    expect(await screen.findByLabelText(/viewing mentor/i)).toHaveValue('m-naval')
+    expect(screen.queryByTestId('mentor-request-req-003')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/viewing mentor/i), {
+      target: { value: 'm-radhika' },
+    })
+
+    expect(await screen.findByTestId('mentor-request-req-003')).toBeInTheDocument()
+    expect(screen.queryByTestId('mentor-request-req-002')).not.toBeInTheDocument()
+  })
 })

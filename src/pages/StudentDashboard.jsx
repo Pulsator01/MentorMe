@@ -82,7 +82,7 @@ function StudentDashboard() {
   const selectedMentor =
     recommendedMentors.find((mentor) => mentor.id === selectedMentorId) || recommendedMentors[0] || null
   const requestCounts = {
-    open: founderRequests.filter((request) => ['cfe_review', 'awaiting_mentor', 'scheduled'].includes(request.status)).length,
+    open: founderRequests.filter((request) => ['cfe_review', 'awaiting_mentor', 'scheduled', 'needs_work'].includes(request.status)).length,
     scheduled: founderRequests.filter((request) => request.status === 'scheduled').length,
     followUps: founderRequests.filter((request) => request.status === 'follow_up').length,
   }
@@ -111,6 +111,17 @@ function StudentDashboard() {
               description: 'Capture mentor feedback, next steps, and whether CFE should arrange a second touchpoint.',
               status: 'calm',
               action: 'Log follow-up',
+            }
+          }
+
+          if (request.status === 'needs_work') {
+            return {
+              id: request.id,
+              title: `${request.ventureName} is in needs work`,
+              time: 'Action required',
+              description: request.mentorNotes || 'CFE asked for better context before re-routing this request.',
+              status: 'warning',
+              action: 'Revise brief',
             }
           }
 
@@ -402,7 +413,8 @@ function StudentDashboard() {
               </div>
               <button
                 type="submit"
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                disabled={!selectedMentor}
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 <Send size={16} />
                 Send to CFE Review
@@ -438,6 +450,8 @@ function StudentDashboard() {
                             ? 'emerald'
                             : request.status === 'cfe_review'
                               ? 'amber'
+                              : request.status === 'needs_work'
+                                ? 'rose'
                               : request.status === 'follow_up'
                                 ? 'blue'
                                 : 'slate'

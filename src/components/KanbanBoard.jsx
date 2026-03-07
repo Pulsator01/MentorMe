@@ -3,6 +3,7 @@ import { Badge } from './ui'
 
 const columns = [
   { key: 'cfe_review', title: 'CFE review', tone: 'amber' },
+  { key: 'needs_work', title: 'Needs work', tone: 'rose' },
   { key: 'awaiting_mentor', title: 'Awaiting mentor', tone: 'blue' },
   { key: 'scheduled', title: 'Scheduled', tone: 'emerald' },
   { key: 'follow_up', title: 'Follow-up', tone: 'slate' },
@@ -10,7 +11,7 @@ const columns = [
 
 function KanbanBoard({ requests, mentors, onApprove, onReject }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-4">
+    <div className="grid gap-4 2xl:grid-cols-5">
       {columns.map((column) => {
         const items = requests.filter((request) => request.status === column.key)
 
@@ -70,7 +71,9 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
 
                     {column.key !== 'cfe_review' ? (
                       <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                        {column.key === 'awaiting_mentor'
+                        {column.key === 'needs_work'
+                          ? 'CFE requested a sharper brief or better artifacts before this can be routed again.'
+                          : column.key === 'awaiting_mentor'
                           ? 'Waiting for the mentor to accept and share a slot.'
                           : column.key === 'scheduled'
                             ? 'Meeting is scheduled. CFE should nudge attendance and confirm the pre-read.'

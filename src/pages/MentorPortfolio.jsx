@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Search, SlidersHorizontal, UserPlus2 } from 'lucide-react'
+import { Search, SlidersHorizontal, UserPlus2 } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { Badge, ProgressBar, SectionCard, SectionHeading } from '../components/ui'
 
@@ -61,7 +61,7 @@ function MentorPortfolio() {
           />
           <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Active mentors</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Total mentors</p>
               <p className="mt-3 text-3xl font-semibold tracking-tight">{mentors.length}</p>
             </div>
             <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">

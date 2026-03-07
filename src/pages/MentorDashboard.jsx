@@ -15,8 +15,8 @@ function MentorDashboard() {
   const [flashMessage, setFlashMessage] = useState('')
   const [draftSlots, setDraftSlots] = useState({})
   const [feedbackDrafts, setFeedbackDrafts] = useState({})
-
-  const primaryMentor = mentors.find((mentor) => mentor.id === 'm-naval') || mentors[0]
+  const [currentMentorId, setCurrentMentorId] = useState(mentors[0]?.id || '')
+  const primaryMentor = mentors.find((mentor) => mentor.id === currentMentorId) || mentors[0]
   const mentorRequests = useMemo(
     () => requests.filter((request) => request.mentorId === primaryMentor.id),
     [primaryMentor.id, requests],
@@ -86,6 +86,20 @@ function MentorDashboard() {
 
         <SectionCard>
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Mentor profile</p>
+          <label className="mt-4 block">
+            <span className="text-sm font-medium text-slate-700">Viewing mentor</span>
+            <select
+              value={primaryMentor.id}
+              onChange={(event) => setCurrentMentorId(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+            >
+              {mentors.map((mentor) => (
+                <option key={mentor.id} value={mentor.id}>
+                  {mentor.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="mt-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{primaryMentor.name}</h2>
