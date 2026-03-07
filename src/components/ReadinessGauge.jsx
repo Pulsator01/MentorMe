@@ -1,97 +1,82 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'framer-motion'
 
-const ReadinessGauge = ({ trl = 1, brl = 1, size = 'md' }) => {
-    const maxLevel = 9;
+const MotionCircle = motion.circle
 
-    // Dimensions
-    const sizes = {
-        sm: { w: 100, t: 4, r1: 30, r2: 42, f: 'text-xs' },
-        md: { w: 160, t: 8, r1: 45, r2: 65, f: 'text-lg' },
-        lg: { w: 220, t: 10, r1: 65, r2: 90, f: 'text-2xl' },
-    };
+const sizes = {
+  sm: { width: 118, stroke: 7, inner: 31, outer: 45, text: 'text-sm' },
+  md: { width: 162, stroke: 9, inner: 43, outer: 62, text: 'text-lg' },
+  lg: { width: 220, stroke: 11, inner: 60, outer: 84, text: 'text-2xl' },
+}
 
-    const { w, t, r1, r2, f } = sizes[size];
-    const center = w / 2;
+const getTone = (value) => {
+  if (value <= 3) {
+    return '#f97316'
+  }
 
-    // Calculate circumference
-    const c1 = 2 * Math.PI * r1;
-    const c2 = 2 * Math.PI * r2;
+  if (value <= 6) {
+    return '#0ea5e9'
+  }
 
-    // Calculate stroke dashoffset
-    const offset1 = c1 - (trl / maxLevel) * c1;
-    const offset2 = c2 - (brl / maxLevel) * c2;
+  return '#10b981'
+}
 
-    // Color logic
-    const getColor = (val) => {
-        if (val <= 3) return 'text-red-500 stroke-red-500';
-        if (val <= 6) return 'text-signal-yellow stroke-signal-yellow';
-        return 'text-green-500 stroke-green-500';
-    };
+function Ring({ radius, stroke, progress, color, delay, circumference, center }) {
+  return (
+    <>
+      <circle cx={center} cy={center} r={radius} stroke="#e2e8f0" strokeWidth={stroke} fill="transparent" />
+      <MotionCircle
+        cx={center}
+        cy={center}
+        r={radius}
+        stroke={color}
+        strokeWidth={stroke}
+        fill="transparent"
+        strokeDasharray={circumference}
+        strokeLinecap="round"
+        initial={{ strokeDashoffset: circumference }}
+        animate={{ strokeDashoffset: circumference - progress * circumference }}
+        transition={{ duration: 0.9, ease: 'easeOut', delay }}
+      />
+    </>
+  )
+}
 
-    return (
-        <div className="relative flex flex-col items-center justify-center" style={{ width: w, height: w }}>
-            <svg width={w} height={w} className="transform -rotate-90">
-                {/* Outer Ring Background (BRL) */}
-                <circle
-                    cx={center}
-                    cy={center}
-                    r={r2}
-                    stroke="currentColor"
-                    strokeWidth={t}
-                    fill="transparent"
-                    className="text-slate-200"
-                />
-                {/* Outer Ring Progress (BRL) */}
-                <motion.circle
-                    initial={{ strokeDashoffset: c2 }}
-                    animate={{ strokeDashoffset: offset2 }}
-                    transition={{ duration: 1, ease: 'easeOut' }}
-                    cx={center}
-                    cy={center}
-                    r={r2}
-                    stroke="currentColor"
-                    strokeWidth={t}
-                    fill="transparent"
-                    strokeDasharray={c2}
-                    strokeLinecap="round"
-                    className={`${getColor(brl)}`}
-                />
+function ReadinessGauge({ trl = 1, brl = 1, size = 'md' }) {
+  const { width, stroke, inner, outer, text } = sizes[size]
+  const center = width / 2
+  const innerCircumference = 2 * Math.PI * inner
+  const outerCircumference = 2 * Math.PI * outer
 
-                {/* Inner Ring Background (TRL) */}
-                <circle
-                    cx={center}
-                    cy={center}
-                    r={r1}
-                    stroke="currentColor"
-                    strokeWidth={t}
-                    fill="transparent"
-                    className="text-slate-200"
-                />
-                {/* Inner Ring Progress (TRL) */}
-                <motion.circle
-                    initial={{ strokeDashoffset: c1 }}
-                    animate={{ strokeDashoffset: offset1 }}
-                    transition={{ duration: 1, ease: 'easeOut', delay: 0.2 }}
-                    cx={center}
-                    cy={center}
-                    r={r1}
-                    stroke="currentColor"
-                    strokeWidth={t}
-                    fill="transparent"
-                    strokeDasharray={c1}
-                    strokeLinecap="round"
-                    className={`${getColor(trl)}`}
-                />
-            </svg>
+  return (
+    <div className="relative flex items-center justify-center" style={{ width, height: width }}>
+      <div className="absolute inset-3 rounded-full bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.18),transparent_50%),linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,245,249,0.95))]" />
+      <svg width={width} height={width} className="-rotate-90">
+        <Ring
+          radius={outer}
+          stroke={stroke}
+          progress={brl / 9}
+          color={getTone(brl)}
+          delay={0}
+          circumference={outerCircumference}
+          center={center}
+        />
+        <Ring
+          radius={inner}
+          stroke={stroke}
+          progress={trl / 9}
+          color={getTone(trl)}
+          delay={0.18}
+          circumference={innerCircumference}
+          center={center}
+        />
+      </svg>
+      <div className="absolute text-center">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Readiness</p>
+        <p className={`mt-2 font-semibold tracking-tight text-slate-950 ${text}`}>TRL {trl}</p>
+        <p className={`font-semibold tracking-tight text-slate-600 ${text}`}>BRL {brl}</p>
+      </div>
+    </div>
+  )
+}
 
-            {/* Legend / Center Text */}
-            <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className={`font-mono font-bold ${f} ${getColor(trl)}`}>T:{trl}</span>
-                <span className={`font-mono font-bold ${f} ${getColor(brl)}`}>B:{brl}</span>
-            </div>
-        </div>
-    );
-};
-
-export default ReadinessGauge;
+export default ReadinessGauge

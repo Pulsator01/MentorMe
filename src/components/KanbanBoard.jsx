@@ -1,65 +1,104 @@
-import React from 'react';
-import { MoreHorizontal, MessageSquare, AlertCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
+import { Badge } from './ui'
 
-const KanbanColumn = ({ title, count, items, color }) => (
-    <div className="flex-1 min-w-[300px] bg-slate-100/50 rounded-xl p-4 flex flex-col h-full border border-slate-200">
-        <div className={`flex justify-between items-center mb-4 pb-3 border-b border-${color}-200`}>
-            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">{title}</h3>
-            <span className={`bg-${color}-100 text-${color}-800 text-xs font-bold px-2 py-1 rounded-full`}>{count}</span>
-        </div>
+const columns = [
+  { key: 'cfe_review', title: 'CFE review', tone: 'amber' },
+  { key: 'awaiting_mentor', title: 'Awaiting mentor', tone: 'blue' },
+  { key: 'scheduled', title: 'Scheduled', tone: 'emerald' },
+  { key: 'follow_up', title: 'Follow-up', tone: 'slate' },
+]
 
-        <div className="space-y-3 overflow-y-auto flex-1 pr-2">
-            {items.map((item) => (
-                <div key={item.id} className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 hover:shadow-md cursor-pointer transition-all group relative">
-                    <div className="flex justify-between items-start mb-2">
-                        <span className="text-[10px] font-bold text-slate-400 font-mono">#{item.id}</span>
-                        <MoreHorizontal size={14} className="text-slate-300 hover:text-slate-600" />
+function KanbanBoard({ requests, mentors, onApprove, onReject }) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-4">
+      {columns.map((column) => {
+        const items = requests.filter((request) => request.status === column.key)
+
+        return (
+          <div key={column.key} className="min-h-[440px] rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">{column.title}</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.24em] text-slate-500">{items.length} requests</p>
+              </div>
+              <Badge tone={column.tone}>{items.length}</Badge>
+            </div>
+
+            <div className="space-y-4">
+              {items.map((request) => {
+                const mentor = mentors.find((item) => item.id === request.mentorId)
+
+                return (
+                  <div
+                    key={request.id}
+                    data-testid={`request-card-${request.id.toLowerCase()}`}
+                    className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{request.id}</p>
+                        <h3 className="mt-2 text-lg font-semibold text-slate-950">{request.ventureName}</h3>
+                      </div>
+                      <Badge tone={request.trl >= 3 ? 'emerald' : 'rose'}>TRL {request.trl}</Badge>
                     </div>
-                    <h4 className="font-bold text-slate-800 text-sm mb-1">{item.student}</h4>
-                    <p className="text-xs text-slate-500 mb-2 truncate">Target: <span className="text-plaksha-blue font-semibold">{item.mentor}</span></p>
-
-                    <div className="flex items-center justify-between mt-3">
-                        <div className="flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${item.trl < 4 ? 'bg-red-400' : 'bg-green-400'}`}></span>
-                            <span className="text-[10px] font-mono font-bold text-slate-500">TRL {item.trl}</span>
-                        </div>
-                        {item.urgent && <AlertCircle size={14} className="text-signal-orange" />}
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{request.challenge}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge tone="blue">{mentor?.name || 'Unassigned mentor'}</Badge>
+                      <Badge>{request.stage}</Badge>
                     </div>
 
-                    {/* Hover Actions */}
-                    <div className="absolute inset-0 bg-white/95 flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="px-3 py-1 bg-green-500 text-white text-xs font-bold rounded shadow-sm hover:bg-green-600">Approve</button>
-                        <button className="px-3 py-1 bg-red-50 text-red-500 text-xs font-bold rounded border border-red-200 hover:bg-red-100">Reject</button>
-                    </div>
+                    {column.key === 'cfe_review' ? (
+                      <div className="mt-5 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onApprove(request.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                        >
+                          <CheckCircle2 size={16} />
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onReject(request.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                        >
+                          <RotateCcw size={16} />
+                          Return
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {column.key !== 'cfe_review' ? (
+                      <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                        {column.key === 'awaiting_mentor'
+                          ? 'Waiting for the mentor to accept and share a slot.'
+                          : column.key === 'scheduled'
+                            ? 'Meeting is scheduled. CFE should nudge attendance and confirm the pre-read.'
+                            : 'Feedback has been logged. Decide whether the founder needs another mentor or a second session.'}
+                      </div>
+                    ) : null}
+
+                    {request.trl < 3 ? (
+                      <div className="mt-4 inline-flex items-center gap-2 text-xs font-medium text-rose-700">
+                        <AlertTriangle size={14} />
+                        Below TRL 3. Consider lighter support first.
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+
+              {items.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-center text-sm text-slate-500">
+                  No requests in this column right now.
                 </div>
-            ))}
-        </div>
+              ) : null}
+            </div>
+          </div>
+        )
+      })}
     </div>
-);
+  )
+}
 
-const KanbanBoard = () => {
-    // Mock Data
-    const incoming = [
-        { id: 'REC-001', student: 'AgroTech AI', mentor: 'Dr. Gupta', trl: 3, urgent: true },
-        { id: 'REC-004', student: 'Urban Flow', mentor: 'S. Bhushan', trl: 2, urgent: false },
-    ];
-
-    const review = [
-        { id: 'REC-002', student: 'BioSense', mentor: 'Naval Shah', trl: 5, urgent: false },
-    ];
-
-    const approved = [
-        { id: 'REC-099', student: 'FinFlow', mentor: 'Naval Shah', trl: 7, urgent: false },
-    ];
-
-    return (
-        <div className="flex gap-6 h-[calc(100vh-200px)] overflow-x-auto pb-4">
-            <KanbanColumn title="Incoming Requests" count={2} items={incoming} color="blue" />
-            <KanbanColumn title="Under CFE Review" count={1} items={review} color="orange" />
-            <KanbanColumn title="Awaiting Mentor" count={1} items={approved} color="green" />
-            <KanbanColumn title="Scheduled" count={5} items={[]} color="slate" />
-        </div>
-    );
-};
-
-export default KanbanBoard;
+export default KanbanBoard
