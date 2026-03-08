@@ -1,30 +1,48 @@
 {
   "name": "plaksha-counsel",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api:dev": "tsx watch backend/src/server.ts",
+    "worker:dev": "tsx watch backend/src/worker.ts",
+    "dev:full": "tsx backend/scripts/dev-full.ts",
     "build": "vite build",
     "test": "vitest run",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
+    "prisma:migrate:dev": "prisma migrate dev --schema backend/prisma/schema.prisma",
+    "prisma:seed": "tsx backend/prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.883.0",
+    "@aws-sdk/s3-request-presigner": "^3.883.0",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/sensible": "^6.0.3",
+    "@prisma/client": "^6.7.0",
     "clsx": "^2.1.1",
+    "bullmq": "^5.58.3",
+    "fastify": "^5.6.1",
     "framer-motion": "^12.33.0",
+    "ioredis": "^5.8.0",
+    "jose": "^6.1.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
     "recharts": "^3.7.0",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "zod": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.6.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
@@ -35,7 +53,10 @@
     "globals": "^16.5.0",
     "jsdom": "^27.0.1",
     "postcss": "^8.5.6",
+    "prisma": "^6.7.0",
     "tailwindcss": "^4.1.18",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
     "vite": "^7.2.4",
     "vitest": "^3.2.4"
   }

@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  cfe
+  founder
+  student
+}
+
+enum VentureMembershipRole {
+  founder
+  student
+}
+
+enum MentorTolerance {
+  Low
+  Medium
+  High
+}
+
+enum MentorVisibility {
+  Active
+  Paused
+}
+
+enum RequestStatus {
+  draft
+  cfe_review
+  needs_work
+  awaiting_mentor
+  scheduled
+  follow_up
+  closed
+  cancelled
+}
+
+enum ArtifactStatus {
+  pending
+  uploaded
+}
+
+enum MeetingProvider {
+  manual
+  calendly
+}
+
+enum MeetingStatus {
+  scheduled
+  cancelled
+}
+
+enum AuditActorType {
+  user
+  mentor
+  system
+}
+
+enum OutboxStatus {
+  pending
+  processed
+}
+
+model Organization {
+  id            String             @id
+  name          String
+  slug          String             @unique
+  cohorts       Cohort[]
+  users         User[]
+  ventures      Venture[]
+  mentors       MentorProfile[]
+  ventureLinks  VentureMembership[]
+  requests      MentorRequest[]
+  artifacts     Artifact[]
+  meetings      Meeting[]
+  feedback      MeetingFeedback[]
+  notifications Notification[]
+  nudges        ScheduledNudge[]
+  auditEvents   AuditEvent[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model Cohort {
+  id             String         @id
+  organizationId String
+  name           String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users          User[]
+  ventures       Venture[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model User {
+  id             String              @id
+  organizationId String
+  cohortId       String?
+  email          String              @unique
+  name           String
+  role           UserRole
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cohort         Cohort?             @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  memberships    VentureMembership[]
+  requests       MentorRequest[]     @relation("FounderRequests")
+  sessions       Session[]
+  magicLinks     MagicLinkToken[]
+  artifacts      Artifact[]
+  notifications  Notification[]
+  auditEvents    AuditEvent[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model Venture {
+  id             String              @id
+  organizationId String
+  cohortId       String
+  name           String
+  founderName    String
+  domain         String
+  stage          String
+  trl            Int
+  brl            Int
+  location       String
+  summary        String
+  nextMilestone  String
+  programNote    String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cohort         Cohort              @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  memberships    VentureMembership[]
+  requests       MentorRequest[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+model VentureMembership {
+  id             String                @id
+  organizationId String
+  ventureId      String
+  userId         String
+  role           VentureMembershipRole
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venture        Venture               @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  @@unique([ventureId, userId])
+}
+
+model MentorProfile {
+  id                 String                  @id
+  organizationId     String
+  name               String
+  email              String                  @unique
+  title              String
+  location           String
+  focus              String[]
+  stages             String[]
+  domains            String[]
+  tolerance          MentorTolerance
+  monthlyLimit       Int
+  visibility         MentorVisibility
+  responseWindow     String
+  calendlyUrl        String
+  bio                String
+  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requests           MentorRequest[]
+  shortlists         MentorRequestShortlist[]
+  meetings           Meeting[]
+  feedback           MeetingFeedback[]
+  actionTokens       ExternalActionToken[]
+  capacitySnapshots  MentorCapacitySnapshot[]
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+}
+
+model MentorCapacitySnapshot {
+  id          String        @id
+  mentorId    String
+  activeLoad  Int
+  monthlyLimit Int
+  capturedAt  DateTime      @default(now())
+  mentor      MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+}
+
+model MentorRequest {
+  id             String                  @id
+  organizationId String
+  ventureId      String
+  founderUserId  String
+  cfeOwnerId     String?
+  mentorId       String?
+  stage          String
+  trl            Int
+  brl            Int
+  status         RequestStatus
+  challenge      String
+  desiredOutcome String
+  mentorNotes    String
+  createdAt      DateTime
+  updatedAt      DateTime
+  submittedAt    DateTime?
+  meetingAt      DateTime?
+  calendlyLink   String?
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  venture        Venture                 @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  founderUser    User                    @relation("FounderRequests", fields: [founderUserId], references: [id], onDelete: Cascade)
+  mentor         MentorProfile?          @relation(fields: [mentorId], references: [id], onDelete: SetNull)
+  shortlists     MentorRequestShortlist[]
+  artifacts      Artifact[]
+  meetings       Meeting[]
+  feedback       MeetingFeedback[]
+  actionTokens   ExternalActionToken[]
+  nudges         ScheduledNudge[]
+}
+
+model MentorRequestShortlist {
+  id        String        @id
+  requestId String
+  mentorId  String
+  rank      Int
+  request   MentorRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  mentor    MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+}
+
+model Artifact {
+  id             String         @id
+  organizationId String
+  requestId      String
+  uploaderUserId String
+  filename       String
+  contentType    String
+  sizeBytes      Int
+  storageKey     String
+  status         ArtifactStatus
+  uploadUrl      String
+  createdAt      DateTime
+  completedAt    DateTime?
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request        MentorRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  uploader       User           @relation(fields: [uploaderUserId], references: [id], onDelete: Cascade)
+}
+
+model Meeting {
+  id              String          @id
+  organizationId  String
+  requestId       String
+  mentorId        String
+  provider        MeetingProvider
+  providerEventId String?
+  scheduledAt     DateTime
+  joinLink        String
+  status          MeetingStatus
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request         MentorRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  mentor          MentorProfile   @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  feedback        MeetingFeedback[]
+  nudges          ScheduledNudge[]
+}
+
+model MeetingFeedback {
+  id                       String         @id
+  organizationId           String
+  requestId                String
+  meetingId                String
+  mentorId                 String
+  mentorNotes              String
+  nextStepRequired         Boolean
+  secondSessionRecommended Boolean
+  createdAt                DateTime
+  organization             Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request                  MentorRequest  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  meeting                  Meeting        @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  mentor                   MentorProfile  @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+}
+
+model MagicLinkToken {
+  id         String   @id
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id               String   @id
+  userId           String
+  refreshTokenHash String   @unique
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ExternalActionToken {
+  id         String        @id
+  requestId  String
+  mentorId   String
+  tokenHash  String        @unique
+  purpose    String
+  expiresAt  DateTime
+  createdAt  DateTime      @default(now())
+  request    MentorRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  mentor     MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id            String       @id
+  organizationId String
+  userId        String?
+  externalEmail String?
+  channel       String
+  type          String
+  payload       Json
+  status        String
+  scheduledFor  DateTime
+  sentAt        DateTime?
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user          User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ScheduledNudge {
+  id           String        @id
+  organizationId String
+  requestId    String?
+  meetingId    String?
+  kind         String
+  status       String
+  scheduledFor DateTime
+  jobKey       String        @unique
+  payload      Json
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  request      MentorRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  meeting      Meeting?      @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+}
+
+model AuditEvent {
+  id             String         @id
+  organizationId String
+  actorType      AuditActorType
+  actorUserId    String?
+  actorEmail     String?
+  entityType     String
+  entityId       String
+  action         String
+  fromStatus     String?
+  toStatus       String?
+  payload        Json
+  createdAt      DateTime
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actorUser      User?          @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
+
+model WebhookReceipt {
+  id          String   @id
+  provider    String
+  eventId     String
+  payload     Json
+  receivedAt  DateTime
+  processedAt DateTime?
+
+  @@unique([provider, eventId])
+}
+
+model OutboxEvent {
+  id            String       @id
+  topic         String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus
+  createdAt     DateTime
+}

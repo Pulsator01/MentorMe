@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MentorMe System Architecture</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7fb;
+        --panel: #ffffff;
+        --panel-alt: #f8fafc;
+        --ink: #0f172a;
+        --muted: #475569;
+        --line: #dbe3ee;
+        --brand: #0f3d91;
+        --accent: #c96a1b;
+        --success: #0f766e;
+        --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "IBM Plex Sans",
+          "Segoe UI",
+          sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(15, 61, 145, 0.07), transparent 28%),
+          radial-gradient(circle at top right, rgba(201, 106, 27, 0.09), transparent 24%),
+          var(--bg);
+        color: var(--ink);
+        line-height: 1.6;
+      }
+
+      .page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 20px 72px;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, #ffffff 0%, #eef4ff 60%, #fff7ed 100%);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: 36px;
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        color: var(--brand);
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.15;
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2.4rem, 5vw, 4.1rem);
+        letter-spacing: -0.04em;
+      }
+
+      h2 {
+        font-size: 1.7rem;
+        letter-spacing: -0.03em;
+        margin-bottom: 14px;
+      }
+
+      h3 {
+        font-size: 1.1rem;
+        margin-bottom: 10px;
+      }
+
+      p,
+      li {
+        color: var(--muted);
+      }
+
+      .lede {
+        max-width: 820px;
+        margin-top: 16px;
+        font-size: 1.02rem;
+      }
+
+      .hero-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .hero-card,
+      .card {
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 18px 20px;
+      }
+
+      .hero-card strong,
+      .metric {
+        display: block;
+        color: var(--ink);
+      }
+
+      .metric {
+        font-size: 1.7rem;
+        font-weight: 700;
+        letter-spacing: -0.04em;
+      }
+
+      .section {
+        margin-top: 28px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        padding: 28px;
+        box-shadow: var(--shadow);
+      }
+
+      .grid {
+        display: grid;
+        gap: 20px;
+      }
+
+      .grid.two {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+
+      .list-tight {
+        margin: 10px 0 0;
+        padding-left: 20px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel-alt);
+        color: var(--ink);
+        font-size: 0.92rem;
+        font-weight: 600;
+      }
+
+      .diagram {
+        margin-top: 16px;
+        padding: 14px;
+        border-radius: 22px;
+        border: 1px solid var(--line);
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        overflow: auto;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        margin-top: 16px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+        background: #fff;
+      }
+
+      th,
+      td {
+        padding: 14px 16px;
+        text-align: left;
+        vertical-align: top;
+        border-bottom: 1px solid var(--line);
+      }
+
+      th {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--brand);
+        background: #f8fbff;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      code {
+        font-family:
+          "JetBrains Mono",
+          "SFMono-Regular",
+          monospace;
+        font-size: 0.92em;
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 8px;
+        color: var(--ink);
+      }
+
+      .callout {
+        border-left: 4px solid var(--accent);
+        background: #fff7ed;
+        color: #7c2d12;
+        padding: 14px 16px;
+        border-radius: 16px;
+        margin-top: 16px;
+      }
+
+      .footer-note {
+        margin-top: 16px;
+        font-size: 0.95rem;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+
+        .page {
+          max-width: none;
+          padding: 0;
+        }
+
+        .hero,
+        .section {
+          box-shadow: none;
+          break-inside: avoid;
+        }
+      }
+    </style>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "neutral",
+        securityLevel: "loose",
+        flowchart: {
+          htmlLabels: true,
+          curve: "basis",
+        },
+      });
+    </script>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">MentorMe Architecture</p>
+        <h1>Frontend and Backend System Architecture</h1>
+        <p class="lede">
+          This rendered document describes the current MentorMe system as implemented in the repository:
+          the React frontend, the Fastify backend, the request lifecycle, the planned persistence model,
+          and the key architectural gaps between the current demo runtime and the intended production shape.
+        </p>
+        <div class="hero-grid">
+          <div class="hero-card">
+            <strong>Frontend runtime</strong>
+            <span class="metric">React + Vite</span>
+            <p>Role-based SPA with a shared state provider and optional backend hydration.</p>
+          </div>
+          <div class="hero-card">
+            <strong>Backend runtime</strong>
+            <span class="metric">Fastify</span>
+            <p>Service-layer API using explicit interfaces for repository, email, storage, and queue.</p>
+          </div>
+          <div class="hero-card">
+            <strong>Persistence target</strong>
+            <span class="metric">Prisma + PostgreSQL</span>
+            <p>Schema exists now; active server runtime still uses an in-memory repository.</p>
+          </div>
+          <div class="hero-card">
+            <strong>Async model</strong>
+            <span class="metric">Outbox scaffold</span>
+            <p>Worker is present but not yet processing events beyond startup inspection.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Traceability</p>
+        <h2>Task List And Diagram Coverage</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Task ID</th>
+                <th>Task</th>
+                <th>Primary surfaces</th>
+                <th>Diagram refs</th>
+                <th>Code refs</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>T1</td>
+                <td>Role-based workspace selection</td>
+                <td>Workspace home and sidebar navigation</td>
+                <td>D1, D2</td>
+                <td><code>src/App.jsx</code>, <code>src/layouts/SidebarLayout.jsx</code></td>
+              </tr>
+              <tr>
+                <td>T2</td>
+                <td>Founder submits a mentor request</td>
+                <td>Founder workspace request composer</td>
+                <td>D2, D5</td>
+                <td><code>src/pages/StudentDashboard.jsx</code>, <code>src/context/AppState.jsx</code></td>
+              </tr>
+              <tr>
+                <td>T3</td>
+                <td>CFE reviews, approves, or returns a request</td>
+                <td>CFE dashboard and Kanban board</td>
+                <td>D2, D3, D5</td>
+                <td><code>src/pages/AdminDashboard.jsx</code>, <code>src/components/KanbanBoard.jsx</code>, <code>backend/src/app.ts</code></td>
+              </tr>
+              <tr>
+                <td>T4</td>
+                <td>Students prepare and follow through on sessions</td>
+                <td>Student workspace and nudge feed</td>
+                <td>D2, D5</td>
+                <td><code>src/pages/StudentWorkspace.jsx</code>, <code>src/components/NudgeFeed.jsx</code></td>
+              </tr>
+              <tr>
+                <td>T5</td>
+                <td>CFE manages mentor capacity and visibility</td>
+                <td>Mentor network workspace</td>
+                <td>D2, D3</td>
+                <td><code>src/pages/MentorPortfolio.jsx</code>, <code>backend/src/domain/platformService.ts</code></td>
+              </tr>
+              <tr>
+                <td>T6</td>
+                <td>Local auth and API-backed hydration</td>
+                <td>App state provider and auth endpoints</td>
+                <td>D2, D3, D5</td>
+                <td><code>src/context/AppState.jsx</code>, <code>backend/src/app.ts</code></td>
+              </tr>
+              <tr>
+                <td>T7</td>
+                <td>Artifact upload and completion flow</td>
+                <td>Artifact presign and upload completion</td>
+                <td>D3, D5</td>
+                <td><code>backend/src/app.ts</code>, <code>backend/src/domain/platformService.ts</code>, <code>backend/src/infra/stubStorageService.ts</code></td>
+              </tr>
+              <tr>
+                <td>T8</td>
+                <td>Mentor outreach, scheduling, and feedback</td>
+                <td>Mentor action endpoints and state transitions</td>
+                <td>D3, D5</td>
+                <td><code>backend/src/app.ts</code>, <code>backend/src/domain/platformService.ts</code></td>
+              </tr>
+              <tr>
+                <td>T9</td>
+                <td>Future durable persistence and async processing</td>
+                <td>Prisma schema and worker scaffold</td>
+                <td>D3, D4</td>
+                <td><code>backend/prisma/schema.prisma</code>, <code>backend/src/worker.ts</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">D1</p>
+        <h2>System Overview</h2>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+    U["Users&lt;br/&gt;Founder / Student / CFE"] --&gt; FE["Frontend SPA&lt;br/&gt;React + Vite"]
+    FE --&gt; STATE["AppStateProvider&lt;br/&gt;local reducer + API sync"]
+    STATE --&gt; API["Fastify API"]
+    API --&gt; DOMAIN["PlatformService&lt;br/&gt;business rules"]
+    DOMAIN --&gt; REPO["PlatformRepository&lt;br/&gt;current: in-memory"]
+    DOMAIN --&gt; EMAIL["EmailGateway&lt;br/&gt;stub"]
+    DOMAIN --&gt; STORAGE["StorageService&lt;br/&gt;stub presign"]
+    DOMAIN --&gt; QUEUE["QueuePublisher&lt;br/&gt;inline stub"]
+    REPO -.-&gt; DB["PostgreSQL via Prisma schema"]
+    QUEUE -.-&gt; WORKER["Worker scaffold"]
+          </pre>
+        </div>
+        <div class="pill-row">
+          <span class="pill">React 19</span>
+          <span class="pill">Vite</span>
+          <span class="pill">Fastify</span>
+          <span class="pill">Prisma schema present</span>
+          <span class="pill">In-memory runtime active</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Frontend</p>
+        <h2>Frontend Architecture</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Responsibilities</h3>
+            <ul class="list-tight">
+              <li>Render a role-based single-page application.</li>
+              <li>Separate founder, student, and CFE workflows into distinct routes.</li>
+              <li>Keep business state in a single provider.</li>
+              <li>Switch between local seeded mode and API-backed mode.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Key frontend patterns</h3>
+            <ul class="list-tight">
+              <li>Single shared shell via <code>SidebarLayout</code>.</li>
+              <li>State orchestration through <code>AppStateProvider</code>.</li>
+              <li>Manual <code>fetch</code> client instead of a query library.</li>
+              <li>Page-specific workflow components rather than one overloaded dashboard.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+    MAIN["src/main.jsx"] --&gt; APP["src/App.jsx"]
+    APP --&gt; ROUTER["BrowserRouter"]
+    ROUTER --&gt; STATE["AppStateProvider"]
+    STATE --&gt; LAYOUT["SidebarLayout"]
+    LAYOUT --&gt; HOME["RoleHome /"]
+    LAYOUT --&gt; FOUNDERS["StudentDashboard /founders"]
+    LAYOUT --&gt; STUDENTS["StudentWorkspace /students"]
+    LAYOUT --&gt; CFE["AdminDashboard /cfe"]
+    LAYOUT --&gt; NETWORK["MentorPortfolio /cfe/network"]
+    LAYOUT --&gt; PLAYBOOK["TRLDefinitions /playbook"]
+
+    FOUNDERS --&gt; MATCHING["mentor scoring + request form"]
+    FOUNDERS --&gt; NUDGES1["NudgeFeed"]
+    FOUNDERS --&gt; GAUGE["ReadinessGauge"]
+    STUDENTS --&gt; NUDGES2["NudgeFeed"]
+    CFE --&gt; BOARD["KanbanBoard"]
+    NETWORK --&gt; CAPACITY["mentor visibility + capacity controls"]
+
+    STATE --&gt; SEED["src/data/platformData.js"]
+    STATE --&gt; API_CLIENT["fetch client&lt;br/&gt;magic link + CRUD calls"]
+          </pre>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Route</th>
+                <th>Page</th>
+                <th>Role focus</th>
+                <th>Intent</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>/</code></td>
+                <td><code>RoleHome</code></td>
+                <td>Entry</td>
+                <td>Workspace selection instead of a mixed dashboard.</td>
+              </tr>
+              <tr>
+                <td><code>/founders</code></td>
+                <td><code>StudentDashboard</code></td>
+                <td>Founders</td>
+                <td>Request composition, mentor recommendation, request tracking.</td>
+              </tr>
+              <tr>
+                <td><code>/students</code></td>
+                <td><code>StudentWorkspace</code></td>
+                <td>Students</td>
+                <td>Preparation, readiness context, and follow-up work.</td>
+              </tr>
+              <tr>
+                <td><code>/cfe</code></td>
+                <td><code>AdminDashboard</code></td>
+                <td>CFE</td>
+                <td>Pipeline triage and request approval / return flow.</td>
+              </tr>
+              <tr>
+                <td><code>/cfe/network</code></td>
+                <td><code>MentorPortfolio</code></td>
+                <td>CFE</td>
+                <td>Mentor visibility, tolerance, and monthly capacity.</td>
+              </tr>
+              <tr>
+                <td><code>/playbook</code></td>
+                <td><code>TRLDefinitions</code></td>
+                <td>All roles</td>
+                <td>Shared readiness reference.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Backend</p>
+        <h2>Backend Architecture</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Responsibilities</h3>
+            <ul class="list-tight">
+              <li>Authenticate local users via magic-link flow.</li>
+              <li>Authorize role and venture access.</li>
+              <li>Enforce mentor request lifecycle rules.</li>
+              <li>Manage mentors, artifacts, outreach, scheduling, and feedback.</li>
+              <li>Emit audit and outbox records.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Current runtime adapters</h3>
+            <ul class="list-tight">
+              <li><code>inMemoryRepository</code> for active storage.</li>
+              <li><code>stubEmailGateway</code> for magic-link and outreach capture.</li>
+              <li><code>stubStorageService</code> for presigned uploads.</li>
+              <li><code>inlineQueuePublisher</code> for async event capture.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart TD
+    SERVER["backend/src/server.ts"] --&gt; APP["createApp()"]
+    APP --&gt; ROUTES["Fastify routes"]
+    ROUTES --&gt; AUTH["auth boundary&lt;br/&gt;Bearer access token"]
+    ROUTES --&gt; SERVICE["PlatformService"]
+
+    SERVICE --&gt; RULES["validation + authorization + state transitions"]
+    SERVICE --&gt; REPO["PlatformRepository interface"]
+    SERVICE --&gt; EMAIL["EmailGateway"]
+    SERVICE --&gt; STORAGE["StorageService"]
+    SERVICE --&gt; QUEUE["QueuePublisher"]
+
+    REPO --&gt; MEM["inMemoryRepository&lt;br/&gt;active runtime"]
+    REPO -.-&gt; PRISMA["Prisma/PostgreSQL implementation&lt;br/&gt;not wired yet"]
+
+    SERVICE --&gt; AUDIT["audit events"]
+    SERVICE --&gt; OUTBOX["outbox events"]
+    APP --&gt; SSE["/notifications/stream"]
+          </pre>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Layer</th>
+                <th>Current implementation</th>
+                <th>Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>HTTP server</td>
+                <td><code>backend/src/server.ts</code></td>
+                <td>Composes dependencies and starts Fastify.</td>
+              </tr>
+              <tr>
+                <td>App factory</td>
+                <td><code>backend/src/app.ts</code></td>
+                <td>Registers routes, auth guards, validation, and SSE streaming.</td>
+              </tr>
+              <tr>
+                <td>Domain service</td>
+                <td><code>backend/src/domain/platformService.ts</code></td>
+                <td>Owns workflow rules and state transitions.</td>
+              </tr>
+              <tr>
+                <td>Repository</td>
+                <td><code>backend/src/infra/inMemoryRepository.ts</code></td>
+                <td>Holds active runtime state for demo and test execution.</td>
+              </tr>
+              <tr>
+                <td>Worker</td>
+                <td><code>backend/src/worker.ts</code></td>
+                <td>Scaffold only; inspects pending outbox events at startup.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Persistence</p>
+        <h2>Data Model Target</h2>
+        <p>
+          The Prisma schema already describes the intended durable backend model, including organizations,
+          cohorts, ventures, users, mentor profiles, requests, artifacts, meetings, sessions, audit events,
+          notifications, and outbox processing records.
+        </p>
+        <div class="diagram">
+          <pre class="mermaid">
+erDiagram
+    Organization ||--o{ User : contains
+    Organization ||--o{ Venture : contains
+    Organization ||--o{ MentorProfile : contains
+    Venture ||--o{ VentureMembership : has
+    User ||--o{ VentureMembership : joins
+    Venture ||--o{ MentorRequest : owns
+    User ||--o{ MentorRequest : submits
+    MentorProfile ||--o{ MentorRequest : assigned_to
+    MentorRequest ||--o{ Artifact : attaches
+    MentorRequest ||--o{ Meeting : schedules
+    MentorRequest ||--o{ MeetingFeedback : records
+    MentorProfile ||--o{ MentorCapacitySnapshot : snapshots
+          </pre>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">D5</p>
+        <h2>End-To-End Request Lifecycle</h2>
+        <div class="diagram">
+          <pre class="mermaid">
+flowchart LR
+    A["Founder opens /founders"] --&gt; B["AppStateProvider loads seeded state or authenticates against API"]
+    B --&gt; C["Founder submits mentor request"]
+    C --&gt; D["Request enters cfe_review"]
+    D --&gt; E["CFE reviews in Kanban board"]
+    E --&gt;|Return| F["needs_work"]
+    E --&gt;|Approve| G["awaiting_mentor"]
+    G --&gt; H["Mentor outreach token created"]
+    H --&gt; I["Mentor schedules via action token or Calendly"]
+    I --&gt; J["scheduled"]
+    J --&gt; K["Mentor feedback captured"]
+    K --&gt; L["follow_up"]
+    L --&gt; M["CFE decides next action or closes loop"]
+          </pre>
+        </div>
+        <div class="diagram">
+          <pre class="mermaid">
+sequenceDiagram
+    participant Founder
+    participant Frontend
+    participant API
+    participant Service as PlatformService
+    participant Repo as Repository
+
+    Founder-&gt;&gt;Frontend: Submit request
+    Frontend-&gt;&gt;API: POST /ventures/:ventureId/requests
+    API-&gt;&gt;Service: createRequest(user, ventureId, payload)
+    Service-&gt;&gt;Repo: saveRequest()
+    Service-&gt;&gt;Repo: replaceShortlistsForRequest()
+    Service-&gt;&gt;Repo: saveAuditEvent()
+    Service-&gt;&gt;Repo: saveOutboxEvent()
+    API--&gt;&gt;Frontend: 201 request in cfe_review
+
+    Frontend-&gt;&gt;API: POST /requests/:requestId/approve
+    API-&gt;&gt;Service: approveRequest()
+    Service-&gt;&gt;Repo: saveRequest(awaiting_mentor)
+    API--&gt;&gt;Frontend: updated request
+
+    Frontend-&gt;&gt;API: POST /requests/:requestId/mentor-outreach
+    API-&gt;&gt;Service: createMentorOutreach()
+    Service-&gt;&gt;Repo: saveExternalActionToken()
+    API--&gt;&gt;Frontend: mentor action token
+
+    API-&gt;&gt;Service: mentorSchedule(token, payload)
+    Service-&gt;&gt;Repo: saveMeeting()/saveRequest()
+    API--&gt;&gt;Frontend: scheduled request
+
+    API-&gt;&gt;Service: mentorFeedback(token, payload)
+    Service-&gt;&gt;Repo: saveFeedback()/saveRequest()
+    API--&gt;&gt;Frontend: follow_up request
+          </pre>
+        </div>
+      </section>
+
+      <section class="section">
+        <p class="eyebrow">Operational Notes</p>
+        <h2>Current Runtime Modes, Gaps, And Next Steps</h2>
+        <div class="grid two">
+          <div class="card">
+            <h3>Runtime modes</h3>
+            <ul class="list-tight">
+              <li><code>npm run dev</code>: frontend-only seeded demo.</li>
+              <li><code>npm run dev:full</code>: Vite + Fastify API + worker scaffold.</li>
+              <li><code>VITE_API_BASE_URL</code> enables API hydration in the frontend provider.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>Architectural gaps</h3>
+            <ul class="list-tight">
+              <li>Backend persistence is still ephemeral.</li>
+              <li>SSE exists but is not consumed by the frontend.</li>
+              <li>Worker is scaffolded, not operational.</li>
+              <li>Real email, storage, and queue infrastructure are not wired in yet.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout">
+          The current repository already has strong interface boundaries. The main missing step is swapping demo
+          adapters for durable and asynchronous infrastructure without changing the API or UI contracts.
+        </div>
+        <p class="footer-note">
+          Source files for this document are rooted in <code>src/</code>, <code>backend/src/</code>,
+          and <code>backend/prisma/schema.prisma</code>. The Markdown companion remains available at
+          <code>docs/system-architecture.md</code>.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

@@ -52,6 +52,39 @@ Plaksha Counsel serves as the digital "Control Tower" for the mentorship program
 4.  **Open the application**:
     Navigate to `http://localhost:5173` in your browser.
 
+## Backend Runtime
+
+The repo now includes a Fastify backend, Prisma schema, and worker scaffold under `backend/`.
+
+### Local full-stack demo
+
+1. Copy `.env.example` to `.env` and update values if needed.
+2. Start the full local stack:
+   ```bash
+   npm run dev:full
+   ```
+3. The frontend runs on `http://localhost:5173` and the API runs on `http://localhost:3001`.
+
+### Database and Prisma
+
+Use PostgreSQL for the backend runtime.
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate:dev
+npm run prisma:seed
+```
+
+For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.
+
+## Review Docs
+
+For the code review package, use:
+- [docs/code-review-readiness.md](/Users/owlxshri/Desktop/MentorMe/docs/code-review-readiness.md)
+- [docs/frontend-system.md](/Users/owlxshri/Desktop/MentorMe/docs/frontend-system.md)
+- [docs/system-architecture.md](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.md)
+- [docs/system-architecture.html](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.html)
+
 ## 🎨 Design System
 
 The application uses a custom theme defined in `src/index.css`:

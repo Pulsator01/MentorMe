@@ -16,7 +16,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
         const items = requests.filter((request) => request.status === column.key)
 
         return (
-          <div key={column.key} className="min-h-[440px] rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+          <div key={column.key} className="min-h-[360px] rounded-3xl border border-slate-200 bg-slate-50 p-4">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-950">{column.title}</p>
@@ -33,12 +33,12 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                   <div
                     key={request.id}
                     data-testid={`request-card-${request.id.toLowerCase()}`}
-                    className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm"
+                    className="rounded-3xl border border-slate-200 bg-white p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{request.id}</p>
-                        <h3 className="mt-2 text-lg font-semibold text-slate-950">{request.ventureName}</h3>
+                        <h3 className="mt-1 text-base font-semibold text-slate-950">{request.ventureName}</h3>
                       </div>
                       <Badge tone={request.trl >= 3 ? 'emerald' : 'rose'}>TRL {request.trl}</Badge>
                     </div>
@@ -49,7 +49,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                     </div>
 
                     {column.key === 'cfe_review' ? (
-                      <div className="mt-5 flex gap-2">
+                      <div className="mt-4 flex gap-2">
                         <button
                           type="button"
                           onClick={() => onApprove(request.id)}
@@ -70,7 +70,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                     ) : null}
 
                     {column.key !== 'cfe_review' ? (
-                      <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                         {column.key === 'needs_work'
                           ? 'CFE requested a sharper brief or better artifacts before this can be routed again.'
                           : column.key === 'awaiting_mentor'
@@ -92,7 +92,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
               })}
 
               {items.length === 0 ? (
-                <div className="rounded-[24px] border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-center text-sm text-slate-500">
+                <div className="rounded-3xl border border-dashed border-slate-300 bg-white/70 px-4 py-8 text-center text-sm text-slate-500">
                   No requests in this column right now.
                 </div>
               ) : null}

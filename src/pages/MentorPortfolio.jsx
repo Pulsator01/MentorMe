@@ -51,35 +51,38 @@ function MentorPortfolio() {
   }
 
   return (
-    <div className="space-y-6 pb-8">
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard className="bg-slate-950 text-white">
-          <SectionHeading
-            eyebrow="Mentor Network"
-            title="Create profiles that reflect real mentor boundaries"
-            description="CFE owns the mentor directory, the visibility rules, and the capacity model. Students should never be the source of truth here."
-          />
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Total mentors</p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight">{mentors.length}</p>
-            </div>
-            <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Visible mentors</p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight">
-                {mentors.filter((mentor) => mentor.visibility === 'Active').length}
-              </p>
-            </div>
-            <div className="rounded-[24px] border border-white/10 bg-white/6 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">High tolerance</p>
-              <p className="mt-3 text-3xl font-semibold tracking-tight">
-                {mentors.filter((mentor) => mentor.tolerance === 'High').length}
-              </p>
+    <div className="space-y-5 pb-8">
+      <SectionCard>
+        <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Mentor network</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
+              Keep the mentor directory controlled and easy to operate.
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
+              CFE owns mentor profiles, visibility, and capacity. This page should be a clean operations surface, not another cluttered dashboard.
+            </p>
+            <div className="mt-5 grid gap-4 md:grid-cols-3">
+              <SectionCard className="p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Total mentors</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{mentors.length}</p>
+              </SectionCard>
+              <SectionCard className="p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Visible mentors</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                  {mentors.filter((mentor) => mentor.visibility === 'Active').length}
+                </p>
+              </SectionCard>
+              <SectionCard className="p-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">High tolerance</p>
+                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+                  {mentors.filter((mentor) => mentor.tolerance === 'High').length}
+                </p>
+              </SectionCard>
             </div>
           </div>
-        </SectionCard>
 
-        <SectionCard>
+          <SectionCard className="p-6">
           <SectionHeading
             eyebrow="Create mentor profile"
             title="Add a mentor before exposing them to matching"
@@ -173,14 +176,15 @@ function MentorPortfolio() {
               </button>
             </div>
           </form>
-        </SectionCard>
-      </div>
+          </SectionCard>
+        </div>
+      </SectionCard>
 
       <SectionCard>
         <SectionHeading
           eyebrow="Mentor roster"
           title="Search and tune the active network"
-          description="Capacity sliders and visibility toggles let CFE react quickly when a mentor gets overloaded or loses patience for low-context asks."
+          description="Keep the roster compact: search, pause visibility, and adjust monthly capacity without drowning in secondary chrome."
           action={
             <label className="relative block min-w-[260px]">
               <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -199,7 +203,7 @@ function MentorPortfolio() {
             const load = getMentorLoad(mentor.id)
 
             return (
-              <div key={mentor.id} className="rounded-[26px] border border-slate-200 bg-white p-5">
+              <div key={mentor.id} className="rounded-3xl border border-slate-200 bg-white p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-3">
@@ -223,12 +227,12 @@ function MentorPortfolio() {
                 </div>
                 <p className="mt-4 text-sm leading-6 text-slate-600">{mentor.bio}</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {mentor.focus.map((item) => (
+                  {mentor.focus.slice(0, 3).map((item) => (
                     <Badge key={item}>{item}</Badge>
                   ))}
                 </div>
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Monthly capacity</p>
                     <input
                       type="range"
@@ -240,7 +244,7 @@ function MentorPortfolio() {
                     />
                     <p className="mt-2 text-sm text-slate-700">{mentor.monthlyLimit} sessions per month</p>
                   </div>
-                  <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Utilization</p>
                     <div className="mt-4">
                       <ProgressBar value={load} max={mentor.monthlyLimit} tone={load >= mentor.monthlyLimit ? 'rose' : 'emerald'} />
@@ -256,7 +260,7 @@ function MentorPortfolio() {
         </div>
 
         {filteredMentors.length === 0 ? (
-          <div className="mt-4 rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm text-slate-500">
+          <div className="mt-4 rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm text-slate-500">
             No mentor matched that search. Try a different keyword or add a new profile.
           </div>
         ) : null}

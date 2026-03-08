@@ -2,22 +2,31 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
-const renderAtRoute = (route = '/student') => {
+const renderAtRoute = (route = '/') => {
   window.history.pushState({}, 'Test route', route)
   return render(<App />)
 }
 
-describe('MentorMe app flows', () => {
+describe('MentorMe role-based frontend', () => {
   afterEach(() => {
     cleanup()
   })
 
   beforeEach(() => {
-    window.history.pushState({}, 'Reset', '/student')
+    window.history.pushState({}, 'Reset', '/')
   })
 
-  it('lands on the student workspace and lets a founder submit a mentor request', async () => {
+  it('lands on the role home instead of dumping everyone into one dashboard', async () => {
     renderAtRoute('/')
+
+    expect(
+      await screen.findByRole('heading', { name: /choose the role-specific workspace you actually need/i }),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /open workspace/i })).toHaveLength(3)
+  })
+
+  it('lets founders submit a mentor request from the founder workspace', async () => {
+    renderAtRoute('/founders')
 
     expect(
       await screen.findByRole('heading', { name: /build the right mentor ask before cfe routes it/i }),
@@ -33,14 +42,12 @@ describe('MentorMe app flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /naval shah/i }))
     fireEvent.click(screen.getByRole('button', { name: /send to cfe review/i }))
 
-    expect(
-      await screen.findByText(/request sent to cfe review/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/request sent to cfe review/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue('Aurora BioWorks')).toBeInTheDocument()
   })
 
   it('keeps founder data scoped to the current venture and excludes paused mentors from matching', async () => {
-    renderAtRoute('/student')
+    renderAtRoute('/founders')
 
     expect(await screen.findByText(/ecodrone systems is in cfe review/i)).toBeInTheDocument()
     expect(screen.queryByText(/medimesh labs/i)).not.toBeInTheDocument()
@@ -48,55 +55,31 @@ describe('MentorMe app flows', () => {
 
     fireEvent.click(screen.getAllByRole('link', { name: /mentor network/i })[0])
     fireEvent.click(screen.getAllByRole('button', { name: /pause visibility/i })[0])
-    fireEvent.click(screen.getAllByRole('link', { name: /founder studio/i })[0])
+    fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
 
     expect(screen.queryByRole('button', { name: /^naval shah$/i })).not.toBeInTheDocument()
   })
 
-  it('lets CFE approve a request and mentor schedule a session', async () => {
-    renderAtRoute('/admin')
-
-    const reviewCard = await screen.findByTestId('request-card-req-002')
-    fireEvent.click(within(reviewCard).getByRole('button', { name: /approve/i }))
-
-    fireEvent.click(screen.getAllByRole('link', { name: /mentor desk/i })[0])
-
-    const mentorCard = await screen.findByTestId('mentor-request-req-002')
-    expect(screen.queryByTestId('mentor-request-req-003')).not.toBeInTheDocument()
-    expect(within(mentorCard).getByLabelText(/calendly link/i)).toHaveValue('https://calendly.com/naval-shah/mentor-hour')
-    fireEvent.change(within(mentorCard).getByLabelText(/meeting slot/i), {
-      target: { value: '2026-03-10T14:00' },
-    })
-    fireEvent.click(within(mentorCard).getByRole('button', { name: /share slot/i }))
-
-    expect(await screen.findByText(/session confirmed for mar 10, 2026/i)).toBeInTheDocument()
-  })
-
-  it('keeps returned requests visible so founders can revise them', async () => {
-    renderAtRoute('/admin')
+  it('keeps returned requests visible so founders can revise them after CFE review', async () => {
+    renderAtRoute('/cfe')
 
     const reviewCard = await screen.findByTestId('request-card-req-002')
     fireEvent.click(within(reviewCard).getByRole('button', { name: /return/i }))
 
-    expect(await screen.findByText(/needs work/i)).toBeInTheDocument()
+    expect(await screen.findByText(/requests that were returned for better context or better material/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('link', { name: /founder studio/i })[0])
+    fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
 
     expect(await screen.findByText(/ecodrone systems is in needs work/i)).toBeInTheDocument()
     expect(screen.getByText(/revise brief/i)).toBeInTheDocument()
   })
 
-  it('lets the mentor desk switch between mentors and scope requests correctly', async () => {
-    renderAtRoute('/mentor')
+  it('gives students a separate workspace focused on prep and follow-through', async () => {
+    renderAtRoute('/students')
 
-    expect(await screen.findByLabelText(/viewing mentor/i)).toHaveValue('m-naval')
-    expect(screen.queryByTestId('mentor-request-req-003')).not.toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText(/viewing mentor/i), {
-      target: { value: 'm-radhika' },
-    })
-
-    expect(await screen.findByTestId('mentor-request-req-003')).toBeInTheDocument()
-    expect(screen.queryByTestId('mentor-request-req-002')).not.toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: /keep student-facing work simple: prepare, show up, and follow through/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /open readiness playbook/i })).toBeInTheDocument()
   })
 })
