@@ -10,6 +10,7 @@
     "dev:full": "tsx backend/scripts/dev-full.ts",
     "build": "vite build",
     "test": "vitest run",
+    "e2e:prisma": "tsx backend/scripts/prisma-e2e.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
