@@ -47,6 +47,19 @@ const approveSchema = z.object({
   ownerName: z.string().min(2),
 })
 
+const mentorRespondSchema = z.object({
+  decision: z.enum(['accepted', 'declined']),
+  reason: z.string().min(5).optional(),
+}).superRefine((value, context) => {
+  if (value.decision === 'declined' && !value.reason) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['reason'],
+      message: 'A decline reason is required',
+    })
+  }
+})
+
 const jwtTextEncoder = new TextEncoder()
 
 type ServiceDeps = {
@@ -266,6 +279,48 @@ export class PlatformService {
     return { request: this.requireRequestView(request.id) }
   }
 
+  submitRequest(user: User, requestId: string) {
+    if (user.role !== 'founder') {
+      throw new Error('Only founders can resubmit requests')
+    }
+
+    const request = this.authorizeRequestAccess(user, requestId)
+
+    if (request.founderUserId !== user.id) {
+      throw new Error('Forbidden')
+    }
+
+    if (!['draft', 'needs_work'].includes(request.status)) {
+      throw new Error('Only draft or returned requests can be submitted')
+    }
+
+    const next = {
+      ...request,
+      status: 'cfe_review' as const,
+      submittedAt: nowIso(),
+      updatedAt: nowIso(),
+    }
+    this.deps.repository.saveRequest(next)
+    this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: request.status === 'draft' ? 'request.submitted' : 'request.resubmitted',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: {},
+    })
+    this.recordOutbox(
+      request.status === 'draft' ? 'request.submitted' : 'request.resubmitted',
+      'mentor_request',
+      request.id,
+      { ventureId: request.ventureId, requestId: request.id },
+    )
+
+    return { request: this.requireRequestView(request.id) }
+  }
+
   approveRequest(user: User, requestId: string, input: unknown) {
     this.assertRole(user, 'cfe')
     const payload = approveSchema.parse(input)
@@ -478,9 +533,70 @@ export class PlatformService {
     return { mentorActionToken: token }
   }
 
+  mentorRespond(token: string, input: unknown) {
+    const payload = mentorRespondSchema.parse(input)
+    const actionToken = this.requireExternalToken(token)
+
+    if (actionToken.respondedAt) {
+      throw new Error('Action link has already been used')
+    }
+
+    this.deps.repository.saveExternalActionToken({
+      ...actionToken,
+      response: payload.decision,
+      respondedAt: nowIso(),
+      responseReason: payload.reason,
+    })
+
+    const request = this.requireRequest(actionToken.requestId)
+
+    if (payload.decision === 'accepted') {
+      this.recordAudit({
+        entityType: 'mentor_request',
+        entityId: request.id,
+        actorType: 'mentor',
+        action: 'mentor.accepted',
+        fromStatus: request.status,
+        toStatus: request.status,
+        payload: { mentorId: actionToken.mentorId },
+      })
+      this.recordOutbox('mentor.accepted', 'mentor_request', request.id, { mentorId: actionToken.mentorId })
+
+      return { decision: payload.decision, request: this.requireRequestView(request.id) }
+    }
+
+    const next = {
+      ...request,
+      mentorId: undefined,
+      status: 'awaiting_mentor' as const,
+      updatedAt: nowIso(),
+    }
+    this.deps.repository.saveRequest(next)
+    this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      actorType: 'mentor',
+      action: 'mentor.declined',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: { mentorId: actionToken.mentorId, reason: payload.reason || '' },
+    })
+    this.recordOutbox('mentor.declined', 'mentor_request', request.id, {
+      mentorId: actionToken.mentorId,
+      reason: payload.reason || '',
+    })
+
+    return { decision: payload.decision, request: this.requireRequestView(request.id) }
+  }
+
   mentorSchedule(token: string, input: unknown) {
     const payload = scheduleSchema.parse(input)
     const actionToken = this.requireExternalToken(token)
+
+    if (actionToken.response === 'declined') {
+      throw new Error('Cannot schedule a request after declining it')
+    }
+
     const request = this.requireRequest(actionToken.requestId)
     const meetingId = nextPrefixedId(
       'meet',

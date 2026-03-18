@@ -206,6 +206,36 @@ describe('MentorMe backend workflow', () => {
     expect(events.map((event) => event.action)).toContain('request.approved')
   })
 
+  it('lets founders resubmit a returned request back into CFE review', async () => {
+    const { app, repository } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+    const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
+
+    const returnRes = await app.inject({
+      method: 'POST',
+      url: '/requests/REQ-002/return',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: {
+        reason: 'Please add a clearer fundraising memo before routing.',
+      },
+    })
+
+    expect(returnRes.statusCode).toBe(200)
+    expect(returnRes.json().request.status).toBe('needs_work')
+
+    const submitRes = await app.inject({
+      method: 'POST',
+      url: '/requests/REQ-002/submit',
+      headers: { authorization: `Bearer ${founderToken}` },
+    })
+
+    expect(submitRes.statusCode).toBe(200)
+    expect(submitRes.json().request.status).toBe('cfe_review')
+
+    const events = repository.listAuditEventsForEntity('mentor_request', 'REQ-002')
+    expect(events.map((event) => event.action)).toContain('request.resubmitted')
+  })
+
   it('reserves and completes artifact uploads through the presign flow', async () => {
     const { app, storage } = buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
@@ -308,6 +338,74 @@ describe('MentorMe backend workflow', () => {
 
     expect(feedbackRes.statusCode).toBe(200)
     expect(feedbackRes.json().request.status).toBe('follow_up')
+  })
+
+  it('records mentor accept and decline responses through secure action links', async () => {
+    const { app, repository } = buildTestApp((state) => {
+      state.requests.push({
+        id: 'REQ-901',
+        organizationId: state.organization.id,
+        ventureId: 'v-ecodrone',
+        founderUserId: 'user-founder-aarav',
+        mentorId: 'm-radhika',
+        stage: 'Pilot',
+        trl: 5,
+        brl: 4,
+        status: 'awaiting_mentor',
+        challenge: 'Need a second routing target in case the first mentor declines.',
+        desiredOutcome: 'Keep the request live while testing the mentor response endpoint.',
+        mentorNotes: '',
+        createdAt: '2026-03-10T09:00:00.000Z',
+        updatedAt: '2026-03-10T09:00:00.000Z',
+        submittedAt: '2026-03-10T09:00:00.000Z',
+      })
+    })
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const acceptOutreachRes = await app.inject({
+      method: 'POST',
+      url: '/requests/REQ-003/mentor-outreach',
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+
+    expect(acceptOutreachRes.statusCode).toBe(201)
+
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: `/mentor-actions/${acceptOutreachRes.json().mentorActionToken}/respond`,
+      payload: {
+        decision: 'accepted',
+      },
+    })
+
+    expect(acceptRes.statusCode).toBe(200)
+    expect(acceptRes.json().decision).toBe('accepted')
+    expect(repository.findRequestById('REQ-003')?.mentorId).toBe('m-radhika')
+
+    const declineOutreachRes = await app.inject({
+      method: 'POST',
+      url: '/requests/REQ-901/mentor-outreach',
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+
+    expect(declineOutreachRes.statusCode).toBe(201)
+
+    const declineRes = await app.inject({
+      method: 'POST',
+      url: `/mentor-actions/${declineOutreachRes.json().mentorActionToken}/respond`,
+      payload: {
+        decision: 'declined',
+        reason: 'Capacity is full this month.',
+      },
+    })
+
+    expect(declineRes.statusCode).toBe(200)
+    expect(declineRes.json().decision).toBe('declined')
+    expect(repository.findRequestById('REQ-901')?.mentorId).toBeUndefined()
+    expect(repository.findRequestById('REQ-901')?.status).toBe('awaiting_mentor')
+
+    const events = repository.listAuditEventsForEntity('mentor_request', 'REQ-901')
+    expect(events.map((event) => event.action)).toContain('mentor.declined')
   })
 
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {

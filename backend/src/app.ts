@@ -157,7 +157,17 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/submit', async (_request, reply) => reply.code(501).send({ message: 'Use venture request creation in v1.' }))
+  app.post('/requests/:requestId/submit', async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
+      const result = service.submitRequest(user, params.requestId)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
 
   app.post('/requests/:requestId/return', async (request, reply) => {
     try {
@@ -270,9 +280,16 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/mentor-actions/:token/respond', async (_request, reply) =>
-    reply.code(501).send({ message: 'Mentor accept/decline is not required for the current UI flow.' }),
-  )
+  app.post('/mentor-actions/:token/respond', async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(10) }).parse(request.params)
+      const result = service.mentorRespond(params.token, request.body)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
 
   app.post('/mentor-actions/:token/schedule', async (request, reply) => {
     try {
