@@ -53,9 +53,10 @@ const getMatchScore = (mentor, form) => {
 }
 
 function StudentDashboard() {
-  const { venture, mentors, requests, submitRequest } = useAppState()
+  const { venture, mentors, requests, submitRequest, resubmitRequest } = useAppState()
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
+  const [resubmittingId, setResubmittingId] = useState('')
   const [form, setForm] = useState({
     ventureName: venture.name,
     stage: venture.stage,
@@ -173,6 +174,16 @@ function StudentDashboard() {
       brl: Number(form.brl),
     })
     setFlashMessage('Request sent to CFE review')
+  }
+
+  const handleResubmit = async (requestId) => {
+    setResubmittingId(requestId)
+    try {
+      await resubmitRequest(requestId)
+      setFlashMessage('Request re-submitted to CFE review')
+    } finally {
+      setResubmittingId('')
+    }
   }
 
   return (
@@ -481,6 +492,19 @@ function StudentDashboard() {
                 <span>{request.artifactList.length} attached items</span>
                 {request.meetingAt ? <span>Meeting {formatDate(request.meetingAt, { year: 'numeric' })}</span> : null}
               </div>
+              {request.status === 'needs_work' ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => handleResubmit(request.id)}
+                    disabled={resubmittingId === request.id}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Send size={16} />
+                    {resubmittingId === request.id ? 'Re-submitting...' : 'Re-submit to CFE'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

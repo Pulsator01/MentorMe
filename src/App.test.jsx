@@ -72,6 +72,10 @@ describe('MentorMe role-based frontend', () => {
 
     expect(await screen.findByText(/ecodrone systems is in needs work/i)).toBeInTheDocument()
     expect(screen.getByText(/revise brief/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /re-submit to cfe/i }))
+
+    expect(await screen.findByText(/request re-submitted to cfe review/i)).toBeInTheDocument()
+    expect(screen.getByText(/ecodrone systems is in cfe review/i)).toBeInTheDocument()
   })
 
   it('gives students a separate workspace focused on prep and follow-through', async () => {
@@ -81,5 +85,15 @@ describe('MentorMe role-based frontend', () => {
       await screen.findByRole('heading', { name: /keep student-facing work simple: prepare, show up, and follow through/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /open readiness playbook/i })).toBeInTheDocument()
+  })
+
+  it('exposes a mid-sem readiness page with the coded progress sheet', async () => {
+    renderAtRoute('/midsem')
+
+    expect(
+      await screen.findByRole('heading', { name: /product scope, endpoint progress, and honest delivery status in one place/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/color-coded api implementation status/i)).toBeInTheDocument()
+    expect(screen.getByText('/mentor-actions/:token/respond')).toBeInTheDocument()
   })
 })

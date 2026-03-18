@@ -7,6 +7,7 @@ import StudentWorkspace from './pages/StudentWorkspace'
 import AdminDashboard from './pages/AdminDashboard'
 import MentorPortfolio from './pages/MentorPortfolio'
 import TRLDefinitions from './pages/TRLDefinitions'
+import MidsemReadiness from './pages/MidsemReadiness'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
             <Route path="/students" element={<StudentWorkspace />} />
             <Route path="/cfe" element={<AdminDashboard />} />
             <Route path="/cfe/network" element={<MentorPortfolio />} />
+            <Route path="/midsem" element={<MidsemReadiness />} />
             <Route path="/playbook" element={<TRLDefinitions />} />
             <Route path="/student" element={<Navigate to="/founders" replace />} />
             <Route path="/mentor" element={<Navigate to="/students" replace />} />

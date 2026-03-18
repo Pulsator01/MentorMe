@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BookOpenText, Home, LayoutDashboard, Menu, Sparkles, Users, X } from 'lucide-react'
+import { BookOpenText, ClipboardList, Home, LayoutDashboard, Menu, Sparkles, Users, X } from 'lucide-react'
 import { cn } from '../components/ui'
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { label: 'Students', path: '/students', icon: Users, note: 'Prepare materials, meetings, and follow-ups.' },
   { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard, note: 'Approve, route, and manage the pipeline.' },
   { label: 'Mentor Network', path: '/cfe/network', icon: Users, note: 'Maintain mentor visibility and capacity.' },
+  { label: 'Mid-sem Readiness', path: '/midsem', icon: ClipboardList, note: 'Show product scope, API progress, and DB coverage.' },
   { label: 'Readiness Playbook', path: '/playbook', icon: BookOpenText, note: 'Use TRL and BRL signals consistently.' },
 ]
 

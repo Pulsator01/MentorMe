@@ -74,6 +74,18 @@ const reducer = (state, action) => {
         requests: [request, ...state.requests],
       }
     }
+    case 'resubmit-request':
+      return {
+        ...state,
+        requests: state.requests.map((request) =>
+          request.id === action.payload.id
+            ? {
+                ...request,
+                status: 'cfe_review',
+              }
+            : request,
+        ),
+      }
     case 'approve-request':
       return {
         ...state,
@@ -257,6 +269,11 @@ export const createApiClient = (baseUrl) => {
         body: JSON.stringify(payload),
       })
     },
+    submitRequest(requestId) {
+      return authorizedJson(`/requests/${requestId}/submit`, {
+        method: 'POST',
+      })
+    },
     approveRequest(requestId, ownerName) {
       return authorizedJson(`/requests/${requestId}/approve`, {
         method: 'POST',
@@ -390,6 +407,15 @@ export function AppStateProvider({ children }) {
       }
 
       dispatch({ type: 'submit-request', payload })
+    },
+    resubmitRequest: async (id) => {
+      if (backendRef.current.ready && backendRef.current.client) {
+        await backendRef.current.client.submitRequest(id)
+        await syncFromApi()
+        return
+      }
+
+      dispatch({ type: 'resubmit-request', payload: { id } })
     },
     approveRequest: async (id, owner) => {
       if (backendRef.current.ready && backendRef.current.client) {
