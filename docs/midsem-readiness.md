@@ -85,12 +85,13 @@ flowchart TD
 - calendly webhook idempotency
 - Swagger UI at `/docs/` and OpenAPI JSON at `/docs/json`
 - Prisma schema covering the production data model
+- runtime selection between seeded memory and Prisma/PostgreSQL persistence
 - backend regression tests for core request and mentor-action flows
 - a coded progress sheet for product and endpoint status
 
 ### Still after mid-sem
 
-- switch runtime persistence from seeded in-memory state to Prisma/PostgreSQL
+- boot local PostgreSQL in the dev environment and run the Prisma migrate/seed flow
 - consume SSE in the frontend for live request updates
 - add production-grade AI endpoints
 
@@ -105,3 +106,4 @@ flowchart TD
 - Backend tests: `npm test -- backend/src/app.test.ts`
 - Frontend tests: `npm test -- src/App.test.jsx src/context/AppState.test.jsx`
 - Swagger UI: `http://localhost:3001/docs/`
+- Persistence architecture: `docs/persistence-architecture.md`

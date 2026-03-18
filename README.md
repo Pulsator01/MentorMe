@@ -68,7 +68,7 @@ The repo now includes a Fastify backend, Prisma schema, and worker scaffold unde
 
 ### Database and Prisma
 
-Use PostgreSQL for the backend runtime.
+The backend uses Prisma automatically whenever `DATABASE_URL` is present. Set `PERSISTENCE_BACKEND=memory` if you want to force the seeded in-memory repository for demos or tests.
 
 ```bash
 npm run prisma:generate
@@ -76,13 +76,14 @@ npm run prisma:migrate:dev
 npm run prisma:seed
 ```
 
-For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.
+The default local `.env` expects PostgreSQL on `localhost:5432`. For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.
 
 ## Review Docs
 
 For the code review package, use:
 - [docs/code-review-readiness.md](/Users/owlxshri/Desktop/MentorMe/docs/code-review-readiness.md)
 - [docs/frontend-system.md](/Users/owlxshri/Desktop/MentorMe/docs/frontend-system.md)
+- [docs/persistence-architecture.md](/Users/owlxshri/Desktop/MentorMe/docs/persistence-architecture.md)
 - [docs/system-architecture.md](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.md)
 - [docs/system-architecture.html](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.html)
 
