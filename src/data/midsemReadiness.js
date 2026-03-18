@@ -262,7 +262,7 @@ export const feedbackLearnings = [
 
 export const honestNextSteps = [
   'Wire Prisma/PostgreSQL as the active runtime instead of the seeded in-memory repository.',
-  'Expose Swagger/OpenAPI testing docs on top of the current Fastify contract.',
   'Consume the existing SSE stream in the frontend so pipeline changes land live without manual refresh.',
   'Add at least one production-grade AI endpoint after the non-AI workflow is stable.',
+  'Replace demo-mode role bootstrap with explicit user sign-in and session-aware frontend routing.',
 ]

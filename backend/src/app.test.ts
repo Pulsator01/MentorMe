@@ -408,6 +408,31 @@ describe('MentorMe backend workflow', () => {
     expect(events.map((event) => event.action)).toContain('mentor.declined')
   })
 
+  it('serves Swagger UI and a usable OpenAPI document for endpoint testing', async () => {
+    const { app } = buildTestApp()
+
+    const jsonRes = await app.inject({
+      method: 'GET',
+      url: '/docs/json',
+    })
+
+    expect(jsonRes.statusCode).toBe(200)
+    const jsonBody = jsonRes.json()
+    expect(jsonBody.openapi).toBe('3.1.0')
+    expect(jsonBody.info.title).toBe('MentorMe API')
+    expect(jsonBody.paths['/ventures/{ventureId}/requests']).toBeTruthy()
+    expect(jsonBody.paths['/mentor-actions/{token}/respond']).toBeTruthy()
+
+    const uiRes = await app.inject({
+      method: 'GET',
+      url: '/docs/',
+    })
+
+    expect(uiRes.statusCode).toBe(200)
+    expect(uiRes.headers['content-type']).toContain('text/html')
+    expect(uiRes.body.toLowerCase()).toContain('swagger-ui')
+  })
+
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {
     const { app, repository } = buildTestApp()
 

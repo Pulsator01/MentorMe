@@ -64,6 +64,7 @@ The repo now includes a Fastify backend, Prisma schema, and worker scaffold unde
    npm run dev:full
    ```
 3. The frontend runs on `http://localhost:5173` and the API runs on `http://localhost:3001`.
+4. Swagger UI is available at `http://localhost:3001/docs/` and the OpenAPI JSON is available at `http://localhost:3001/docs/json`.
 
 ### Database and Prisma
 
