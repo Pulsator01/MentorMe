@@ -74,6 +74,7 @@ The backend uses Prisma automatically whenever `DATABASE_URL` is present. Set `P
 npm run prisma:generate
 npm run prisma:migrate:dev
 npm run prisma:seed
+npm run e2e:prisma
 ```
 
 The default local `.env` expects PostgreSQL on `localhost:5432`. For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.

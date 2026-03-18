@@ -38,9 +38,23 @@ flowchart TD
 - Backend workflow tests: `npm test -- backend/src/runtime.test.ts backend/src/infra/prismaRepository.test.ts backend/src/app.test.ts`
 - Repo lint: `npm run lint`
 - Prisma client generation: `npm run prisma:generate`
+- Live Prisma HTTP smoke: `npm run e2e:prisma`
+
+## E2E Flow
+
+```mermaid
+flowchart LR
+    A["Reset + seed PostgreSQL"] --> B["createRuntimeRepository() selects Prisma"]
+    B --> C["Boot Fastify on an ephemeral localhost port"]
+    C --> D["Founder magic-link login"]
+    D --> E["Founder creates request"]
+    E --> F["CFE approves + creates outreach"]
+    F --> G["Mentor accepts, schedules, and submits feedback"]
+    G --> H["Verify persisted meeting, feedback, and outbox rows"]
+```
 
 ## Local DB Smoke Status
 
 - Prisma schema validation passed with `npx prisma validate --schema backend/prisma/schema.prisma`.
-- A live Postgres smoke test is currently blocked because nothing is listening on `localhost:5432`.
-- The isolated smoke target used for verification was `postgresql://postgres:postgres@localhost:5432/mentorme?schema=codex_prisma_smoke`, which avoids touching the default schema when Postgres is available.
+- The live Prisma E2E now passes once PostgreSQL is reachable on `localhost:5432`.
+- For disposable local verification, a Docker `postgres:16` container on `5432` is sufficient for migrate, seed, and `npm run e2e:prisma`.
