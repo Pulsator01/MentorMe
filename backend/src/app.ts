@@ -4,6 +4,7 @@ import cors from '@fastify/cors'
 import sensible from '@fastify/sensible'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
+import type { OpenAPIV3, OpenAPIV3_1 } from 'openapi-types'
 import { z } from 'zod'
 import { PlatformService } from './domain/platformService'
 import type { EmailGateway, PlatformRepository, QueuePublisher, StorageService } from './domain/interfaces'
@@ -267,7 +268,8 @@ const noContentResponse = {
   description: 'No content',
 }
 
-const buildOpenApiDocument = () => ({
+const buildOpenApiDocument = () =>
+  ({
   openapi: '3.1.0',
   info: openApiInfo,
   servers: [
@@ -557,7 +559,7 @@ const buildOpenApiDocument = () => ({
       },
     },
   },
-})
+}) as OpenAPIV3_1.Document
 
 export const createApp = (options: AppOptions) => {
   const app = Fastify({ logger: false })
@@ -578,7 +580,7 @@ export const createApp = (options: AppOptions) => {
   app.register(swagger, {
     mode: 'static',
     specification: {
-      document: buildOpenApiDocument(),
+      document: buildOpenApiDocument() as unknown as OpenAPIV3.Document,
     },
   })
   app.register(swaggerUi, {
@@ -675,7 +677,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     const refreshToken = request.cookies.mentor_me_refresh
     if (refreshToken) {
-      service.logout(refreshToken)
+      await service.logout(refreshToken)
     }
     reply.clearCookie('mentor_me_refresh', { path: '/' })
     return reply.code(204).send()
@@ -700,7 +702,7 @@ export const createApp = (options: AppOptions) => {
     },
   }, async (request) => {
     const user = await readAuthUser(request)
-    return service.listVentures(user)
+    return await service.listVentures(user)
   })
 
   app.get('/requests', {
@@ -712,7 +714,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
-      return service.listRequests(user)
+      return await service.listRequests(user)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -729,7 +731,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      return service.getVenture(user, params.ventureId)
+      return await service.getVenture(user, params.ventureId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -746,7 +748,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      return service.listRequestsForVenture(user, params.ventureId)
+      return await service.listRequestsForVenture(user, params.ventureId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -764,7 +766,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      const result = service.createRequest(user, params.ventureId, request.body)
+      const result = await service.createRequest(user, params.ventureId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return reply.code(201).send(result)
     } catch (error) {
@@ -783,7 +785,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.submitRequest(user, params.requestId)
+      const result = await service.submitRequest(user, params.requestId)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -803,7 +805,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.returnRequest(user, params.requestId, request.body)
+      const result = await service.returnRequest(user, params.requestId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -823,7 +825,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.approveRequest(user, params.requestId, request.body)
+      const result = await service.approveRequest(user, params.requestId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -842,7 +844,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.closeRequest(user, params.requestId)
+      const result = await service.closeRequest(user, params.requestId)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -881,7 +883,7 @@ export const createApp = (options: AppOptions) => {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
       const body = artifactCompleteSchema.parse(request.body)
-      return service.completeArtifact(user, params.requestId, body.artifactId)
+      return await service.completeArtifact(user, params.requestId, body.artifactId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -896,7 +898,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
-      return service.listMentors(user)
+      return await service.listMentors(user)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -928,7 +930,7 @@ export const createApp = (options: AppOptions) => {
         calendlyUrl: z.string(),
         bio: z.string(),
       }).parse(request.body)
-      return reply.code(201).send(service.createMentor(user, mentor))
+      return reply.code(201).send(await service.createMentor(user, mentor))
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -946,7 +948,7 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ mentorId: z.string().min(1) }).parse(request.params)
-      return service.updateMentor(user, params.mentorId, request.body as Record<string, unknown>)
+      return await service.updateMentor(user, params.mentorId, request.body as Record<string, unknown>)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
@@ -979,7 +981,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     try {
       const params = z.object({ token: z.string().min(10) }).parse(request.params)
-      const result = service.mentorRespond(params.token, request.body)
+      const result = await service.mentorRespond(params.token, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -997,7 +999,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     try {
       const params = z.object({ token: z.string().min(10) }).parse(request.params)
-      const result = service.mentorSchedule(params.token, request.body)
+      const result = await service.mentorSchedule(params.token, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -1015,7 +1017,7 @@ export const createApp = (options: AppOptions) => {
   }, async (request, reply) => {
     try {
       const params = z.object({ token: z.string().min(10) }).parse(request.params)
-      const result = service.mentorFeedback(params.token, request.body)
+      const result = await service.mentorFeedback(params.token, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -1038,7 +1040,7 @@ export const createApp = (options: AppOptions) => {
     if (!eventId) {
       return reply.badRequest('Missing x-calendly-event-id header')
     }
-    return reply.code(202).send(service.calendlyWebhook(eventId, request.body as Record<string, unknown>))
+    return reply.code(202).send(await service.calendlyWebhook(eventId, request.body as Record<string, unknown>))
   })
 
   app.get('/notifications/stream', {

@@ -1,7 +1,13 @@
-import { createSeededInMemoryPlatformRepository } from './infra/inMemoryRepository'
+import { createRuntimeRepository } from './runtime'
 
-const repository = createSeededInMemoryPlatformRepository()
+const runtime = createRuntimeRepository()
 
-const pendingEvents = repository.listOutboxEvents().filter((event) => event.status === 'pending')
+void (async () => {
+  try {
+    const pendingEvents = (await runtime.repository.listOutboxEvents()).filter((event) => event.status === 'pending')
 
-console.log(`MentorMe worker started. Pending outbox events: ${pendingEvents.length}`)
+    console.log(`MentorMe worker started with ${runtime.mode} persistence. Pending outbox events: ${pendingEvents.length}`)
+  } finally {
+    await runtime.cleanup?.()
+  }
+})()

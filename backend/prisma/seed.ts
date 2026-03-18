@@ -1,4 +1,5 @@
-import { PrismaClient, RequestStatus, UserRole, VentureMembershipRole } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
+import type { MentorTolerance, MentorVisibility, RequestStatus } from '@prisma/client'
 import { initialPlatformData } from '../../src/data/platformData.js'
 
 const prisma = new PrismaClient()
@@ -47,7 +48,7 @@ async function main() {
         cohortId: 'cohort-2026',
         email: 'aarav.sharma@mentorme.test',
         name: 'Aarav Sharma',
-        role: UserRole.founder,
+        role: 'founder',
       },
       {
         id: 'user-student-ria',
@@ -55,7 +56,7 @@ async function main() {
         cohortId: 'cohort-2026',
         email: 'ria.student@mentorme.test',
         name: 'Ria Student',
-        role: UserRole.student,
+        role: 'student',
       },
       {
         id: 'user-cfe-ritu',
@@ -63,7 +64,7 @@ async function main() {
         cohortId: 'cohort-2026',
         email: 'ritu.cfe@mentorme.test',
         name: 'Ritu from CFE',
-        role: UserRole.cfe,
+        role: 'cfe',
       },
       {
         id: 'user-cfe-neha',
@@ -71,7 +72,7 @@ async function main() {
         cohortId: 'cohort-2026',
         email: 'neha.cfe@mentorme.test',
         name: 'Neha from CFE',
-        role: UserRole.cfe,
+        role: 'cfe',
       },
     ],
   })
@@ -148,14 +149,14 @@ async function main() {
         organizationId: 'org-mentorme',
         ventureId: 'v-ecodrone',
         userId: 'user-founder-aarav',
-        role: VentureMembershipRole.founder,
+        role: 'founder',
       },
       {
         id: 'vm-002',
         organizationId: 'org-mentorme',
         ventureId: 'v-ecodrone',
         userId: 'user-student-ria',
-        role: VentureMembershipRole.student,
+        role: 'student',
       },
     ],
   })
@@ -171,16 +172,16 @@ async function main() {
       focus: mentor.focus,
       stages: mentor.stages,
       domains: mentor.domains,
-      tolerance: mentor.tolerance,
+      tolerance: mentor.tolerance as MentorTolerance,
       monthlyLimit: mentor.monthlyLimit,
-      visibility: mentor.visibility,
+      visibility: mentor.visibility as MentorVisibility,
       responseWindow: mentor.responseWindow,
       calendlyUrl: mentor.calendly,
       bio: mentor.bio,
     })),
   })
 
-  const ventureIdByName = {
+  const ventureIdByName: Record<string, string> = {
     'EcoDrone Systems': 'v-ecodrone',
     'MediMesh Labs': 'v-medimesh',
     FarmSphere: 'v-farmsphere',

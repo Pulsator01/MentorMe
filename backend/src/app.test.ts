@@ -7,7 +7,11 @@ import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
 
-const buildTestApp = (configureRepository) => {
+type SeedConfigurator = Parameters<typeof createSeededInMemoryPlatformRepository>[0]
+
+const parseJson = <T>(response: { body: string }) => JSON.parse(response.body) as T
+
+const buildTestApp = (configureRepository?: SeedConfigurator) => {
   const repository = createSeededInMemoryPlatformRepository(configureRepository)
   const email = createStubEmailGateway()
   const storage = createStubStorageService()
@@ -43,7 +47,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(requestRes.statusCode).toBe(202)
-    const requestBody = requestRes.json()
+    const requestBody = parseJson<{ debugToken: string }>(requestRes)
     expect(requestBody.debugToken).toBeTruthy()
 
     const verifyRes = await app.inject({
@@ -53,7 +57,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(verifyRes.statusCode).toBe(200)
-    const verifyBody = verifyRes.json()
+    const verifyBody = parseJson<{ accessToken: string; user: { role: string } }>(verifyRes)
     expect(verifyBody.user.role).toBe('founder')
     expect(verifyBody.accessToken).toBeTruthy()
 
@@ -66,7 +70,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(meRes.statusCode).toBe(200)
-    expect(meRes.json().user.email).toBe('aarav.sharma@mentorme.test')
+    expect(parseJson<{ user: { email: string } }>(meRes).user.email).toBe('aarav.sharma@mentorme.test')
   })
 
   it('scopes venture data to the authenticated founder and creates a new request in cfe_review', async () => {
@@ -80,8 +84,9 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(venturesRes.statusCode).toBe(200)
-    expect(venturesRes.json().ventures).toHaveLength(1)
-    expect(venturesRes.json().ventures[0].name).toBe('EcoDrone Systems')
+    const venturesBody = parseJson<{ ventures: Array<{ name: string }> }>(venturesRes)
+    expect(venturesBody.ventures).toHaveLength(1)
+    expect(venturesBody.ventures[0].name).toBe('EcoDrone Systems')
 
     const createRes = await app.inject({
       method: 'POST',
@@ -99,7 +104,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(createRes.statusCode).toBe(201)
-    expect(createRes.json().request.status).toBe('cfe_review')
+    expect(parseJson<{ request: { status: string } }>(createRes).request.status).toBe('cfe_review')
 
     const requestsRes = await app.inject({
       method: 'GET',
@@ -108,7 +113,9 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(requestsRes.statusCode).toBe(200)
-    expect(requestsRes.json().requests[0].challenge).toBe('Need help sharpening fundraising narrative.')
+    expect(parseJson<{ requests: Array<{ challenge: string }> }>(requestsRes).requests[0].challenge).toBe(
+      'Need help sharpening fundraising narrative.',
+    )
   })
 
   it('keeps request listings scoped by venture id even when ventures share the same display name', async () => {
@@ -170,7 +177,8 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(requestsRes.statusCode).toBe(200)
-    expect(requestsRes.json().requests.map((request) => request.id)).not.toContain('REQ-900')
+    const requestsBody = parseJson<{ requests: Array<{ id: string }> }>(requestsRes)
+    expect(requestsBody.requests.map((request) => request.id)).not.toContain('REQ-900')
   })
 
   it('lets CFE return and approve requests while preserving the audit trail', async () => {
@@ -187,7 +195,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(returnRes.statusCode).toBe(200)
-    expect(returnRes.json().request.status).toBe('needs_work')
+    expect(parseJson<{ request: { status: string } }>(returnRes).request.status).toBe('needs_work')
 
     const approveRes = await app.inject({
       method: 'POST',
@@ -199,9 +207,9 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(approveRes.statusCode).toBe(200)
-    expect(approveRes.json().request.status).toBe('awaiting_mentor')
+    expect(parseJson<{ request: { status: string } }>(approveRes).request.status).toBe('awaiting_mentor')
 
-    const events = repository.listAuditEventsForEntity('mentor_request', 'REQ-002')
+    const events = await repository.listAuditEventsForEntity('mentor_request', 'REQ-002')
     expect(events.map((event) => event.action)).toContain('request.returned')
     expect(events.map((event) => event.action)).toContain('request.approved')
   })
@@ -221,7 +229,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(returnRes.statusCode).toBe(200)
-    expect(returnRes.json().request.status).toBe('needs_work')
+    expect(parseJson<{ request: { status: string } }>(returnRes).request.status).toBe('needs_work')
 
     const submitRes = await app.inject({
       method: 'POST',
@@ -230,9 +238,9 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(submitRes.statusCode).toBe(200)
-    expect(submitRes.json().request.status).toBe('cfe_review')
+    expect(parseJson<{ request: { status: string } }>(submitRes).request.status).toBe('cfe_review')
 
-    const events = repository.listAuditEventsForEntity('mentor_request', 'REQ-002')
+    const events = await repository.listAuditEventsForEntity('mentor_request', 'REQ-002')
     expect(events.map((event) => event.action)).toContain('request.resubmitted')
   })
 
@@ -252,7 +260,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(presignRes.statusCode).toBe(201)
-    const presignBody = presignRes.json()
+    const presignBody = parseJson<{ uploadUrl: string; artifact: { id: string } }>(presignRes)
     expect(presignBody.uploadUrl).toContain('pitch-deck-v5.pdf')
     expect(storage.presignedUploads).toHaveLength(1)
 
@@ -266,7 +274,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(completeRes.statusCode).toBe(200)
-    expect(completeRes.json().artifact.status).toBe('uploaded')
+    expect(parseJson<{ artifact: { status: string } }>(completeRes).artifact.status).toBe('uploaded')
   })
 
   it('persists artifact refs from founder request creation into subsequent request reads', async () => {
@@ -289,7 +297,8 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(createRes.statusCode).toBe(201)
-    expect(createRes.json().request.artifactList).toEqual(['pitch-deck-v6.pdf', 'technical-spec-v2.md'])
+    const createdBody = parseJson<{ request: { id: string; artifactList: string[] } }>(createRes)
+    expect(createdBody.request.artifactList).toEqual(['pitch-deck-v6.pdf', 'technical-spec-v2.md'])
 
     const requestsRes = await app.inject({
       method: 'GET',
@@ -297,8 +306,9 @@ describe('MentorMe backend workflow', () => {
       headers: { authorization: `Bearer ${founderToken}` },
     })
 
-    const createdRequest = requestsRes.json().requests.find((request) => request.id === createRes.json().request.id)
-    expect(createdRequest.artifactList).toEqual(['pitch-deck-v6.pdf', 'technical-spec-v2.md'])
+    const requestsBody = parseJson<{ requests: Array<{ id: string; artifactList: string[] }> }>(requestsRes)
+    const createdRequest = requestsBody.requests.find((request) => request.id === createdBody.request.id)
+    expect(createdRequest?.artifactList).toEqual(['pitch-deck-v6.pdf', 'technical-spec-v2.md'])
   })
 
   it('uses mentor action tokens to schedule a meeting and submit feedback', async () => {
@@ -312,7 +322,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(outreachRes.statusCode).toBe(201)
-    const token = outreachRes.json().mentorActionToken
+    const token = parseJson<{ mentorActionToken: string }>(outreachRes).mentorActionToken
 
     const scheduleRes = await app.inject({
       method: 'POST',
@@ -324,7 +334,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(scheduleRes.statusCode).toBe(200)
-    expect(scheduleRes.json().request.status).toBe('scheduled')
+    expect(parseJson<{ request: { status: string } }>(scheduleRes).request.status).toBe('scheduled')
 
     const feedbackRes = await app.inject({
       method: 'POST',
@@ -337,7 +347,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(feedbackRes.statusCode).toBe(200)
-    expect(feedbackRes.json().request.status).toBe('follow_up')
+    expect(parseJson<{ request: { status: string } }>(feedbackRes).request.status).toBe('follow_up')
   })
 
   it('records mentor accept and decline responses through secure action links', async () => {
@@ -369,18 +379,19 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(acceptOutreachRes.statusCode).toBe(201)
+    const acceptOutreachBody = parseJson<{ mentorActionToken: string }>(acceptOutreachRes)
 
     const acceptRes = await app.inject({
       method: 'POST',
-      url: `/mentor-actions/${acceptOutreachRes.json().mentorActionToken}/respond`,
+      url: `/mentor-actions/${acceptOutreachBody.mentorActionToken}/respond`,
       payload: {
         decision: 'accepted',
       },
     })
 
     expect(acceptRes.statusCode).toBe(200)
-    expect(acceptRes.json().decision).toBe('accepted')
-    expect(repository.findRequestById('REQ-003')?.mentorId).toBe('m-radhika')
+    expect(parseJson<{ decision: string }>(acceptRes).decision).toBe('accepted')
+    expect((await repository.findRequestById('REQ-003'))?.mentorId).toBe('m-radhika')
 
     const declineOutreachRes = await app.inject({
       method: 'POST',
@@ -389,10 +400,11 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(declineOutreachRes.statusCode).toBe(201)
+    const declineOutreachBody = parseJson<{ mentorActionToken: string }>(declineOutreachRes)
 
     const declineRes = await app.inject({
       method: 'POST',
-      url: `/mentor-actions/${declineOutreachRes.json().mentorActionToken}/respond`,
+      url: `/mentor-actions/${declineOutreachBody.mentorActionToken}/respond`,
       payload: {
         decision: 'declined',
         reason: 'Capacity is full this month.',
@@ -400,11 +412,11 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(declineRes.statusCode).toBe(200)
-    expect(declineRes.json().decision).toBe('declined')
-    expect(repository.findRequestById('REQ-901')?.mentorId).toBeUndefined()
-    expect(repository.findRequestById('REQ-901')?.status).toBe('awaiting_mentor')
+    expect(parseJson<{ decision: string }>(declineRes).decision).toBe('declined')
+    expect((await repository.findRequestById('REQ-901'))?.mentorId).toBeUndefined()
+    expect((await repository.findRequestById('REQ-901'))?.status).toBe('awaiting_mentor')
 
-    const events = repository.listAuditEventsForEntity('mentor_request', 'REQ-901')
+    const events = await repository.listAuditEventsForEntity('mentor_request', 'REQ-901')
     expect(events.map((event) => event.action)).toContain('mentor.declined')
   })
 
@@ -417,7 +429,7 @@ describe('MentorMe backend workflow', () => {
     })
 
     expect(jsonRes.statusCode).toBe(200)
-    const jsonBody = jsonRes.json()
+    const jsonBody = parseJson<{ openapi: string; info: { title: string }; paths: Record<string, unknown> }>(jsonRes)
     expect(jsonBody.openapi).toBe('3.1.0')
     expect(jsonBody.info.title).toBe('MentorMe API')
     expect(jsonBody.paths['/ventures/{ventureId}/requests']).toBeTruthy()
@@ -466,11 +478,11 @@ describe('MentorMe backend workflow', () => {
 
     expect(firstRes.statusCode).toBe(202)
     expect(secondRes.statusCode).toBe(202)
-    expect(secondRes.json().duplicate).toBe(true)
-    expect(repository.listMeetingsForRequest('REQ-003')[0].joinLink).toBe(
+    expect(parseJson<{ duplicate: boolean }>(secondRes).duplicate).toBe(true)
+    expect((await repository.listMeetingsForRequest('REQ-003'))[0].joinLink).toBe(
       'https://api.calendly.com/scheduled_events/evt_123',
     )
-    expect(repository.findRequestById('REQ-003')?.calendlyLink).toBe('https://api.calendly.com/scheduled_events/evt_123')
+    expect((await repository.findRequestById('REQ-003'))?.calendlyLink).toBe('https://api.calendly.com/scheduled_events/evt_123')
   })
 })
 
@@ -484,8 +496,8 @@ async function loginAs(app: ReturnType<typeof createApp>, email: string) {
   const verifyRes = await app.inject({
     method: 'POST',
     url: '/auth/magic-link/verify',
-    payload: { token: requestRes.json().debugToken },
+    payload: { token: parseJson<{ debugToken: string }>(requestRes).debugToken },
   })
 
-  return verifyRes.json().accessToken as string
+  return parseJson<{ accessToken: string }>(verifyRes).accessToken
 }

@@ -30,148 +30,148 @@ type State = ReturnType<typeof createSeedState> & {
 class InMemoryPlatformRepository implements PlatformRepository {
   constructor(private readonly state: State) {}
 
-  listUsers() {
+  async listUsers() {
     return [...this.state.users]
   }
 
-  findUserByEmail(email: string) {
+  async findUserByEmail(email: string) {
     return this.state.users.find((user) => user.email.toLowerCase() === email.toLowerCase())
   }
 
-  findUserById(id: string) {
+  async findUserById(id: string) {
     return this.state.users.find((user) => user.id === id)
   }
 
-  listVentures() {
+  async listVentures() {
     return [...this.state.ventures]
   }
 
-  findVentureById(id: string) {
+  async findVentureById(id: string) {
     return this.state.ventures.find((venture) => venture.id === id)
   }
 
-  listMemberships() {
+  async listMemberships() {
     return [...this.state.ventureMemberships]
   }
 
-  listMentors() {
+  async listMentors() {
     return [...this.state.mentors]
   }
 
-  findMentorById(id: string) {
+  async findMentorById(id: string) {
     return this.state.mentors.find((mentor) => mentor.id === id)
   }
 
-  saveMentor(mentor: MentorProfile) {
+  async saveMentor(mentor: MentorProfile) {
     this.state.mentors = upsertById(this.state.mentors, mentor)
     return mentor
   }
 
-  listRequests() {
+  async listRequests() {
     return [...this.state.requests]
   }
 
-  findRequestById(id: string) {
+  async findRequestById(id: string) {
     return this.state.requests.find((request) => request.id === id)
   }
 
-  saveRequest(request: MentorRequest) {
+  async saveRequest(request: MentorRequest) {
     this.state.requests = upsertById(this.state.requests, request)
     return request
   }
 
-  listShortlistsForRequest(requestId: string) {
+  async listShortlistsForRequest(requestId: string) {
     return this.state.shortlists.filter((shortlist) => shortlist.requestId === requestId)
   }
 
-  replaceShortlistsForRequest(requestId: string, shortlists: MentorRequestShortlist[]) {
+  async replaceShortlistsForRequest(requestId: string, shortlists: MentorRequestShortlist[]) {
     this.state.shortlists = this.state.shortlists.filter((shortlist) => shortlist.requestId !== requestId).concat(shortlists)
   }
 
-  listArtifactsForRequest(requestId: string) {
+  async listArtifactsForRequest(requestId: string) {
     return this.state.artifacts.filter((artifact) => artifact.requestId === requestId)
   }
 
-  findArtifactById(id: string) {
+  async findArtifactById(id: string) {
     return this.state.artifacts.find((artifact) => artifact.id === id)
   }
 
-  saveArtifact(artifact: Artifact) {
+  async saveArtifact(artifact: Artifact) {
     this.state.artifacts = upsertById(this.state.artifacts, artifact)
     return artifact
   }
 
-  listMeetingsForRequest(requestId: string) {
+  async listMeetingsForRequest(requestId: string) {
     return this.state.meetings.filter((meeting) => meeting.requestId === requestId)
   }
 
-  saveMeeting(meeting: Meeting) {
+  async saveMeeting(meeting: Meeting) {
     this.state.meetings = upsertById(this.state.meetings, meeting)
     return meeting
   }
 
-  saveFeedback(feedback: MeetingFeedback) {
+  async saveFeedback(feedback: MeetingFeedback) {
     this.state.feedbacks = upsertById(this.state.feedbacks, feedback)
     return feedback
   }
 
-  listMagicLinks() {
+  async listMagicLinks() {
     return [...this.state.magicLinks]
   }
 
-  saveMagicLink(token: MagicLinkTokenRecord) {
+  async saveMagicLink(token: MagicLinkTokenRecord) {
     this.state.magicLinks = upsertById(this.state.magicLinks, token)
     return token
   }
 
-  saveSession(session: SessionRecord) {
+  async saveSession(session: SessionRecord) {
     this.state.sessions = upsertById(this.state.sessions, session)
     return session
   }
 
-  findSessionByHash(refreshTokenHash: string) {
+  async findSessionByHash(refreshTokenHash: string) {
     return this.state.sessions.find((session) => session.refreshTokenHash === refreshTokenHash && !session.revokedAt)
   }
 
-  revokeSession(sessionId: string) {
+  async revokeSession(sessionId: string) {
     this.state.sessions = this.state.sessions.map((session) =>
       session.id === sessionId ? { ...session, revokedAt: new Date().toISOString() } : session,
     )
   }
 
-  saveExternalActionToken(token: ExternalActionToken) {
+  async saveExternalActionToken(token: ExternalActionToken) {
     this.state.externalActionTokens = upsertById(this.state.externalActionTokens, token)
     return token
   }
 
-  findExternalActionTokenByHash(tokenHash: string) {
+  async findExternalActionTokenByHash(tokenHash: string) {
     return this.state.externalActionTokens.find((token) => token.tokenHash === tokenHash)
   }
 
-  saveAuditEvent(event: AuditEvent) {
+  async saveAuditEvent(event: AuditEvent) {
     this.state.auditEvents = upsertById(this.state.auditEvents, event)
     return event
   }
 
-  listAuditEventsForEntity(entityType: AuditEvent['entityType'], entityId: string) {
+  async listAuditEventsForEntity(entityType: AuditEvent['entityType'], entityId: string) {
     return this.state.auditEvents.filter((event) => event.entityType === entityType && event.entityId === entityId)
   }
 
-  findWebhookReceipt(provider: 'calendly', eventId: string) {
+  async findWebhookReceipt(provider: 'calendly', eventId: string) {
     return this.state.webhookReceipts.find((receipt) => receipt.provider === provider && receipt.eventId === eventId)
   }
 
-  saveWebhookReceipt(receipt: WebhookReceipt) {
+  async saveWebhookReceipt(receipt: WebhookReceipt) {
     this.state.webhookReceipts = upsertById(this.state.webhookReceipts, receipt)
     return receipt
   }
 
-  saveOutboxEvent(event: OutboxEvent) {
+  async saveOutboxEvent(event: OutboxEvent) {
     this.state.outboxEvents = upsertById(this.state.outboxEvents, event)
     return event
   }
 
-  listOutboxEvents() {
+  async listOutboxEvents() {
     return [...this.state.outboxEvents]
   }
 }

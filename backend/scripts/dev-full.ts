@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 
-const processes = [
+const processes: Array<[string, string[]]> = [
   ['npm', ['run', 'api:dev']],
   ['npm', ['run', 'worker:dev']],
   ['npm', ['run', 'dev']],
