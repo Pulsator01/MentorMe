@@ -574,7 +574,11 @@ export const createApp = (options: AppOptions) => {
     jwtSecret: options.jwtSecret,
   })
 
-  app.register(cors, { origin: true, credentials: true })
+  app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  })
   app.register(cookie, { secret: options.cookieSecret })
   app.register(sensible)
   app.register(swagger, {

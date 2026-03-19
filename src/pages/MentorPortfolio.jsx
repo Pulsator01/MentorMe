@@ -203,17 +203,20 @@ function MentorPortfolio() {
             const load = getMentorLoad(mentor.id)
 
             return (
-              <div key={mentor.id} className="rounded-3xl border border-slate-200 bg-white p-5">
+              <div key={mentor.id} data-testid={`mentor-card-${mentor.id}`} className="rounded-3xl border border-slate-200 bg-white p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-semibold text-slate-950">{mentor.name}</h3>
-                      <Badge tone={mentor.visibility === 'Active' ? 'emerald' : 'rose'}>{mentor.visibility}</Badge>
+                      <span data-testid={`mentor-visibility-${mentor.id}`}>
+                        <Badge tone={mentor.visibility === 'Active' ? 'emerald' : 'rose'}>{mentor.visibility}</Badge>
+                      </span>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">{mentor.title}</p>
                   </div>
                   <button
                     type="button"
+                    data-testid={`toggle-mentor-${mentor.id}`}
                     onClick={() =>
                       updateMentor(mentor.id, {
                         visibility: mentor.visibility === 'Active' ? 'Paused' : 'Active',

@@ -244,6 +244,39 @@ describe('MentorMe backend workflow', () => {
     expect(events.map((event) => event.action)).toContain('request.resubmitted')
   })
 
+  it('lets CFE update mentor visibility and exposes PATCH in CORS preflight responses', async () => {
+    const { app, repository } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const updateRes = await app.inject({
+      method: 'PATCH',
+      url: '/mentors/m-naval',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: {
+        visibility: 'Paused',
+      },
+    })
+
+    expect(updateRes.statusCode).toBe(200)
+    expect(parseJson<{ mentor: { visibility: string } }>(updateRes).mentor.visibility).toBe('Paused')
+    expect((await repository.findMentorById('m-naval'))?.visibility).toBe('Paused')
+
+    const preflightRes = await app.inject({
+      method: 'OPTIONS',
+      url: '/mentors/m-naval',
+      headers: {
+        origin: 'http://127.0.0.1:4173',
+        'access-control-request-method': 'PATCH',
+        'access-control-request-headers': 'authorization,content-type',
+      },
+    })
+
+    expect(preflightRes.statusCode).toBe(204)
+    expect(preflightRes.headers['access-control-allow-origin']).toBe('http://127.0.0.1:4173')
+    expect(preflightRes.headers['access-control-allow-credentials']).toBe('true')
+    expect(preflightRes.headers['access-control-allow-methods']).toContain('PATCH')
+  })
+
   it('reserves and completes artifact uploads through the presign flow', async () => {
     const { app, storage } = buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')

@@ -11,6 +11,8 @@
     "build": "vite build",
     "test": "vitest run",
     "e2e:prisma": "tsx backend/scripts/prisma-e2e.ts",
+    "e2e:ui": "playwright test",
+    "e2e": "npm run e2e:prisma && npm run e2e:ui",
     "lint": "eslint .",
     "preview": "vite preview",
     "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
@@ -42,6 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

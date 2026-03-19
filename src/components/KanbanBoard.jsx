@@ -16,7 +16,11 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
         const items = requests.filter((request) => request.status === column.key)
 
         return (
-          <div key={column.key} className="min-h-[360px] rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <div
+            key={column.key}
+            data-testid={`kanban-column-${column.key}`}
+            className="min-h-[360px] rounded-3xl border border-slate-200 bg-slate-50 p-4"
+          >
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-950">{column.title}</p>
@@ -53,6 +57,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                         <button
                           type="button"
                           onClick={() => onApprove(request.id)}
+                          data-testid={`approve-request-${request.id.toLowerCase()}`}
                           className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                         >
                           <CheckCircle2 size={16} />
@@ -61,6 +66,7 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                         <button
                           type="button"
                           onClick={() => onReject(request.id)}
+                          data-testid={`return-request-${request.id.toLowerCase()}`}
                           className="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
                         >
                           <RotateCcw size={16} />

@@ -7,5 +7,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}', 'backend/src/**/*.{test,spec}.{js,ts}'],
   },
 })
