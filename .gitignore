@@ -11,6 +11,17 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+
+# Accidental local transpile output
+backend/**/*.js
+src/**/*.js
+!src/data/**/*.js
+!src/test/**/*.js
+!vite.config.js
+!eslint.config.js
+!postcss.config.js
+!tailwind.config.js
 
 # Editor directories and files
 .vscode/*
