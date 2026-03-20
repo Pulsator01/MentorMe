@@ -16,6 +16,7 @@ const statusTone = {
   awaiting_mentor: 'blue',
   scheduled: 'emerald',
   follow_up: 'blue',
+  closed: 'slate',
 }
 
 const formatDate = (value, opts) =>
@@ -53,10 +54,11 @@ const getMatchScore = (mentor, form) => {
 }
 
 function StudentDashboard() {
-  const { venture, mentors, requests, submitRequest, resubmitRequest } = useAppState()
+  const { venture, mentors, requests, submitRequest, resubmitRequest, uploadArtifact } = useAppState()
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
   const [resubmittingId, setResubmittingId] = useState('')
+  const [uploadingRequestId, setUploadingRequestId] = useState('')
   const [form, setForm] = useState({
     ventureName: venture.name,
     stage: venture.stage,
@@ -183,6 +185,24 @@ function StudentDashboard() {
       setFlashMessage('Request re-submitted to CFE review')
     } finally {
       setResubmittingId('')
+    }
+  }
+
+  const handleArtifactUpload = async (requestId, event) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    setUploadingRequestId(requestId)
+
+    try {
+      await uploadArtifact(requestId, file)
+      setFlashMessage(`${file.name} attached to ${requestId}`)
+    } finally {
+      setUploadingRequestId('')
+      event.target.value = ''
     }
   }
 
@@ -499,6 +519,39 @@ function StudentDashboard() {
                 <span>{request.artifactList.length} attached items</span>
                 {request.meetingAt ? <span>Meeting {formatDate(request.meetingAt, { year: 'numeric' })}</span> : null}
               </div>
+              {request.artifactList.length ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {request.artifactList.map((artifact) => (
+                    <Badge key={`${request.id}-${artifact}`} tone="blue">
+                      {artifact}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+              {request.status !== 'closed' ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Attach another artifact</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        This uses the presign and complete API flow for the selected request.
+                      </p>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white">
+                      <FileUp size={16} />
+                      {uploadingRequestId === request.id ? 'Uploading...' : 'Upload file'}
+                      <input
+                        type="file"
+                        className="sr-only"
+                        data-testid={`upload-artifact-${request.id.toLowerCase()}`}
+                        aria-label={`Upload artifact for ${request.id}`}
+                        disabled={uploadingRequestId === request.id}
+                        onChange={(event) => void handleArtifactUpload(request.id, event)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
               {request.status === 'needs_work' ? (
                 <div className="mt-4">
                   <button

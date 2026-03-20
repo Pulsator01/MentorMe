@@ -23,7 +23,6 @@ function MidsemReadiness() {
   const implementedCount = endpointChecklist.filter((item) => item.status === 'done').length
   const nonAiEndpoints = endpointChecklist.filter((item) => item.category === 'Non-AI')
   const nonAiDone = nonAiEndpoints.filter((item) => item.status === 'done').length
-  const inProgressCount = endpointChecklist.filter((item) => item.status === 'in_progress').length
   const plannedCount = endpointChecklist.filter((item) => item.status === 'planned').length
 
   return (
@@ -104,7 +103,7 @@ function MidsemReadiness() {
           description="Green means done, yellow means in progress, and white means planned. This mirrors the progress sheet your professor asked for."
           action={
             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              {inProgressCount} in progress • {plannedCount} planned
+              {implementedCount} done • {plannedCount} planned
             </div>
           }
         />
@@ -143,11 +142,11 @@ function MidsemReadiness() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <SectionCard>
-          <SectionHeading
-            eyebrow="DB design"
-            title="What the schema already models"
-            description="The Prisma schema covers the production data model even though the default runtime still uses seeded in-memory persistence."
-          />
+        <SectionHeading
+          eyebrow="DB design"
+          title="What the schema already models"
+          description="The Prisma schema and runtime now cover the production data model, while a memory fallback still exists for local demo mode."
+        />
           <div className="grid gap-3 md:grid-cols-2">
             {dbEntities.map((entity) => (
               <div key={entity.name} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">

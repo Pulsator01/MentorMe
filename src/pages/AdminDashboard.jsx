@@ -1,16 +1,41 @@
-import { Activity, CheckCircle2, ShieldCheck, Users } from 'lucide-react'
+import { useState } from 'react'
+import { Activity, ShieldCheck, Users } from 'lucide-react'
 import KanbanBoard from '../components/KanbanBoard'
 import { useAppState } from '../context/AppState'
 import { SectionCard, SectionHeading, StatCard } from '../components/ui'
 
 function AdminDashboard() {
-  const { requests, mentors, approveRequest, rejectRequest } = useAppState()
-  const active = requests.filter((request) => ['cfe_review', 'awaiting_mentor', 'scheduled', 'needs_work'].includes(request.status))
+  const { requests, mentors, approveRequest, rejectRequest, createMentorOutreach, closeRequest } = useAppState()
+  const [mentorLinkPreview, setMentorLinkPreview] = useState(null)
+  const [actionMessage, setActionMessage] = useState('')
+  const active = requests.filter((request) => ['cfe_review', 'awaiting_mentor', 'scheduled', 'needs_work', 'follow_up'].includes(request.status))
   const scheduled = requests.filter((request) => request.status === 'scheduled').length
   const followUps = requests.filter((request) => request.status === 'follow_up').length
   const reviewQueue = requests.filter((request) => request.status === 'cfe_review').length
   const needsWork = requests.filter((request) => request.status === 'needs_work').length
   const mentorCapacity = mentors.reduce((sum, mentor) => sum + mentor.monthlyLimit, 0)
+
+  const handleCreateMentorOutreach = async (requestId) => {
+    try {
+      const body = await createMentorOutreach(requestId)
+      const request = requests.find((item) => item.id === requestId)
+      const url = `/mentors/desk?token=${body.mentorActionToken}`
+
+      setMentorLinkPreview({
+        requestId,
+        url,
+        ventureName: request?.ventureName || 'Selected request',
+      })
+      setActionMessage(`Secure mentor link created for ${request?.ventureName || requestId}`)
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : `Unable to create a mentor link for ${requestId}`)
+    }
+  }
+
+  const handleCloseRequest = async (requestId) => {
+    await closeRequest(requestId)
+    setActionMessage(`${requestId} closed and removed from the live pipeline`)
+  }
 
   return (
     <div className="space-y-5 pb-8">
@@ -58,6 +83,41 @@ function AdminDashboard() {
         </div>
       </SectionCard>
 
+      {mentorLinkPreview ? (
+        <SectionCard>
+          <SectionHeading
+            eyebrow="Mentor outreach"
+            title="Secure mentor link is ready"
+            description="This is the token-backed link you can open in a separate tab to simulate the mentor email journey."
+          />
+          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-semibold text-amber-950">{mentorLinkPreview.ventureName}</p>
+            <p className="mt-2 break-all text-sm text-amber-900">{mentorLinkPreview.url}</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href={mentorLinkPreview.url}
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Open secure mentor desk
+              </a>
+              <button
+                type="button"
+                onClick={() => setMentorLinkPreview(null)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Clear preview
+              </button>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      {actionMessage ? (
+        <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          {actionMessage}
+        </div>
+      ) : null}
+
       <SectionCard>
         <SectionHeading
           eyebrow="Pipeline board"
@@ -74,6 +134,8 @@ function AdminDashboard() {
           mentors={mentors}
           onApprove={(requestId) => approveRequest(requestId, 'CFE Ops')}
           onReject={(requestId) => rejectRequest(requestId, 'Please add sharper context or better supporting material before re-routing.')}
+          onCreateOutreach={handleCreateMentorOutreach}
+          onClose={handleCloseRequest}
         />
       </SectionCard>
     </div>

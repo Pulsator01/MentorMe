@@ -16,6 +16,12 @@ const roles = [
     description: 'Prepare meeting notes, upload material, and stay on top of nudges and follow-ups.',
   },
   {
+    title: 'Mentors',
+    path: '/mentors/desk',
+    icon: Users,
+    description: 'Open the secure outreach desk, accept or decline requests, and leave feedback after the call.',
+  },
+  {
     title: 'CFE Team',
     path: '/cfe',
     icon: LayoutDashboard,
@@ -30,11 +36,11 @@ function RoleHome() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-300">Workspace Home</p>
         <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">Choose the role-specific workspace you actually need.</h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
-          This should not feel like one crowded page pretending to serve everyone. Founders, students, and the CFE team each get their own clearer flow.
+          This should not feel like one crowded page pretending to serve everyone. Founders, students, mentors, and the CFE team each get their own clearer flow.
         </p>
       </SectionCard>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid gap-4 xl:grid-cols-4">
         {roles.map((role) => (
           <SectionCard key={role.title}>
             <role.icon size={18} className="text-slate-500" />

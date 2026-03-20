@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, RotateCcw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Link2, RotateCcw, ShieldCheck } from 'lucide-react'
 import { Badge } from './ui'
 
 const columns = [
@@ -9,7 +9,7 @@ const columns = [
   { key: 'follow_up', title: 'Follow-up', tone: 'slate' },
 ]
 
-function KanbanBoard({ requests, mentors, onApprove, onReject }) {
+function KanbanBoard({ requests, mentors, onApprove, onReject, onCreateOutreach, onClose }) {
   return (
     <div className="grid gap-4 2xl:grid-cols-5">
       {columns.map((column) => {
@@ -83,8 +83,32 @@ function KanbanBoard({ requests, mentors, onApprove, onReject }) {
                           ? 'Waiting for the mentor to accept and share a slot.'
                           : column.key === 'scheduled'
                             ? 'Meeting is scheduled. CFE should nudge attendance and confirm the pre-read.'
-                            : 'Feedback has been logged. Decide whether the founder needs another mentor or a second session.'}
+                          : 'Feedback has been logged. Decide whether the founder needs another mentor or a second session.'}
                       </div>
+                    ) : null}
+
+                    {column.key === 'awaiting_mentor' && onCreateOutreach ? (
+                      <button
+                        type="button"
+                        onClick={() => onCreateOutreach(request.id)}
+                        data-testid={`create-outreach-${request.id.toLowerCase()}`}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                      >
+                        <Link2 size={16} />
+                        Create mentor link
+                      </button>
+                    ) : null}
+
+                    {column.key === 'follow_up' && onClose ? (
+                      <button
+                        type="button"
+                        onClick={() => onClose(request.id)}
+                        data-testid={`close-request-${request.id.toLowerCase()}`}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white"
+                      >
+                        <ShieldCheck size={16} />
+                        Close request
+                      </button>
                     ) : null}
 
                     {request.trl < 3 ? (
