@@ -1,13 +1,14 @@
 import { createApp } from './app'
-import { createSeededInMemoryPlatformRepository } from './infra/inMemoryRepository'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
 import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
+import { createRuntimeRepository } from './runtime'
 
 const port = Number(process.env.API_PORT || 3001)
+const runtime = createRuntimeRepository()
 
 const app = createApp({
-  repository: createSeededInMemoryPlatformRepository(),
+  repository: runtime.repository,
   email: createStubEmailGateway(),
   storage: createStubStorageService(),
   queue: createInlineQueuePublisher(),
@@ -18,10 +19,16 @@ const app = createApp({
   exposeTokens: process.env.EXPOSE_DEBUG_TOKENS === 'true',
 })
 
+if (runtime.cleanup) {
+  app.addHook('onClose', async () => {
+    await runtime.cleanup?.()
+  })
+}
+
 app
   .listen({ host: '0.0.0.0', port })
   .then(() => {
-    app.log.info(`MentorMe API listening on ${port}`)
+    app.log.info(`MentorMe API listening on ${port} using ${runtime.mode} persistence`)
   })
   .catch((error) => {
     app.log.error(error)

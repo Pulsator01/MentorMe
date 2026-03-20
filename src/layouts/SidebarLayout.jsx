@@ -1,19 +1,23 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { BookOpenText, Home, LayoutDashboard, Menu, Sparkles, Users, X } from 'lucide-react'
+import { BookOpenText, ClipboardList, Home, LayoutDashboard, Menu, Sparkles, Users, X } from 'lucide-react'
+import { useAppState } from '../context/AppState'
 import { cn } from '../components/ui'
 
 const navItems = [
   { label: 'Workspace Home', path: '/', icon: Home, note: 'Choose the right experience for the role.' },
   { label: 'Founders', path: '/founders', icon: Sparkles, note: 'Request mentors and track venture progress.' },
   { label: 'Students', path: '/students', icon: Users, note: 'Prepare materials, meetings, and follow-ups.' },
+  { label: 'Mentor Desk', path: '/mentors/desk', icon: Users, note: 'Accept requests, schedule sessions, and leave mentor notes.' },
   { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard, note: 'Approve, route, and manage the pipeline.' },
   { label: 'Mentor Network', path: '/cfe/network', icon: Users, note: 'Maintain mentor visibility and capacity.' },
+  { label: 'Mid-sem Readiness', path: '/midsem', icon: ClipboardList, note: 'Show product scope, API progress, and DB coverage.' },
   { label: 'Readiness Playbook', path: '/playbook', icon: BookOpenText, note: 'Use TRL and BRL signals consistently.' },
 ]
 
 function SidebarLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { currentUser, mode } = useAppState()
 
   const nav = (
     <div className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -57,10 +61,23 @@ function SidebarLayout({ children }) {
 
         <div className="border-t border-slate-200 px-5 py-4">
           <div className="rounded-2xl bg-slate-50 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Structure</p>
-            <p className="mt-2 text-sm leading-6 text-slate-700">
-              Each role sees only what it needs instead of one crowded dashboard.
-            </p>
+            {currentUser ? (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Active session</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">{currentUser.name}</p>
+                <p className="mt-1 text-sm text-slate-600">{currentUser.email}</p>
+                <p className="mt-3 text-xs uppercase tracking-[0.22em] text-slate-500">
+                  {currentUser.role} • {mode === 'api' ? 'live api' : 'local demo'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Structure</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  Each role sees only what it needs instead of one crowded dashboard.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>

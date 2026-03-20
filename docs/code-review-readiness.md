@@ -1,6 +1,6 @@
 # MentorMe Code Review Readiness
 
-This document is the review packet for the code review scheduled on **March 8, 2026**. It covers the requested items:
+This document is the review packet for the mid-sem and code-review checkpoint on **March 20, 2026**. It covers the requested items:
 
 1. product pitch and onboarding
 2. user journeys for every role
@@ -91,7 +91,7 @@ flowchart LR
 | Founder | Receives magic link, enters venture workspace, submits mentor asks | Implemented in backend auth flow and founder workspace |
 | Student | Receives magic link, enters student workspace, tracks prep and follow-up | Implemented in backend auth flow and student workspace |
 | CFE | Receives magic link or admin-created account, opens control workspace | Implemented in backend auth flow and CFE workspace |
-| Mentor | Receives secure tokenized email link for specific request actions | Partially implemented: schedule and feedback exist, respond endpoint is still `501` |
+| Mentor | Receives secure tokenized email link for specific request actions | Implemented in the routed secure mentor desk and backend action-token flow |
 
 ## 3. User Journeys
 
@@ -117,7 +117,7 @@ flowchart LR
 | CFE reviews and routes requests | `/cfe` | Approve, return, and monitor the request pipeline | Implemented |
 | CFE manages mentor capacity | `/cfe/network` | Control visibility, tolerance, and monthly capacity | Implemented |
 | Readiness playbook reference | `/playbook` | Explain TRL and BRL for routing decisions | Implemented |
-| Mentor self-serve accept/decline | external secure link | Reduce CFE coordination effort | Not implemented yet |
+| Mentor self-serve accept/decline | external secure link | Reduce CFE coordination effort | Implemented |
 
 ### Founder journey
 
@@ -231,9 +231,10 @@ To receive a filtered request, schedule the session, and send structured feedbac
 **Current status**
 
 - secure outreach token: implemented
+- inspect endpoint for secure desk bootstrap: implemented
+- accept/decline response step: implemented
 - schedule endpoint: implemented
 - feedback endpoint: implemented
-- accept/decline response step: not implemented yet
 
 **Relevant code**
 
@@ -249,13 +250,14 @@ There are **three data layers** in the repo today, and they should be described 
 | Layer | What it is used for | Actual status |
 | --- | --- | --- |
 | Frontend in-memory state | Local/demo UI state management | Implemented in [src/context/AppState.jsx](/Users/owlxshri/Desktop/MentorMe/src/context/AppState.jsx) |
-| Backend seeded in-memory repository | Default runtime repository used by the Fastify server | Implemented in [backend/src/server.ts](/Users/owlxshri/Desktop/MentorMe/backend/src/server.ts) |
-| PostgreSQL via Prisma | Persistent production-grade schema and seed model | Defined in [backend/prisma/schema.prisma](/Users/owlxshri/Desktop/MentorMe/backend/prisma/schema.prisma), not yet wired as the runtime repository |
+| Backend seeded in-memory repository | Fallback runtime for standalone demos and tests | Implemented in [backend/src/infra/inMemoryRepository.ts](/Users/owlxshri/Desktop/MentorMe/backend/src/infra/inMemoryRepository.ts) |
+| PostgreSQL via Prisma | Production-grade runtime selected whenever `DATABASE_URL` is present | Implemented in [backend/src/runtime.ts](/Users/owlxshri/Desktop/MentorMe/backend/src/runtime.ts) and [backend/src/infra/prismaRepository.ts](/Users/owlxshri/Desktop/MentorMe/backend/src/infra/prismaRepository.ts) |
 
 So the correct answer is:
 
-- **current running demo uses in-memory state/repository**
-- **the defined persistent database is PostgreSQL with Prisma**
+- **frontend-only mode can run entirely from seeded local state**
+- **the full-stack app can run either in memory or against PostgreSQL via Prisma**
+- **the persistent database choice for production is PostgreSQL with Prisma**
 
 ### Architecture view
 
@@ -263,8 +265,8 @@ So the correct answer is:
 flowchart TD
     UI["React role-based UI"] --> STATE["AppState local store / API hydration"]
     STATE --> API["Fastify API"]
-    API --> MEM["Seeded in-memory repository<br/>current runtime"]
-    API --> PRISMA["Prisma schema + PostgreSQL<br/>defined persistence target"]
+    API --> MEM["Seeded in-memory repository<br/>fallback runtime"]
+    API --> PRISMA["Prisma + PostgreSQL<br/>runtime when DATABASE_URL exists"]
 ```
 
 ### Core tables/entities required by the screens
@@ -336,7 +338,7 @@ flowchart TD
 | Request data | `GET /requests` | list requests visible to user | Implemented |
 | Request data | `GET /ventures/:ventureId/requests` | list requests for one venture | Implemented |
 | Founder request flow | `POST /ventures/:ventureId/requests` | create mentor request | Implemented |
-| Founder request flow | `POST /requests/:requestId/submit` | legacy submit path | Exists but returns `501` |
+| Founder request flow | `POST /requests/:requestId/submit` | re-submit returned request | Implemented |
 | CFE workflow | `POST /requests/:requestId/return` | return request for revision | Implemented |
 | CFE workflow | `POST /requests/:requestId/approve` | approve request for mentor routing | Implemented |
 | CFE workflow | `POST /requests/:requestId/close` | close completed request | Implemented |
@@ -346,7 +348,8 @@ flowchart TD
 | Mentor directory | `POST /mentors` | create mentor profile | Implemented |
 | Mentor directory | `PATCH /mentors/:mentorId` | update mentor profile | Implemented |
 | Mentor outreach | `POST /requests/:requestId/mentor-outreach` | create secure mentor action token | Implemented |
-| Mentor actions | `POST /mentor-actions/:token/respond` | mentor accept/decline | Exists but returns `501` |
+| Mentor actions | `GET /mentor-actions/:token` | load secure mentor desk context | Implemented |
+| Mentor actions | `POST /mentor-actions/:token/respond` | mentor accept/decline | Implemented |
 | Mentor actions | `POST /mentor-actions/:token/schedule` | mentor schedules session | Implemented |
 | Mentor actions | `POST /mentor-actions/:token/feedback` | mentor submits feedback | Implemented |
 | Webhooks | `POST /webhooks/calendly` | ingest Calendly webhook | Implemented |
@@ -365,6 +368,8 @@ flowchart TD
 | CFE approves request | `POST /requests/:requestId/approve` |
 | CFE manages mentor directory | `GET /mentors`, `POST /mentors`, `PATCH /mentors/:mentorId` |
 | CFE initiates outreach | `POST /requests/:requestId/mentor-outreach` |
+| Mentor opens secure request | `GET /mentor-actions/:token` |
+| Mentor accepts or declines | `POST /mentor-actions/:token/respond` |
 | Mentor schedules meeting | `POST /mentor-actions/:token/schedule` |
 | Mentor gives feedback | `POST /mentor-actions/:token/feedback` |
 | Calendly syncs schedule | `POST /webhooks/calendly` |
@@ -408,6 +413,7 @@ flowchart TD
 - backend return and approve workflow works
 - backend artifact upload presign/complete flow works
 - backend mentor outreach, scheduling, and feedback flows work
+- backend mentor accept/decline flow works
 - Calendly webhook idempotency is tested
 
 ## 7. Current Semester Scope vs Later Scope
@@ -420,17 +426,18 @@ flowchart TD
 - request lifecycle states
 - Fastify REST API contract
 - secure magic-link auth flow
-- external mentor scheduling and feedback endpoints
+- external mentor inspect/respond/schedule/feedback endpoints
+- runtime selection between memory and Prisma/PostgreSQL persistence
 - Prisma/PostgreSQL schema for production data model
 - automated tests for core frontend and backend flows
 
 ### Defined now but not fully implemented yet
 
-- runtime repository backed by Prisma/PostgreSQL instead of seeded in-memory data
-- full mentor accept/decline endpoint
+- explicit sign-in and logout UX beyond demo bootstrap
 - production email provider
 - production storage provider
 - durable queue/worker infrastructure
+- planned AI brief-generation and meeting-summary endpoints
 - hardened webhook verification and deployment integrations
 
 ### Mid-sem review targets from here
@@ -456,8 +463,8 @@ The honest implementation answer for review should be:
 
 - the **frontend workflows are implemented**
 - the **backend contract is implemented and tested**
-- the **persistent Prisma/PostgreSQL schema is defined**
-- the **default runtime still uses a seeded in-memory repository**
-- two endpoints still intentionally return `501`: `POST /requests/:requestId/submit` and `POST /mentor-actions/:token/respond`
+- the **persistent Prisma/PostgreSQL runtime is implemented and smoke-tested**
+- the **memory repository still exists as a safe fallback for demos and tests**
+- the remaining work is explicit auth UX, production infrastructure adapters, and the planned AI endpoints
 
-That is a defensible position for the current code review because items 1 to 3 are clearly defined, and item 4 has already started with real backend routes and tests.
+That is a defensible position for the current checkpoint because the core non-AI workflow is implemented end to end and the remaining work is now polish and roadmap scope rather than missing operations plumbing.

@@ -166,6 +166,9 @@ export interface ExternalActionToken {
   tokenHash: string
   purpose: 'mentor_request'
   expiresAt: string
+  response?: 'accepted' | 'declined'
+  respondedAt?: string
+  responseReason?: string
 }
 
 export interface AuditEvent {

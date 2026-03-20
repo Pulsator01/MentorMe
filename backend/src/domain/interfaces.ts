@@ -17,39 +17,39 @@ import type {
 } from './types'
 
 export interface PlatformRepository {
-  listUsers(): User[]
-  findUserByEmail(email: string): User | undefined
-  findUserById(id: string): User | undefined
-  listVentures(): Venture[]
-  findVentureById(id: string): Venture | undefined
-  listMemberships(): VentureMembership[]
-  listMentors(): MentorProfile[]
-  findMentorById(id: string): MentorProfile | undefined
-  saveMentor(mentor: MentorProfile): MentorProfile
-  listRequests(): MentorRequest[]
-  findRequestById(id: string): MentorRequest | undefined
-  saveRequest(request: MentorRequest): MentorRequest
-  listShortlistsForRequest(requestId: string): MentorRequestShortlist[]
-  replaceShortlistsForRequest(requestId: string, shortlists: MentorRequestShortlist[]): void
-  listArtifactsForRequest(requestId: string): Artifact[]
-  findArtifactById(id: string): Artifact | undefined
-  saveArtifact(artifact: Artifact): Artifact
-  listMeetingsForRequest(requestId: string): Meeting[]
-  saveMeeting(meeting: Meeting): Meeting
-  saveFeedback(feedback: MeetingFeedback): MeetingFeedback
-  listMagicLinks(): MagicLinkTokenRecord[]
-  saveMagicLink(token: MagicLinkTokenRecord): MagicLinkTokenRecord
-  saveSession(session: SessionRecord): SessionRecord
-  findSessionByHash(refreshTokenHash: string): SessionRecord | undefined
-  revokeSession(sessionId: string): void
-  saveExternalActionToken(token: ExternalActionToken): ExternalActionToken
-  findExternalActionTokenByHash(tokenHash: string): ExternalActionToken | undefined
-  saveAuditEvent(event: AuditEvent): AuditEvent
-  listAuditEventsForEntity(entityType: AuditEvent['entityType'], entityId: string): AuditEvent[]
-  findWebhookReceipt(provider: 'calendly', eventId: string): WebhookReceipt | undefined
-  saveWebhookReceipt(receipt: WebhookReceipt): WebhookReceipt
-  saveOutboxEvent(event: OutboxEvent): OutboxEvent
-  listOutboxEvents(): OutboxEvent[]
+  listUsers(): Promise<User[]>
+  findUserByEmail(email: string): Promise<User | undefined>
+  findUserById(id: string): Promise<User | undefined>
+  listVentures(): Promise<Venture[]>
+  findVentureById(id: string): Promise<Venture | undefined>
+  listMemberships(): Promise<VentureMembership[]>
+  listMentors(): Promise<MentorProfile[]>
+  findMentorById(id: string): Promise<MentorProfile | undefined>
+  saveMentor(mentor: MentorProfile): Promise<MentorProfile>
+  listRequests(): Promise<MentorRequest[]>
+  findRequestById(id: string): Promise<MentorRequest | undefined>
+  saveRequest(request: MentorRequest): Promise<MentorRequest>
+  listShortlistsForRequest(requestId: string): Promise<MentorRequestShortlist[]>
+  replaceShortlistsForRequest(requestId: string, shortlists: MentorRequestShortlist[]): Promise<void>
+  listArtifactsForRequest(requestId: string): Promise<Artifact[]>
+  findArtifactById(id: string): Promise<Artifact | undefined>
+  saveArtifact(artifact: Artifact): Promise<Artifact>
+  listMeetingsForRequest(requestId: string): Promise<Meeting[]>
+  saveMeeting(meeting: Meeting): Promise<Meeting>
+  saveFeedback(feedback: MeetingFeedback): Promise<MeetingFeedback>
+  listMagicLinks(): Promise<MagicLinkTokenRecord[]>
+  saveMagicLink(token: MagicLinkTokenRecord): Promise<MagicLinkTokenRecord>
+  saveSession(session: SessionRecord): Promise<SessionRecord>
+  findSessionByHash(refreshTokenHash: string): Promise<SessionRecord | undefined>
+  revokeSession(sessionId: string): Promise<void>
+  saveExternalActionToken(token: ExternalActionToken): Promise<ExternalActionToken>
+  findExternalActionTokenByHash(tokenHash: string): Promise<ExternalActionToken | undefined>
+  saveAuditEvent(event: AuditEvent): Promise<AuditEvent>
+  listAuditEventsForEntity(entityType: AuditEvent['entityType'], entityId: string): Promise<AuditEvent[]>
+  findWebhookReceipt(provider: 'calendly', eventId: string): Promise<WebhookReceipt | undefined>
+  saveWebhookReceipt(receipt: WebhookReceipt): Promise<WebhookReceipt>
+  saveOutboxEvent(event: OutboxEvent): Promise<OutboxEvent>
+  listOutboxEvents(): Promise<OutboxEvent[]>
 }
 
 export interface EmailGateway {

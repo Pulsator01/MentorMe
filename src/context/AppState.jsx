@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useReducer, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { initialPlatformData } from '../data/platformData'
 
@@ -28,7 +28,7 @@ const toFrontendRequest = (request) => ({
   cfeOwner: request.cfeOwner || 'CFE routing queue',
 })
 
-const mapApiState = ({ ventures, requests, mentors, currentVentureId }) => {
+const mapApiState = ({ ventures, requests, mentors, currentUser, currentVentureId }) => {
   const venture =
     ventures.find((item) => item.id === currentVentureId) ||
     ventures.find((item) => item.name === initialPlatformData.venture.name) ||
@@ -36,6 +36,7 @@ const mapApiState = ({ ventures, requests, mentors, currentVentureId }) => {
     initialPlatformData.venture
 
   return {
+    currentUser: currentUser || null,
     venture: toFrontendVenture(venture),
     mentors: mentors.map(toFrontendMentor),
     requests: requests.map(toFrontendRequest),
@@ -74,6 +75,18 @@ const reducer = (state, action) => {
         requests: [request, ...state.requests],
       }
     }
+    case 'resubmit-request':
+      return {
+        ...state,
+        requests: state.requests.map((request) =>
+          request.id === action.payload.id
+            ? {
+                ...request,
+                status: 'cfe_review',
+              }
+            : request,
+        ),
+      }
     case 'approve-request':
       return {
         ...state,
@@ -115,6 +128,30 @@ const reducer = (state, action) => {
                 ...request,
                 status: 'follow_up',
                 mentorNotes: action.payload.notes,
+              }
+            : request,
+        ),
+      }
+    case 'attach-artifact':
+      return {
+        ...state,
+        requests: state.requests.map((request) =>
+          request.id === action.payload.id
+            ? {
+                ...request,
+                artifactList: [...request.artifactList, action.payload.filename],
+              }
+            : request,
+        ),
+      }
+    case 'close-request':
+      return {
+        ...state,
+        requests: state.requests.map((request) =>
+          request.id === action.payload.id
+            ? {
+                ...request,
+                status: 'closed',
               }
             : request,
         ),
@@ -170,14 +207,34 @@ export const createApiClient = (baseUrl) => {
   const trim = baseUrl.replace(/\/$/, '')
   let accessToken = null
 
-  const json = async (path, options = {}) => {
-    const response = await fetch(`${trim}${path}`, {
+  const buildJsonHeaders = (options = {}) => {
+    const headers = {
+      ...(options.headers || {}),
+    }
+
+    const hasExplicitContentType =
+      Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
+
+    if (options.body !== undefined && !hasExplicitContentType) {
+      headers['Content-Type'] = 'application/json'
+    }
+
+    return headers
+  }
+
+  const request = async (path, options = {}) =>
+    await fetch(`${trim}${path}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
         ...(options.headers || {}),
       },
       credentials: 'include',
+    })
+
+  const json = async (path, options = {}) => {
+    const response = await request(path, {
+      ...options,
+      headers: buildJsonHeaders(options),
     })
 
     if (!response.ok) {
@@ -194,32 +251,76 @@ export const createApiClient = (baseUrl) => {
     return await response.json()
   }
 
-  const authorizedJson = async (path, options = {}, allowRefresh = true) => {
+  const authorizedFetch = async (path, options = {}, allowRefresh = true) => {
     if (!accessToken) {
       throw new Error('Not authenticated')
     }
 
-    try {
-      return await json(path, {
+    const response = await request(path, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
+
+    if (response.ok) {
+      return response
+    }
+
+    if (!allowRefresh || response.status !== 401) {
+      const text = await response.text()
+      const error = new Error(text || `Request failed for ${path} (${response.status})`)
+      error.status = response.status
+      throw error
+    }
+
+    const refreshBody = await json('/auth/refresh', {
+      method: 'POST',
+    })
+
+    accessToken = refreshBody.accessToken
+    return await authorizedFetch(path, options, false)
+  }
+
+  const authorizedJson = async (path, options = {}, allowRefresh = true) => {
+    const response = await authorizedFetch(
+      path,
+      {
         ...options,
-        headers: {
-          ...(options.headers || {}),
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-    } catch (error) {
-      if (!allowRefresh || !(error instanceof Error) || error.status !== 401) {
-        throw error
+        headers: buildJsonHeaders(options),
+      },
+      allowRefresh,
+    )
+
+    if (response.status === 204) {
+      return null
+    }
+
+    return await response.json()
+  }
+
+  const parseStreamChunk = (buffer, onMessage) => {
+    let nextBuffer = buffer
+    let delimiterIndex = nextBuffer.indexOf('\n\n')
+
+    while (delimiterIndex >= 0) {
+      const block = nextBuffer.slice(0, delimiterIndex)
+      const payload = block
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .join('\n')
+
+      if (payload) {
+        onMessage(JSON.parse(payload))
       }
 
-      const refreshBody = await json('/auth/refresh', {
-        method: 'POST',
-      })
-
-      accessToken = refreshBody.accessToken
-
-      return await authorizedJson(path, options, false)
+      nextBuffer = nextBuffer.slice(delimiterIndex + 2)
+      delimiterIndex = nextBuffer.indexOf('\n\n')
     }
+
+    return nextBuffer
   }
 
   return {
@@ -242,11 +343,26 @@ export const createApiClient = (baseUrl) => {
       accessToken = verifyBody.accessToken
       return verifyBody
     },
+    async logout() {
+      await json('/auth/logout', {
+        method: 'POST',
+      })
+      accessToken = null
+    },
+    getMe() {
+      return authorizedJson('/me')
+    },
     getVentures() {
       return authorizedJson('/ventures')
     },
+    getVenture(ventureId) {
+      return authorizedJson(`/ventures/${ventureId}`)
+    },
     getRequests() {
       return authorizedJson('/requests')
+    },
+    getRequestsForVenture(ventureId) {
+      return authorizedJson(`/ventures/${ventureId}/requests`)
     },
     getMentors() {
       return authorizedJson('/mentors')
@@ -255,6 +371,11 @@ export const createApiClient = (baseUrl) => {
       return authorizedJson(`/ventures/${ventureId}/requests`, {
         method: 'POST',
         body: JSON.stringify(payload),
+      })
+    },
+    submitRequest(requestId) {
+      return authorizedJson(`/requests/${requestId}/submit`, {
+        method: 'POST',
       })
     },
     approveRequest(requestId, ownerName) {
@@ -269,6 +390,23 @@ export const createApiClient = (baseUrl) => {
         body: JSON.stringify({ reason }),
       })
     },
+    closeRequest(requestId) {
+      return authorizedJson(`/requests/${requestId}/close`, {
+        method: 'POST',
+      })
+    },
+    presignArtifact(requestId, payload) {
+      return authorizedJson(`/requests/${requestId}/artifacts/presign`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    completeArtifact(requestId, artifactId) {
+      return authorizedJson(`/requests/${requestId}/artifacts/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ artifactId }),
+      })
+    },
     addMentor(payload) {
       return authorizedJson('/mentors', {
         method: 'POST',
@@ -281,6 +419,64 @@ export const createApiClient = (baseUrl) => {
         body: JSON.stringify(updates),
       })
     },
+    createMentorOutreach(requestId) {
+      return authorizedJson(`/requests/${requestId}/mentor-outreach`, {
+        method: 'POST',
+      })
+    },
+    getMentorAction(token) {
+      return json(`/mentor-actions/${token}`)
+    },
+    mentorRespond(token, payload) {
+      return json(`/mentor-actions/${token}/respond`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    mentorSchedule(token, payload) {
+      return json(`/mentor-actions/${token}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    mentorFeedback(token, payload) {
+      return json(`/mentor-actions/${token}/feedback`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    async openNotificationsStream(onMessage, signal) {
+      const response = await authorizedFetch('/notifications/stream', {
+        headers: {
+          Accept: 'text/event-stream',
+        },
+        signal,
+      })
+
+      if (!response.body) {
+        throw new Error('Notifications stream is unavailable')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+
+          if (done) {
+            buffer = parseStreamChunk(buffer, onMessage)
+            break
+          }
+
+          buffer += decoder.decode(value, { stream: true })
+          buffer = parseStreamChunk(buffer, onMessage)
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    },
   }
 }
 
@@ -288,12 +484,52 @@ export function AppStateProvider({ children }) {
   const location = useLocation()
   const [state, dispatch] = useReducer(reducer, {
     ...initialPlatformData,
+    currentUser: null,
     mode: 'local',
   })
+  const stateRef = useRef(state)
   const backendRef = useRef({
     client: null,
     ready: false,
   })
+
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  const syncFromApi = useCallback(async (clientOverride, pathnameOverride = location.pathname) => {
+    const client = clientOverride || backendRef.current.client
+
+    if (!client) {
+      return
+    }
+
+    const venturesBody = await client.getVentures()
+    const scopedVentureId =
+      stateRef.current.venture?.id ||
+      venturesBody.ventures.find((item) => item.name === initialPlatformData.venture.name)?.id ||
+      venturesBody.ventures[0]?.id
+    const isScopedWorkspace = pathnameOverride.startsWith('/founders') || pathnameOverride.startsWith('/students')
+
+    const [meBody, requestsBody, mentorsBody, ventureBody] = await Promise.all([
+      client.getMe(),
+      isScopedWorkspace && scopedVentureId ? client.getRequestsForVenture(scopedVentureId) : client.getRequests(),
+      client.getMentors(),
+      isScopedWorkspace && scopedVentureId ? client.getVenture(scopedVentureId) : Promise.resolve(null),
+    ])
+
+    dispatch({
+      type: 'hydrate',
+      mode: 'api',
+      payload: mapApiState({
+        currentUser: meBody.user,
+        ventures: ventureBody ? [ventureBody.venture] : venturesBody.ventures,
+        requests: requestsBody.requests,
+        mentors: mentorsBody.mentors,
+        currentVentureId: scopedVentureId,
+      }),
+    })
+  }, [location.pathname])
 
   useEffect(() => {
     const apiBase = import.meta.env.VITE_API_BASE_URL
@@ -305,35 +541,43 @@ export function AppStateProvider({ children }) {
     let active = true
     const client = createApiClient(apiBase)
     backendRef.current.client = client
+    const streamAbortController = new AbortController()
+    let pollTimer = 0
 
     const sync = async () => {
       try {
+        if (location.pathname.startsWith('/mentors')) {
+          backendRef.current.ready = false
+          return
+        }
+
         await client.loginForPath(location.pathname)
         if (!active) {
           return
         }
         backendRef.current.ready = true
+        await syncFromApi(client, location.pathname)
 
-        const [venturesBody, requestsBody, mentorsBody] = await Promise.all([
-          client.getVentures(),
-          client.getRequests(),
-          client.getMentors(),
-        ])
+        void client
+          .openNotificationsStream(
+            (message) => {
+              if (!active || message?.type === 'connected') {
+                return
+              }
 
-        if (!active) {
-          return
-        }
+              void syncFromApi(client, location.pathname)
+            },
+            streamAbortController.signal,
+          )
+          .catch(() => {})
 
-        dispatch({
-          type: 'hydrate',
-          mode: 'api',
-          payload: mapApiState({
-            ventures: venturesBody.ventures,
-            requests: requestsBody.requests,
-            mentors: mentorsBody.mentors,
-            currentVentureId: state.venture.id,
-          }),
-        })
+        pollTimer = window.setInterval(() => {
+          if (!active) {
+            return
+          }
+
+          void syncFromApi(client, location.pathname)
+        }, 2500)
       } catch {
         backendRef.current.ready = false
       }
@@ -343,33 +587,13 @@ export function AppStateProvider({ children }) {
 
     return () => {
       active = false
+      streamAbortController.abort()
+      window.clearInterval(pollTimer)
     }
-  }, [location.pathname, state.venture.id])
-
-  const syncFromApi = async () => {
-    if (!backendRef.current.client) {
-      return
-    }
-
-    const [venturesBody, requestsBody, mentorsBody] = await Promise.all([
-      backendRef.current.client.getVentures(),
-      backendRef.current.client.getRequests(),
-      backendRef.current.client.getMentors(),
-    ])
-
-    dispatch({
-      type: 'hydrate',
-      mode: 'api',
-      payload: mapApiState({
-        ventures: venturesBody.ventures,
-        requests: requestsBody.requests,
-        mentors: mentorsBody.mentors,
-        currentVentureId: state.venture.id,
-      }),
-    })
-  }
+  }, [location.pathname, syncFromApi])
 
   const value = {
+    currentUser: state.currentUser,
     venture: state.venture,
     mentors: state.mentors,
     requests: state.requests,
@@ -391,6 +615,15 @@ export function AppStateProvider({ children }) {
 
       dispatch({ type: 'submit-request', payload })
     },
+    resubmitRequest: async (id) => {
+      if (backendRef.current.ready && backendRef.current.client) {
+        await backendRef.current.client.submitRequest(id)
+        await syncFromApi()
+        return
+      }
+
+      dispatch({ type: 'resubmit-request', payload: { id } })
+    },
     approveRequest: async (id, owner) => {
       if (backendRef.current.ready && backendRef.current.client) {
         await backendRef.current.client.approveRequest(id, owner)
@@ -408,6 +641,30 @@ export function AppStateProvider({ children }) {
       }
 
       dispatch({ type: 'reject-request', payload: { id, reason } })
+    },
+    closeRequest: async (id) => {
+      if (backendRef.current.ready && backendRef.current.client) {
+        await backendRef.current.client.closeRequest(id)
+        await syncFromApi()
+        return
+      }
+
+      dispatch({ type: 'close-request', payload: { id } })
+    },
+    uploadArtifact: async (id, file) => {
+      if (backendRef.current.ready && backendRef.current.client) {
+        const presigned = await backendRef.current.client.presignArtifact(id, {
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          sizeBytes: file.size || 1,
+        })
+        await backendRef.current.client.completeArtifact(id, presigned.artifact.id)
+        await syncFromApi()
+        return presigned.artifact
+      }
+
+      dispatch({ type: 'attach-artifact', payload: { id, filename: file.name } })
+      return { id: `${id}-${file.name}` }
     },
     scheduleRequest: async (id, calendlyLink, meetingAt) =>
       dispatch({ type: 'schedule-request', payload: { id, calendlyLink, meetingAt } }),
@@ -444,6 +701,41 @@ export function AppStateProvider({ children }) {
       }
 
       dispatch({ type: 'update-mentor', payload: { id, updates } })
+    },
+    createMentorOutreach: async (id) => {
+      if (!backendRef.current.ready || !backendRef.current.client) {
+        return { mentorActionToken: `local-preview-${id.toLowerCase()}` }
+      }
+
+      return await backendRef.current.client.createMentorOutreach(id)
+    },
+    getMentorAction: async (token) => {
+      if (!backendRef.current.client) {
+        throw new Error('Mentor action links require the API backend')
+      }
+
+      return await backendRef.current.client.getMentorAction(token)
+    },
+    respondToMentorAction: async (token, payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('Mentor action links require the API backend')
+      }
+
+      return await backendRef.current.client.mentorRespond(token, payload)
+    },
+    scheduleMentorAction: async (token, payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('Mentor action links require the API backend')
+      }
+
+      return await backendRef.current.client.mentorSchedule(token, payload)
+    },
+    saveMentorActionFeedback: async (token, payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('Mentor action links require the API backend')
+      }
+
+      return await backendRef.current.client.mentorFeedback(token, payload)
     },
   }
 

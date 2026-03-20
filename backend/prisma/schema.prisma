@@ -307,6 +307,9 @@ model ExternalActionToken {
   mentorId   String
   tokenHash  String        @unique
   purpose    String
+  response   String?
+  respondedAt DateTime?
+  responseReason String?
   expiresAt  DateTime
   createdAt  DateTime      @default(now())
   request    MentorRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)

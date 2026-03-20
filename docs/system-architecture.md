@@ -13,9 +13,9 @@ This document describes the current MentorMe frontend and backend architecture a
 ## Scope
 
 - Frontend runtime: React 19 + Vite + React Router
-- Frontend state: in-memory reducer with optional API hydration
-- Backend runtime: Fastify + domain service + in-memory repository
-- Data model target: Prisma + PostgreSQL schema
+- Frontend state: reducer-backed shared state with API hydration, SSE updates, and polling fallback
+- Backend runtime: Fastify + domain service + runtime-selected repository
+- Data model target: Prisma + PostgreSQL schema with seeded memory fallback
 - Async infrastructure: outbox and worker scaffold
 
 ## Task List And Traceability
@@ -29,8 +29,8 @@ This document describes the current MentorMe frontend and backend architecture a
 | T5 | CFE manages mentor capacity and visibility | Mentor network workspace | D2, D3 | `src/pages/MentorPortfolio.jsx`, `backend/src/domain/platformService.ts` |
 | T6 | Local auth and API-backed hydration | App state provider and auth endpoints | D2, D3, D5 | `src/context/AppState.jsx`, `backend/src/app.ts` |
 | T7 | Artifact upload and completion flow | Backend artifact endpoints | D3, D5 | `backend/src/app.ts`, `backend/src/domain/platformService.ts`, `backend/src/infra/stubStorageService.ts` |
-| T8 | Mentor outreach, scheduling, and feedback capture | Mentor action endpoints and request state transitions | D3, D5 | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
-| T9 | Future durable persistence and async processing | Prisma schema and worker scaffold | D3, D4 | `backend/prisma/schema.prisma`, `backend/src/worker.ts` |
+| T8 | Mentor outreach, accept or decline, scheduling, and feedback capture | Mentor action endpoints and request state transitions | D3, D5 | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
+| T9 | Durable persistence and async processing foundation | Prisma schema, runtime selector, and worker scaffold | D3, D4 | `backend/prisma/schema.prisma`, `backend/src/runtime.ts`, `backend/src/worker.ts` |
 
 ## Architecture Overview
 
@@ -40,11 +40,12 @@ flowchart LR
     FE --> STATE["AppStateProvider<br/>local reducer + API sync"]
     STATE --> API["Fastify API"]
     API --> DOMAIN["PlatformService<br/>business rules"]
-    DOMAIN --> REPO["PlatformRepository<br/>current: in-memory"]
+    DOMAIN --> REPO["PlatformRepository<br/>runtime-selected"]
     DOMAIN --> EMAIL["EmailGateway<br/>stub"]
     DOMAIN --> STORAGE["StorageService<br/>stub presign"]
     DOMAIN --> QUEUE["QueuePublisher<br/>inline stub"]
-    REPO -. target persistence .-> DB["PostgreSQL via Prisma schema"]
+    REPO --> MEM["Seeded in-memory repository"]
+    REPO --> DB["PostgreSQL via Prisma"]
     QUEUE -. pending async work .-> WORKER["Worker scaffold"]
 ```
 
@@ -74,6 +75,8 @@ flowchart TD
     LAYOUT --> STUDENTS["StudentWorkspace /students"]
     LAYOUT --> CFE["AdminDashboard /cfe"]
     LAYOUT --> NETWORK["MentorPortfolio /cfe/network"]
+    LAYOUT --> MENTORDESK["MentorDashboard /mentors/desk"]
+    LAYOUT --> MIDSEM["MidsemReadiness /midsem"]
     LAYOUT --> PLAYBOOK["TRLDefinitions /playbook"]
 
     FOUNDERS --> MATCHING["mentor scoring + request form"]
@@ -98,6 +101,8 @@ Diagram ref: `D2`
 | `/students` | `StudentWorkspace` | students | Prep checklist, readiness context, follow-up actions |
 | `/cfe` | `AdminDashboard` | CFE team | Pipeline triage and approval / return actions |
 | `/cfe/network` | `MentorPortfolio` | CFE team | Mentor roster, visibility, and capacity |
+| `/mentors/desk` | `MentorDashboard` | mentors | Secure mentor inspect/respond/schedule/feedback surface |
+| `/midsem` | `MidsemReadiness` | presentation | Product scope, progress sheet, and feedback learnings |
 | `/playbook` | `TRLDefinitions` | all roles | Shared readiness reference |
 
 ### Frontend State Model
@@ -112,6 +117,7 @@ The frontend is centered on `AppStateProvider`:
   - verifies the token
   - fetches ventures, requests, and mentors
   - hydrates the reducer with API data
+- In API mode, the provider also subscribes to request updates through SSE and falls back to polling if the stream drops.
 - If API bootstrapping fails, the UI falls back silently to local seeded state.
 
 ### Frontend Design Pattern Summary
@@ -148,12 +154,12 @@ flowchart TD
     SERVICE --> STORAGE["StorageService"]
     SERVICE --> QUEUE["QueuePublisher"]
 
-    REPO --> MEM["inMemoryRepository<br/>active runtime"]
-    REPO -. planned .-> PRISMA["Prisma/PostgreSQL implementation<br/>not wired yet"]
+    REPO --> MEM["inMemoryRepository<br/>fallback runtime"]
+    REPO --> PRISMA["Prisma/PostgreSQL repository<br/>selected when DATABASE_URL exists"]
 
     SERVICE --> AUDIT["audit events"]
     SERVICE --> OUTBOX["outbox events"]
-    APP --> SSE["/notifications/stream"]
+    APP --> SSE["/notifications/stream<br/>consumed by frontend + polling fallback"]
 ```
 
 Diagram ref: `D3`
@@ -165,7 +171,8 @@ Diagram ref: `D3`
 | HTTP server | `backend/src/server.ts` | Composes dependencies and starts Fastify |
 | App factory | `backend/src/app.ts` | Registers routes, auth guards, SSE stream, validation boundaries |
 | Domain service | `backend/src/domain/platformService.ts` | Owns workflow rules and state transitions |
-| Repository | `backend/src/infra/inMemoryRepository.ts` | Active runtime store for demo/test usage |
+| Runtime selector | `backend/src/runtime.ts` | Chooses Prisma or memory persistence from environment |
+| Repository | `backend/src/infra/inMemoryRepository.ts`, `backend/src/infra/prismaRepository.ts` | Stores workflow state in memory or PostgreSQL |
 | Email gateway | `backend/src/infra/stubEmailGateway.ts` | Captures sent magic links and mentor outreach in memory |
 | Storage service | `backend/src/infra/stubStorageService.ts` | Returns synthetic presigned upload URLs |
 | Queue publisher | `backend/src/infra/inlineQueuePublisher.ts` | Captures published async events inline |
@@ -180,7 +187,7 @@ Diagram ref: `D3`
 | Request lifecycle | `POST /ventures/:ventureId/requests`, `POST /requests/:requestId/return`, `POST /requests/:requestId/approve`, `POST /requests/:requestId/close` |
 | Artifact handling | `POST /requests/:requestId/artifacts/presign`, `POST /requests/:requestId/artifacts/complete` |
 | Mentor operations | `GET /mentors`, `POST /mentors`, `PATCH /mentors/:mentorId`, `POST /requests/:requestId/mentor-outreach` |
-| External actions | `POST /mentor-actions/:token/schedule`, `POST /mentor-actions/:token/feedback`, `POST /webhooks/calendly` |
+| External actions | `GET /mentor-actions/:token`, `POST /mentor-actions/:token/respond`, `POST /mentor-actions/:token/schedule`, `POST /mentor-actions/:token/feedback`, `POST /webhooks/calendly` |
 | Notifications | `GET /notifications/stream` |
 
 ### Domain Model And Persistence Target
@@ -304,27 +311,27 @@ sequenceDiagram
 | Request submission / return / approval | Implemented | Covered by frontend and backend tests |
 | Mentor roster create / update | Implemented | Frontend can create and patch mentors |
 | Artifact presign / complete flow | Implemented | Storage is stubbed, but endpoint flow exists |
-| Mentor outreach / schedule / feedback | Implemented | Action-token flow is backend tested |
-| SSE request update stream | Implemented | Backend endpoint exists; frontend does not currently consume it |
-| Prisma persistence | Scaffolded | Schema exists, active runtime still uses in-memory repository |
+| Mentor outreach / respond / schedule / feedback | Implemented | Secure mentor desk is routed and browser tested |
+| SSE request update stream | Implemented | Backend endpoint exists and frontend consumes it with polling fallback |
+| Prisma persistence | Implemented | Runtime selects Prisma when `DATABASE_URL` is present; live smoke test exists |
 | Background worker processing | Scaffolded | Worker only logs pending outbox events |
 | Real email and object storage | Scaffolded | Stubs are wired in current runtime |
 
 ## Risks And Architectural Gaps
 
-- The active backend is not yet backed by Prisma, so all runtime data is ephemeral.
+- Environments without `DATABASE_URL` still run ephemerally in memory.
 - The frontend uses route-derived demo identities rather than a user-driven auth session.
-- SSE is exposed but not consumed by the frontend, so updates rely on manual refetch after mutations.
 - The worker does not yet process outbox events, which limits real asynchronous behavior.
-- The frontend still contains local reducer branches for scheduling and feedback that are not mirrored by current API calls from the UI.
+- Artifact storage still uses stub presigned URLs rather than a real object-store backend.
+- The mentor desk can still be hardened further for already-open secure-link pages after external events.
 
 ## Recommended Next Architecture Steps
 
-1. Add a Prisma-backed `PlatformRepository` implementation and switch the server composition to configurable persistence.
-2. Connect the frontend to SSE or a polling strategy so CFE, founder, and student views stay synchronized without hard refreshes.
-3. Replace stub email, storage, and queue adapters with real infrastructure behind the existing interfaces.
-4. Expand the frontend API client to cover scheduling, feedback, artifact upload completion, and notification streaming.
-5. Move from route-based demo auth to explicit session-aware login UX.
+1. Move from route-based demo auth to explicit session-aware sign-in and logout UX.
+2. Replace stub email, storage, and queue adapters with real infrastructure behind the existing interfaces.
+3. Harden mentor-desk live refresh for already-open secure-link pages after external events.
+4. Promote the worker from scaffold to real outbox processing.
+5. Add the planned AI brief-generation and meeting-summary layers on top of the current workflow core.
 
 ## Source Map
 
@@ -334,8 +341,8 @@ sequenceDiagram
 - Frontend data seed: `src/data/platformData.js`
 - Backend app factory: `backend/src/app.ts`
 - Backend service: `backend/src/domain/platformService.ts`
-- Backend repository: `backend/src/infra/inMemoryRepository.ts`
-- Backend runtime wiring: `backend/src/server.ts`
+- Backend repositories: `backend/src/infra/inMemoryRepository.ts`, `backend/src/infra/prismaRepository.ts`
+- Backend runtime wiring: `backend/src/runtime.ts`, `backend/src/server.ts`
 - Backend worker scaffold: `backend/src/worker.ts`
 - Persistence target: `backend/prisma/schema.prisma`
 - Validation coverage: `src/App.test.jsx`, `backend/src/app.test.ts`

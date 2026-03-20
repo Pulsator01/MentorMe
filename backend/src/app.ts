@@ -2,6 +2,9 @@ import Fastify from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import sensible from '@fastify/sensible'
+import swagger from '@fastify/swagger'
+import swaggerUi from '@fastify/swagger-ui'
+import type { OpenAPIV3, OpenAPIV3_1 } from 'openapi-types'
 import { z } from 'zod'
 import { PlatformService } from './domain/platformService'
 import type { EmailGateway, PlatformRepository, QueuePublisher, StorageService } from './domain/interfaces'
@@ -22,6 +25,552 @@ const artifactCompleteSchema = z.object({
   artifactId: z.string().min(1),
 })
 
+const bearerSecurity = [{ bearerAuth: [] }]
+const refreshSecurity = [{ refreshCookie: [] }]
+
+const stringIdParamSchema = (name: string, description: string) => ({
+  type: 'object',
+  properties: {
+    [name]: { type: 'string', description },
+  },
+  required: [name],
+})
+
+const magicLinkRequestBodySchema = {
+  type: 'object',
+  properties: {
+    email: { type: 'string', format: 'email' },
+  },
+  required: ['email'],
+}
+
+const magicLinkVerifyBodySchema = {
+  type: 'object',
+  properties: {
+    token: { type: 'string' },
+  },
+  required: ['token'],
+}
+
+const createRequestBodySchema = {
+  type: 'object',
+  properties: {
+    stage: { type: 'string' },
+    trl: { type: 'integer', minimum: 1, maximum: 9 },
+    brl: { type: 'integer', minimum: 1, maximum: 9 },
+    challenge: { type: 'string' },
+    desiredOutcome: { type: 'string' },
+    preferredMentorIds: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    artifactRefs: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+  required: ['stage', 'trl', 'brl', 'challenge', 'desiredOutcome'],
+}
+
+const returnRequestBodySchema = {
+  type: 'object',
+  properties: {
+    reason: { type: 'string' },
+  },
+  required: ['reason'],
+}
+
+const approveRequestBodySchema = {
+  type: 'object',
+  properties: {
+    ownerName: { type: 'string' },
+  },
+  required: ['ownerName'],
+}
+
+const presignArtifactBodySchema = {
+  type: 'object',
+  properties: {
+    filename: { type: 'string' },
+    contentType: { type: 'string' },
+    sizeBytes: { type: 'integer', minimum: 1 },
+  },
+  required: ['filename', 'contentType', 'sizeBytes'],
+}
+
+const artifactCompleteBodySchema = {
+  type: 'object',
+  properties: {
+    artifactId: { type: 'string' },
+  },
+  required: ['artifactId'],
+}
+
+const mentorProfileBodySchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    name: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    title: { type: 'string' },
+    location: { type: 'string' },
+    focus: { type: 'array', items: { type: 'string' } },
+    stages: { type: 'array', items: { type: 'string' } },
+    domains: { type: 'array', items: { type: 'string' } },
+    tolerance: { type: 'string', enum: ['Low', 'Medium', 'High'] },
+    monthlyLimit: { type: 'integer', minimum: 1 },
+    visibility: { type: 'string', enum: ['Active', 'Paused'] },
+    responseWindow: { type: 'string' },
+    calendlyUrl: { type: 'string' },
+    bio: { type: 'string' },
+  },
+  required: [
+    'id',
+    'name',
+    'email',
+    'title',
+    'location',
+    'focus',
+    'stages',
+    'domains',
+    'tolerance',
+    'monthlyLimit',
+    'visibility',
+    'responseWindow',
+    'calendlyUrl',
+    'bio',
+  ],
+}
+
+const mentorUpdateBodySchema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    title: { type: 'string' },
+    location: { type: 'string' },
+    focus: { type: 'array', items: { type: 'string' } },
+    stages: { type: 'array', items: { type: 'string' } },
+    domains: { type: 'array', items: { type: 'string' } },
+    tolerance: { type: 'string', enum: ['Low', 'Medium', 'High'] },
+    monthlyLimit: { type: 'integer', minimum: 1 },
+    visibility: { type: 'string', enum: ['Active', 'Paused'] },
+    responseWindow: { type: 'string' },
+    calendlyUrl: { type: 'string' },
+    bio: { type: 'string' },
+  },
+}
+
+const mentorRespondBodySchema = {
+  type: 'object',
+  properties: {
+    decision: { type: 'string', enum: ['accepted', 'declined'] },
+    reason: { type: 'string' },
+  },
+  required: ['decision'],
+}
+
+const mentorScheduleBodySchema = {
+  type: 'object',
+  properties: {
+    calendlyLink: { type: 'string', format: 'uri' },
+    meetingAt: { type: 'string', format: 'date-time' },
+  },
+  required: ['calendlyLink', 'meetingAt'],
+}
+
+const mentorFeedbackBodySchema = {
+  type: 'object',
+  properties: {
+    mentorNotes: { type: 'string' },
+    nextStepRequired: { type: 'boolean' },
+    secondSessionRecommended: { type: 'boolean' },
+  },
+  required: ['mentorNotes', 'nextStepRequired', 'secondSessionRecommended'],
+}
+
+const calendlyWebhookHeadersSchema = {
+  type: 'object',
+  properties: {
+    'x-calendly-event-id': { type: 'string' },
+  },
+  required: ['x-calendly-event-id'],
+}
+
+const openApiInfo = {
+  title: 'MentorMe API',
+  description: 'Mentor routing, intake, and follow-through API for the MentorMe platform.',
+  version: '0.2.0',
+}
+
+const openApiTags = [
+  { name: 'Auth', description: 'Magic-link auth and session management' },
+  { name: 'Ventures', description: 'Venture and mentor-request intake flows' },
+  { name: 'Requests', description: 'CFE review, artifacts, outreach, and lifecycle transitions' },
+  { name: 'Mentors', description: 'Mentor roster management and secure external actions' },
+  { name: 'Integrations', description: 'Calendly and live update integration points' },
+]
+
+const openApiComponents = {
+  securitySchemes: {
+    bearerAuth: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    },
+    refreshCookie: {
+      type: 'apiKey',
+      in: 'cookie',
+      name: 'mentor_me_refresh',
+    },
+  },
+}
+
+const pathParameter = (name: string, description: string) => ({
+  name,
+  in: 'path',
+  required: true,
+  description,
+  schema: { type: 'string' },
+})
+
+const headerParameter = (name: string, description: string) => ({
+  name,
+  in: 'header',
+  required: true,
+  description,
+  schema: { type: 'string' },
+})
+
+const jsonRequestBody = (schema: Record<string, unknown>, description?: string) => ({
+  ...(description ? { description } : {}),
+  required: true,
+  content: {
+    'application/json': {
+      schema,
+    },
+  },
+})
+
+const jsonResponse = (description: string) => ({
+  description,
+  content: {
+    'application/json': {
+      schema: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+  },
+})
+
+const noContentResponse = {
+  description: 'No content',
+}
+
+const buildOpenApiDocument = () =>
+  ({
+  openapi: '3.1.0',
+  info: openApiInfo,
+  servers: [
+    {
+      url: 'http://localhost:3001',
+      description: 'Local development server',
+    },
+  ],
+  tags: openApiTags,
+  components: openApiComponents,
+  paths: {
+    '/auth/magic-link/request': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Request a magic link',
+        requestBody: jsonRequestBody(magicLinkRequestBodySchema),
+        responses: {
+          202: jsonResponse('Accepted'),
+        },
+      },
+    },
+    '/auth/magic-link/verify': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Verify a magic link token',
+        requestBody: jsonRequestBody(magicLinkVerifyBodySchema),
+        responses: {
+          200: jsonResponse('Verified session'),
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Refresh an access token from the session cookie',
+        security: refreshSecurity,
+        responses: {
+          200: jsonResponse('Refreshed access token'),
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Log out and clear the refresh cookie',
+        security: refreshSecurity,
+        responses: {
+          204: noContentResponse,
+        },
+      },
+    },
+    '/me': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Get the current authenticated user',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Authenticated user'),
+        },
+      },
+    },
+    '/ventures': {
+      get: {
+        tags: ['Ventures'],
+        summary: 'List ventures visible to the current user',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Visible ventures'),
+        },
+      },
+    },
+    '/ventures/{ventureId}': {
+      get: {
+        tags: ['Ventures'],
+        summary: 'Get one venture by id',
+        security: bearerSecurity,
+        parameters: [pathParameter('ventureId', 'Venture identifier')],
+        responses: {
+          200: jsonResponse('Venture detail'),
+        },
+      },
+    },
+    '/ventures/{ventureId}/requests': {
+      get: {
+        tags: ['Ventures'],
+        summary: 'List requests for a specific venture',
+        security: bearerSecurity,
+        parameters: [pathParameter('ventureId', 'Venture identifier')],
+        responses: {
+          200: jsonResponse('Requests for the venture'),
+        },
+      },
+      post: {
+        tags: ['Ventures'],
+        summary: 'Create a mentor request for a venture',
+        security: bearerSecurity,
+        parameters: [pathParameter('ventureId', 'Venture identifier')],
+        requestBody: jsonRequestBody(createRequestBodySchema),
+        responses: {
+          201: jsonResponse('Created request'),
+        },
+      },
+    },
+    '/requests': {
+      get: {
+        tags: ['Requests'],
+        summary: 'List mentor requests visible to the current user',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Visible requests'),
+        },
+      },
+    },
+    '/requests/{requestId}/submit': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Submit or re-submit a request into CFE review',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        responses: {
+          200: jsonResponse('Submitted request'),
+        },
+      },
+    },
+    '/requests/{requestId}/return': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Return a request for revision',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(returnRequestBodySchema),
+        responses: {
+          200: jsonResponse('Returned request'),
+        },
+      },
+    },
+    '/requests/{requestId}/approve': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Approve a request for mentor outreach',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(approveRequestBodySchema),
+        responses: {
+          200: jsonResponse('Approved request'),
+        },
+      },
+    },
+    '/requests/{requestId}/close': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Close a request',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        responses: {
+          200: jsonResponse('Closed request'),
+        },
+      },
+    },
+    '/requests/{requestId}/artifacts/presign': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Create a presigned artifact upload',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(presignArtifactBodySchema),
+        responses: {
+          201: jsonResponse('Presigned upload'),
+        },
+      },
+    },
+    '/requests/{requestId}/artifacts/complete': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Mark an uploaded artifact as complete',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(artifactCompleteBodySchema),
+        responses: {
+          200: jsonResponse('Completed artifact'),
+        },
+      },
+    },
+    '/requests/{requestId}/mentor-outreach': {
+      post: {
+        tags: ['Requests'],
+        summary: 'Create a secure mentor outreach token',
+        security: bearerSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        responses: {
+          201: jsonResponse('Created mentor outreach token'),
+        },
+      },
+    },
+    '/mentors': {
+      get: {
+        tags: ['Mentors'],
+        summary: 'List mentors visible to the current user',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Visible mentors'),
+        },
+      },
+      post: {
+        tags: ['Mentors'],
+        summary: 'Create a mentor profile',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(mentorProfileBodySchema),
+        responses: {
+          201: jsonResponse('Created mentor'),
+        },
+      },
+    },
+    '/mentors/{mentorId}': {
+      patch: {
+        tags: ['Mentors'],
+        summary: 'Update a mentor profile',
+        security: bearerSecurity,
+        parameters: [pathParameter('mentorId', 'Mentor identifier')],
+        requestBody: jsonRequestBody(mentorUpdateBodySchema),
+        responses: {
+          200: jsonResponse('Updated mentor'),
+        },
+      },
+    },
+    '/mentor-actions/{token}': {
+      get: {
+        tags: ['Mentors'],
+        summary: 'Inspect a secure mentor action link',
+        parameters: [pathParameter('token', 'Secure mentor action token')],
+        responses: {
+          200: jsonResponse('Mentor action detail'),
+        },
+      },
+    },
+    '/mentor-actions/{token}/respond': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Accept or decline outreach with a secure token',
+        parameters: [pathParameter('token', 'Secure mentor action token')],
+        requestBody: jsonRequestBody(mentorRespondBodySchema),
+        responses: {
+          200: jsonResponse('Recorded mentor response'),
+        },
+      },
+    },
+    '/mentor-actions/{token}/schedule': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Schedule a mentor session through a secure token link',
+        parameters: [pathParameter('token', 'Secure mentor action token')],
+        requestBody: jsonRequestBody(mentorScheduleBodySchema),
+        responses: {
+          200: jsonResponse('Scheduled session'),
+        },
+      },
+    },
+    '/mentor-actions/{token}/feedback': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Submit post-session mentor feedback through a secure token link',
+        parameters: [pathParameter('token', 'Secure mentor action token')],
+        requestBody: jsonRequestBody(mentorFeedbackBodySchema),
+        responses: {
+          200: jsonResponse('Recorded mentor feedback'),
+        },
+      },
+    },
+    '/webhooks/calendly': {
+      post: {
+        tags: ['Integrations'],
+        summary: 'Receive Calendly scheduling webhooks',
+        parameters: [headerParameter('x-calendly-event-id', 'Calendly provider event identifier')],
+        requestBody: jsonRequestBody({ type: 'object', additionalProperties: true }),
+        responses: {
+          202: jsonResponse('Accepted webhook'),
+        },
+      },
+    },
+    '/notifications/stream': {
+      get: {
+        tags: ['Integrations'],
+        summary: 'Open the request update event stream',
+        security: bearerSecurity,
+        responses: {
+          200: {
+            description: 'Server-sent event stream',
+            content: {
+              'text/event-stream': {
+                schema: {
+                  type: 'string',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+}) as OpenAPIV3_1.Document
+
 export const createApp = (options: AppOptions) => {
   const app = Fastify({ logger: false })
   const events = new EventTarget()
@@ -35,9 +584,27 @@ export const createApp = (options: AppOptions) => {
     jwtSecret: options.jwtSecret,
   })
 
-  app.register(cors, { origin: true, credentials: true })
+  app.register(cors, {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  })
   app.register(cookie, { secret: options.cookieSecret })
   app.register(sensible)
+  app.register(swagger, {
+    mode: 'static',
+    specification: {
+      document: buildOpenApiDocument() as unknown as OpenAPIV3.Document,
+    },
+  })
+  app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
+    staticCSP: true,
+  })
 
   const readAuthUser = async (request: { headers: Record<string, unknown> }) => {
     const authorization = String(request.headers.authorization || '')
@@ -57,7 +624,13 @@ export const createApp = (options: AppOptions) => {
     events.dispatchEvent(new CustomEvent(name, { detail }))
   }
 
-  app.post('/auth/magic-link/request', async (request, reply) => {
+  app.post('/auth/magic-link/request', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Request a magic link',
+      body: magicLinkRequestBodySchema,
+    },
+  }, async (request, reply) => {
     const payload = z.object({ email: z.string().email() }).parse(request.body)
     const result = await service.requestMagicLink(payload.email)
     return reply.code(202).send({
@@ -66,7 +639,13 @@ export const createApp = (options: AppOptions) => {
     })
   })
 
-  app.post('/auth/magic-link/verify', async (request, reply) => {
+  app.post('/auth/magic-link/verify', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Verify a magic link token',
+      body: magicLinkVerifyBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const payload = z.object({ token: z.string().min(10) }).parse(request.body)
       const result = await service.verifyMagicLink(payload.token)
@@ -84,7 +663,13 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/auth/refresh', async (request, reply) => {
+  app.post('/auth/refresh', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Refresh an access token from the session cookie',
+      security: refreshSecurity,
+    },
+  }, async (request, reply) => {
     try {
       const refreshToken = request.cookies.mentor_me_refresh
       if (!refreshToken) {
@@ -97,59 +682,105 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/auth/logout', async (request, reply) => {
+  app.post('/auth/logout', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Log out and clear the refresh cookie',
+      security: refreshSecurity,
+    },
+  }, async (request, reply) => {
     const refreshToken = request.cookies.mentor_me_refresh
     if (refreshToken) {
-      service.logout(refreshToken)
+      await service.logout(refreshToken)
     }
     reply.clearCookie('mentor_me_refresh', { path: '/' })
     return reply.code(204).send()
   })
 
-  app.get('/me', async (request) => {
+  app.get('/me', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Get the current authenticated user',
+      security: bearerSecurity,
+    },
+  }, async (request) => {
     const user = await readAuthUser(request)
     return service.getMe(user)
   })
 
-  app.get('/ventures', async (request) => {
+  app.get('/ventures', {
+    schema: {
+      tags: ['Ventures'],
+      summary: 'List ventures visible to the current user',
+      security: bearerSecurity,
+    },
+  }, async (request) => {
     const user = await readAuthUser(request)
-    return service.listVentures(user)
+    return await service.listVentures(user)
   })
 
-  app.get('/requests', async (request, reply) => {
+  app.get('/requests', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'List mentor requests visible to the current user',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
-      return service.listRequests(user)
+      return await service.listRequests(user)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.get('/ventures/:ventureId', async (request, reply) => {
+  app.get('/ventures/:ventureId', {
+    schema: {
+      tags: ['Ventures'],
+      summary: 'Get one venture by id',
+      security: bearerSecurity,
+      params: stringIdParamSchema('ventureId', 'Venture identifier'),
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      return service.getVenture(user, params.ventureId)
+      return await service.getVenture(user, params.ventureId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.get('/ventures/:ventureId/requests', async (request, reply) => {
+  app.get('/ventures/:ventureId/requests', {
+    schema: {
+      tags: ['Ventures'],
+      summary: 'List requests for a specific venture',
+      security: bearerSecurity,
+      params: stringIdParamSchema('ventureId', 'Venture identifier'),
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      return service.listRequestsForVenture(user, params.ventureId)
+      return await service.listRequestsForVenture(user, params.ventureId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.post('/ventures/:ventureId/requests', async (request, reply) => {
+  app.post('/ventures/:ventureId/requests', {
+    schema: {
+      tags: ['Ventures'],
+      summary: 'Create a mentor request for a venture',
+      security: bearerSecurity,
+      params: stringIdParamSchema('ventureId', 'Venture identifier'),
+      body: createRequestBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ ventureId: z.string().min(1) }).parse(request.params)
-      const result = service.createRequest(user, params.ventureId, request.body)
+      const result = await service.createRequest(user, params.ventureId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return reply.code(201).send(result)
     } catch (error) {
@@ -157,13 +788,18 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/submit', async (_request, reply) => reply.code(501).send({ message: 'Use venture request creation in v1.' }))
-
-  app.post('/requests/:requestId/return', async (request, reply) => {
+  app.post('/requests/:requestId/submit', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Submit or re-submit a request into CFE review',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.returnRequest(user, params.requestId, request.body)
+      const result = await service.submitRequest(user, params.requestId)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -171,11 +807,19 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/approve', async (request, reply) => {
+  app.post('/requests/:requestId/return', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Return a request for revision',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: returnRequestBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.approveRequest(user, params.requestId, request.body)
+      const result = await service.returnRequest(user, params.requestId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -183,11 +827,19 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/close', async (request, reply) => {
+  app.post('/requests/:requestId/approve', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Approve a request for mentor outreach',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: approveRequestBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
-      const result = service.closeRequest(user, params.requestId)
+      const result = await service.approveRequest(user, params.requestId, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -195,7 +847,34 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/artifacts/presign', async (request, reply) => {
+  app.post('/requests/:requestId/close', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Close a request',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
+      const result = await service.closeRequest(user, params.requestId)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/requests/:requestId/artifacts/presign', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Create a presigned artifact upload',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: presignArtifactBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
@@ -205,27 +884,48 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/requests/:requestId/artifacts/complete', async (request, reply) => {
+  app.post('/requests/:requestId/artifacts/complete', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Mark an uploaded artifact as complete',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: artifactCompleteBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
       const body = artifactCompleteSchema.parse(request.body)
-      return service.completeArtifact(user, params.requestId, body.artifactId)
+      return await service.completeArtifact(user, params.requestId, body.artifactId)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.get('/mentors', async (request, reply) => {
+  app.get('/mentors', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'List mentors visible to the current user',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
-      return service.listMentors(user)
+      return await service.listMentors(user)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.post('/mentors', async (request, reply) => {
+  app.post('/mentors', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Create a mentor profile',
+      security: bearerSecurity,
+      body: mentorProfileBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const mentor = z.object({
@@ -244,23 +944,38 @@ export const createApp = (options: AppOptions) => {
         calendlyUrl: z.string(),
         bio: z.string(),
       }).parse(request.body)
-      return reply.code(201).send(service.createMentor(user, mentor))
+      return reply.code(201).send(await service.createMentor(user, mentor))
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.patch('/mentors/:mentorId', async (request, reply) => {
+  app.patch('/mentors/:mentorId', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Update a mentor profile',
+      security: bearerSecurity,
+      params: stringIdParamSchema('mentorId', 'Mentor identifier'),
+      body: mentorUpdateBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ mentorId: z.string().min(1) }).parse(request.params)
-      return service.updateMentor(user, params.mentorId, request.body as Record<string, unknown>)
+      return await service.updateMentor(user, params.mentorId, request.body as Record<string, unknown>)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }
   })
 
-  app.post('/requests/:requestId/mentor-outreach', async (request, reply) => {
+  app.post('/requests/:requestId/mentor-outreach', {
+    schema: {
+      tags: ['Requests'],
+      summary: 'Create a secure mentor outreach token',
+      security: bearerSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+    },
+  }, async (request, reply) => {
     try {
       const user = await readAuthUser(request)
       const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
@@ -270,14 +985,32 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/mentor-actions/:token/respond', async (_request, reply) =>
-    reply.code(501).send({ message: 'Mentor accept/decline is not required for the current UI flow.' }),
-  )
-
-  app.post('/mentor-actions/:token/schedule', async (request, reply) => {
+  app.get('/mentor-actions/:token', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Inspect a secure mentor action link',
+      params: stringIdParamSchema('token', 'Secure mentor action token'),
+    },
+  }, async (request, reply) => {
     try {
       const params = z.object({ token: z.string().min(10) }).parse(request.params)
-      const result = service.mentorSchedule(params.token, request.body)
+      return await service.getMentorAction(params.token)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/mentor-actions/:token/respond', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Accept or decline outreach with a secure token',
+      params: stringIdParamSchema('token', 'Secure mentor action token'),
+      body: mentorRespondBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(10) }).parse(request.params)
+      const result = await service.mentorRespond(params.token, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -285,10 +1018,17 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/mentor-actions/:token/feedback', async (request, reply) => {
+  app.post('/mentor-actions/:token/schedule', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Schedule a mentor session through a secure token link',
+      params: stringIdParamSchema('token', 'Secure mentor action token'),
+      body: mentorScheduleBodySchema,
+    },
+  }, async (request, reply) => {
     try {
       const params = z.object({ token: z.string().min(10) }).parse(request.params)
-      const result = service.mentorFeedback(params.token, request.body)
+      const result = await service.mentorSchedule(params.token, request.body)
       emitEvent('request.updated', { requestId: result.request.id })
       return result
     } catch (error) {
@@ -296,31 +1036,72 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
-  app.post('/webhooks/calendly', async (request, reply) => {
+  app.post('/mentor-actions/:token/feedback', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Submit post-session mentor feedback through a secure token link',
+      params: stringIdParamSchema('token', 'Secure mentor action token'),
+      body: mentorFeedbackBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(10) }).parse(request.params)
+      const result = await service.mentorFeedback(params.token, request.body)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/webhooks/calendly', {
+    schema: {
+      tags: ['Integrations'],
+      summary: 'Receive Calendly scheduling webhooks',
+      headers: calendlyWebhookHeadersSchema,
+      body: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+  }, async (request, reply) => {
     const eventId = String(request.headers['x-calendly-event-id'] || '')
     if (!eventId) {
       return reply.badRequest('Missing x-calendly-event-id header')
     }
-    return reply.code(202).send(service.calendlyWebhook(eventId, request.body as Record<string, unknown>))
+    return reply.code(202).send(await service.calendlyWebhook(eventId, request.body as Record<string, unknown>))
   })
 
-  app.get('/notifications/stream', async (_request, reply) => {
-    reply.raw.setHeader('Content-Type', 'text/event-stream')
-    reply.raw.setHeader('Cache-Control', 'no-cache')
-    reply.raw.setHeader('Connection', 'keep-alive')
-    reply.hijack()
+  app.get('/notifications/stream', {
+    schema: {
+      tags: ['Integrations'],
+      summary: 'Open the request update event stream',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
+    try {
+      await readAuthUser(request)
 
-    const send = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail
-      reply.raw.write(`data: ${JSON.stringify(detail)}\n\n`)
+      reply.raw.setHeader('Content-Type', 'text/event-stream')
+      reply.raw.setHeader('Cache-Control', 'no-cache')
+      reply.raw.setHeader('Connection', 'keep-alive')
+      reply.raw.flushHeaders?.()
+      reply.hijack()
+
+      const send = (event: Event) => {
+        const detail = (event as CustomEvent<Record<string, unknown>>).detail
+        reply.raw.write(`data: ${JSON.stringify(detail)}\n\n`)
+      }
+
+      events.addEventListener('request.updated', send)
+      reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
+      reply.raw.on('close', () => {
+        events.removeEventListener('request.updated', send)
+        reply.raw.end()
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
     }
-
-    events.addEventListener('request.updated', send)
-    reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
-    reply.raw.on('close', () => {
-      events.removeEventListener('request.updated', send)
-      reply.raw.end()
-    })
   })
 
   return app

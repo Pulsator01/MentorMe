@@ -16,6 +16,7 @@ const statusTone = {
   awaiting_mentor: 'blue',
   scheduled: 'emerald',
   follow_up: 'blue',
+  closed: 'slate',
 }
 
 const formatDate = (value, opts) =>
@@ -53,9 +54,11 @@ const getMatchScore = (mentor, form) => {
 }
 
 function StudentDashboard() {
-  const { venture, mentors, requests, submitRequest } = useAppState()
+  const { venture, mentors, requests, submitRequest, resubmitRequest, uploadArtifact } = useAppState()
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
+  const [resubmittingId, setResubmittingId] = useState('')
+  const [uploadingRequestId, setUploadingRequestId] = useState('')
   const [form, setForm] = useState({
     ventureName: venture.name,
     stage: venture.stage,
@@ -173,6 +176,34 @@ function StudentDashboard() {
       brl: Number(form.brl),
     })
     setFlashMessage('Request sent to CFE review')
+  }
+
+  const handleResubmit = async (requestId) => {
+    setResubmittingId(requestId)
+    try {
+      await resubmitRequest(requestId)
+      setFlashMessage('Request re-submitted to CFE review')
+    } finally {
+      setResubmittingId('')
+    }
+  }
+
+  const handleArtifactUpload = async (requestId, event) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    setUploadingRequestId(requestId)
+
+    try {
+      await uploadArtifact(requestId, file)
+      setFlashMessage(`${file.name} attached to ${requestId}`)
+    } finally {
+      setUploadingRequestId('')
+      event.target.value = ''
+    }
   }
 
   return (
@@ -358,7 +389,10 @@ function StudentDashboard() {
           </form>
 
           {flashMessage ? (
-            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            <div
+              data-testid="founder-flash-message"
+              className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+            >
               {flashMessage}
             </div>
           ) : null}
@@ -462,7 +496,11 @@ function StudentDashboard() {
         />
         <div className="space-y-3">
           {founderRequests.map((request) => (
-            <div key={request.id} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div
+              key={request.id}
+              data-testid={`founder-request-${request.id.toLowerCase()}`}
+              className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+            >
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -481,6 +519,52 @@ function StudentDashboard() {
                 <span>{request.artifactList.length} attached items</span>
                 {request.meetingAt ? <span>Meeting {formatDate(request.meetingAt, { year: 'numeric' })}</span> : null}
               </div>
+              {request.artifactList.length ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {request.artifactList.map((artifact) => (
+                    <Badge key={`${request.id}-${artifact}`} tone="blue">
+                      {artifact}
+                    </Badge>
+                  ))}
+                </div>
+              ) : null}
+              {request.status !== 'closed' ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">Attach another artifact</p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        This uses the presign and complete API flow for the selected request.
+                      </p>
+                    </div>
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white">
+                      <FileUp size={16} />
+                      {uploadingRequestId === request.id ? 'Uploading...' : 'Upload file'}
+                      <input
+                        type="file"
+                        className="sr-only"
+                        data-testid={`upload-artifact-${request.id.toLowerCase()}`}
+                        aria-label={`Upload artifact for ${request.id}`}
+                        disabled={uploadingRequestId === request.id}
+                        onChange={(event) => void handleArtifactUpload(request.id, event)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              {request.status === 'needs_work' ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => handleResubmit(request.id)}
+                    disabled={resubmittingId === request.id}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <Send size={16} />
+                    {resubmittingId === request.id ? 'Re-submitting...' : 'Re-submit to CFE'}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

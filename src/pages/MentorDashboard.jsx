@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
-import { CalendarCheck2, CheckCircle2, Clock3, Link2, MessagesSquare, Video } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { CalendarCheck2, CheckCircle2, Clock3, Link2, MessagesSquare, ShieldCheck, XCircle } from 'lucide-react'
 import { useAppState } from '../context/AppState'
-import { Badge, ProgressBar, SectionCard, SectionHeading, StatCard } from '../components/ui'
+import { Badge, SectionCard, SectionHeading, StatCard } from '../components/ui'
 
 const formatFullDate = (value) =>
   new Date(value).toLocaleDateString('en-US', {
@@ -10,62 +11,232 @@ const formatFullDate = (value) =>
     year: 'numeric',
   })
 
-function MentorDashboard() {
-  const { mentors, requests, scheduleRequest, saveFeedback } = useAppState()
-  const [flashMessage, setFlashMessage] = useState('')
-  const [draftSlots, setDraftSlots] = useState({})
-  const [feedbackDrafts, setFeedbackDrafts] = useState({})
-  const [currentMentorId, setCurrentMentorId] = useState(mentors[0]?.id || '')
-  const primaryMentor = mentors.find((mentor) => mentor.id === currentMentorId) || mentors[0]
-  const mentorRequests = useMemo(
-    () => requests.filter((request) => request.mentorId === primaryMentor.id),
-    [primaryMentor.id, requests],
-  )
-  const incoming = mentorRequests.filter((request) => request.status === 'awaiting_mentor')
-  const scheduled = mentorRequests.filter((request) => request.status === 'scheduled')
-  const followUps = mentorRequests.filter((request) => request.status === 'follow_up')
-  const mentorLoad = useMemo(
-    () =>
-      mentorRequests.filter((request) => ['awaiting_mentor', 'scheduled', 'follow_up'].includes(request.status)).length,
-    [mentorRequests],
-  )
+const toDatetimeLocal = (value) => {
+  if (!value) {
+    return ''
+  }
 
-  const getSlotDraft = (requestId, mentorCalendly = '') => ({
-    calendlyLink: draftSlots[requestId]?.calendlyLink ?? mentorCalendly,
-    meetingAt: draftSlots[requestId]?.meetingAt ?? '',
+  const date = new Date(value)
+  const offset = date.getTimezoneOffset()
+  const local = new Date(date.getTime() - offset * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function MentorDashboard() {
+  const {
+    mode,
+    mentors,
+    requests,
+    getMentorAction,
+    respondToMentorAction,
+    scheduleMentorAction,
+    saveMentorActionFeedback,
+  } = useAppState()
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token') || ''
+  const [detail, setDetail] = useState(null)
+  const [loading, setLoading] = useState(Boolean(token))
+  const [error, setError] = useState('')
+  const [flashMessage, setFlashMessage] = useState('')
+  const [decisionReason, setDecisionReason] = useState('')
+  const [submittingDecision, setSubmittingDecision] = useState(false)
+  const [submittingSchedule, setSubmittingSchedule] = useState(false)
+  const [submittingFeedback, setSubmittingFeedback] = useState(false)
+  const [scheduleDraft, setScheduleDraft] = useState({
+    calendlyLink: '',
+    meetingAt: '',
+  })
+  const [feedbackDraft, setFeedbackDraft] = useState({
+    mentorNotes: '',
+    nextStepRequired: true,
+    secondSessionRecommended: false,
   })
 
-  const handleSlotChange = (requestId, field, value, mentorCalendly = '') => {
-    setDraftSlots((current) => ({
-      ...current,
-      [requestId]: {
-        calendlyLink: current[requestId]?.calendlyLink ?? mentorCalendly,
-        meetingAt: current[requestId]?.meetingAt ?? '',
-        [field]: value,
-      },
-    }))
-  }
+  useEffect(() => {
+    if (!token) {
+      setLoading(false)
 
-  const handleShareSlot = (requestId, mentorCalendly) => {
-    const slot = getSlotDraft(requestId, mentorCalendly)
+      if (mode !== 'api') {
+        const localRequest = requests.find((request) => request.status === 'awaiting_mentor') || requests[0]
+        const localMentor = mentors.find((mentor) => mentor.id === localRequest?.mentorId) || mentors[0]
 
-    if (!slot?.calendlyLink || !slot?.meetingAt) {
+        if (localRequest && localMentor) {
+          setDetail({
+            mentor: localMentor,
+            mentorAction: {
+              purpose: 'mentor_request',
+              response: localRequest.status === 'awaiting_mentor' ? undefined : 'accepted',
+            },
+            request: localRequest,
+          })
+          setScheduleDraft({
+            calendlyLink: localRequest.calendlyLink || localMentor.calendly || '',
+            meetingAt: toDatetimeLocal(localRequest.meetingAt),
+          })
+          setFeedbackDraft((current) => ({
+            ...current,
+            mentorNotes: localRequest.mentorNotes || '',
+          }))
+        }
+      }
+
+      return undefined
+    }
+
+    let active = true
+    setLoading(true)
+    setError('')
+
+    const load = async () => {
+      try {
+        const body = await getMentorAction(token)
+
+        if (!active) {
+          return
+        }
+
+        setDetail(body)
+        setScheduleDraft({
+          calendlyLink: body.request.calendlyLink || body.mentor.calendly || '',
+          meetingAt: toDatetimeLocal(body.request.meetingAt),
+        })
+        setFeedbackDraft({
+          mentorNotes: body.request.mentorNotes || '',
+          nextStepRequired: true,
+          secondSessionRecommended: false,
+        })
+      } catch (loadError) {
+        if (!active) {
+          return
+        }
+
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load the mentor action link.')
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      active = false
+    }
+  }, [getMentorAction, mentors, mode, requests, token])
+
+  const mentor = detail?.mentor
+  const request = detail?.request
+  const mentorAction = detail?.mentorAction
+  const response = mentorAction?.response
+  const hasToken = Boolean(token)
+  const canSchedule = hasToken && response === 'accepted' && request?.status === 'awaiting_mentor'
+  const canLeaveFeedback = hasToken && ['scheduled', 'follow_up'].includes(request?.status || '')
+
+  const handleDecision = async (decision) => {
+    if (!hasToken) {
       return
     }
 
-    scheduleRequest(requestId, slot.calendlyLink, slot.meetingAt)
-    setFlashMessage(`Session confirmed for ${formatFullDate(slot.meetingAt)}`)
+    setSubmittingDecision(true)
+    setError('')
+
+    try {
+      const body = await respondToMentorAction(token, {
+        decision,
+        ...(decision === 'declined' ? { reason: decisionReason } : {}),
+      })
+
+      setDetail((current) => ({
+        ...current,
+        mentorAction: {
+          ...current.mentorAction,
+          response: decision,
+          respondedAt: new Date().toISOString(),
+          responseReason: decision === 'declined' ? decisionReason : '',
+        },
+        request: body.request,
+      }))
+      setFlashMessage(
+        decision === 'accepted'
+          ? 'Request accepted. You can share a slot now.'
+          : 'Request declined. CFE will keep the request in the routing queue.',
+      )
+    } catch (decisionError) {
+      setError(decisionError instanceof Error ? decisionError.message : 'Unable to record the mentor response.')
+    } finally {
+      setSubmittingDecision(false)
+    }
   }
 
-  const handleSaveFeedback = (requestId) => {
-    const note = feedbackDrafts[requestId]
-
-    if (!note?.trim()) {
+  const handleSchedule = async () => {
+    if (!canSchedule) {
       return
     }
 
-    saveFeedback(requestId, note)
-    setFlashMessage('Feedback saved and shared with CFE')
+    setSubmittingSchedule(true)
+    setError('')
+
+    try {
+      const body = await scheduleMentorAction(token, {
+        calendlyLink: scheduleDraft.calendlyLink,
+        meetingAt: new Date(scheduleDraft.meetingAt).toISOString(),
+      })
+
+      setDetail((current) => ({
+        ...current,
+        request: body.request,
+      }))
+      setFlashMessage(`Session confirmed for ${formatFullDate(body.request.meetingAt)}`)
+    } catch (scheduleError) {
+      setError(scheduleError instanceof Error ? scheduleError.message : 'Unable to schedule this request.')
+    } finally {
+      setSubmittingSchedule(false)
+    }
+  }
+
+  const handleFeedback = async () => {
+    if (!canLeaveFeedback) {
+      return
+    }
+
+    setSubmittingFeedback(true)
+    setError('')
+
+    try {
+      const body = await saveMentorActionFeedback(token, feedbackDraft)
+      setDetail((current) => ({
+        ...current,
+        request: body.request,
+      }))
+      setFlashMessage('Feedback saved and shared with CFE.')
+    } catch (feedbackError) {
+      setError(feedbackError instanceof Error ? feedbackError.message : 'Unable to save mentor feedback.')
+    } finally {
+      setSubmittingFeedback(false)
+    }
+  }
+
+  if (!hasToken && mode === 'api') {
+    return (
+      <div className="space-y-6 pb-8">
+        <SectionCard className="bg-slate-950 text-white">
+          <Badge tone="amber">Secure mentor desk</Badge>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight">Open this page from a CFE-generated secure mentor link.</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
+            The live mentor journey is token-based. Generate a link from the CFE workspace, then open it here to accept or decline the request, schedule the meeting, and leave feedback after the call.
+          </p>
+          <div className="mt-6">
+            <Link
+              to="/cfe"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+            >
+              Back to CFE workspace
+            </Link>
+          </div>
+        </SectionCard>
+      </div>
+    )
   }
 
   return (
@@ -73,61 +244,59 @@ function MentorDashboard() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard className="bg-slate-950 text-white">
           <Badge tone="amber">Mentor Desk</Badge>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight">Review only the requests CFE already believes deserve your time.</h1>
+          <h1 className="mt-5 text-4xl font-semibold tracking-tight">Review one vetted request without the admin clutter.</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-            This desk is designed for low-friction mentor engagement: accept or pass, share a Calendly link, and leave feedback after the call.
+            The mentor experience is intentionally narrow: decide quickly, share a slot, and leave one useful note after the meeting.
           </p>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            <StatCard label="Pending" value={incoming.length} detail="CFE-approved requests waiting for a response." accent="amber" />
-            <StatCard label="Scheduled" value={scheduled.length} detail="Meetings with a confirmed slot and link." accent="cyan" />
-            <StatCard label="Feedback notes" value={followUps.length} detail="Sessions already documented for next-step planning." accent="emerald" />
+            <StatCard
+              label="Response state"
+              value={response ? response : loading ? 'Loading' : 'Pending'}
+              detail="Mentors should be able to accept or decline without needing a login."
+              accent="amber"
+            />
+            <StatCard
+              label="Request status"
+              value={request ? request.status.replace('_', ' ') : 'Waiting'}
+              detail="This updates as the mentor schedules and submits feedback."
+              accent="cyan"
+            />
+            <StatCard
+              label="Artifacts"
+              value={request?.artifactList?.length || 0}
+              detail="Enough context should be attached before the mentor spends time."
+              accent="emerald"
+            />
           </div>
         </SectionCard>
 
         <SectionCard>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Mentor profile</p>
-          <label className="mt-4 block">
-            <span className="text-sm font-medium text-slate-700">Viewing mentor</span>
-            <select
-              value={primaryMentor.id}
-              onChange={(event) => setCurrentMentorId(event.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
-            >
-              {mentors.map((mentor) => (
-                <option key={mentor.id} value={mentor.id}>
-                  {mentor.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mt-4 flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{primaryMentor.name}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{primaryMentor.bio}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Mentor context</p>
+          {loading ? (
+            <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+              Loading mentor request...
             </div>
-            <Badge tone="blue">{primaryMentor.tolerance} tolerance</Badge>
-          </div>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Current load</p>
-              <p className="mt-2 text-lg font-semibold text-slate-950">
-                {mentorLoad}/{primaryMentor.monthlyLimit} active matches
-              </p>
-              <div className="mt-4">
-                <ProgressBar value={mentorLoad} max={primaryMentor.monthlyLimit} tone="amber" />
+          ) : mentor ? (
+            <>
+              <div className="mt-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{mentor.name}</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{mentor.title}</p>
+                </div>
+                <Badge tone="blue">{mentor.tolerance} tolerance</Badge>
               </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">{mentor.bio}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {mentor.focus.map((item) => (
+                  <Badge key={item}>{item}</Badge>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-[22px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+              No mentor request is loaded yet.
             </div>
-            <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Response expectation</p>
-              <p className="mt-2 text-lg font-semibold text-slate-950">{primaryMentor.responseWindow}</p>
-              <p className="mt-2 text-sm text-slate-600">CFE uses this window to avoid stale approvals and mentor irritation.</p>
-            </div>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-2">
-            {primaryMentor.focus.map((item) => (
-              <Badge key={item}>{item}</Badge>
-            ))}
-          </div>
+          )}
         </SectionCard>
       </div>
 
@@ -137,163 +306,206 @@ function MentorDashboard() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+      {error ? (
+        <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
         <SectionCard>
           <SectionHeading
-            eyebrow="Incoming from CFE"
-            title="Accepted requests should take one minute to process"
-            description="Mentors should see the ask, the artifacts, and enough stage context to decide quickly."
+            eyebrow="Request summary"
+            title={request ? request.ventureName : 'Waiting for a secure link'}
+            description="Mentors should see the problem, desired outcome, and supporting material before choosing to engage."
           />
-          <div className="space-y-4">
-            {incoming.length === 0 ? (
-              <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm text-slate-500">
-                No approved requests are waiting. Once CFE approves a submission, it appears here automatically.
+
+          {request ? (
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg font-semibold text-slate-950">{request.ventureName}</h3>
+                      <Badge tone="amber">{request.stage}</Badge>
+                      <Badge tone="blue">{request.status.replace('_', ' ')}</Badge>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{request.challenge}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-950">TRL {request.trl}</p>
+                    <p className="mt-1">BRL {request.brl}</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-slate-700">{request.desiredOutcome}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {request.artifactList.map((artifact) => (
+                    <Badge key={`${request.id}-${artifact}`} tone="blue">
+                      {artifact}
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            ) : null}
 
-            {incoming.map((request) => {
-              const mentor = mentors.find((item) => item.id === request.mentorId)
-              const draft = getSlotDraft(request.id, mentor?.calendly || '')
-
-              return (
-                <div
-                  key={request.id}
-                  data-testid={`mentor-request-${request.id.toLowerCase()}`}
-                  className="rounded-[26px] border border-slate-200 bg-white p-5"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-slate-950">{request.ventureName}</h3>
-                        <Badge tone="amber">{request.stage}</Badge>
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{request.challenge}</p>
-                    </div>
-                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                      <p className="font-semibold text-slate-950">TRL {request.trl}</p>
-                      <p className="mt-1">BRL {request.brl}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {request.artifactList.map((artifact) => (
-                      <Badge key={artifact} tone="blue">
-                        {artifact}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <div className="mt-5 grid gap-4 md:grid-cols-2">
-                    <label className="block">
-                      <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                        <Link2 size={16} />
-                        Calendly link
-                      </span>
-                      <input
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
-                        value={draft.calendlyLink}
-                        onChange={(event) => handleSlotChange(request.id, 'calendlyLink', event.target.value, mentor?.calendly || '')}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                        <Clock3 size={16} />
-                        Meeting slot
-                      </span>
-                      <input
-                        type="datetime-local"
-                        className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
-                        value={draft.meetingAt}
-                        onChange={(event) => handleSlotChange(request.id, 'meetingAt', event.target.value, mentor?.calendly || '')}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
-                    <p className="text-sm text-slate-500">
-                      CFE will circulate the meeting details, remind the student, and request a note after the session.
-                    </p>
+              {!response && hasToken ? (
+                <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+                  <SectionHeading
+                    eyebrow="Decision"
+                    title="Respond to the outreach"
+                    description="If you decline, CFE keeps the request in routing and can redirect it to another mentor."
+                  />
+                  <label className="mt-4 block">
+                    <span className="text-sm font-medium text-slate-700">Decline reason</span>
+                    <textarea
+                      className="mt-2 min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                      value={decisionReason}
+                      onChange={(event) => setDecisionReason(event.target.value)}
+                      placeholder="Optional unless you decline"
+                    />
+                  </label>
+                  <div className="mt-4 flex flex-wrap gap-3">
                     <button
                       type="button"
-                      onClick={() => handleShareSlot(request.id, mentor?.calendly || '')}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                      disabled={submittingDecision}
+                      onClick={() => void handleDecision('accepted')}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-300"
                     >
-                      <CalendarCheck2 size={16} />
-                      Share slot
+                      <CheckCircle2 size={16} />
+                      Accept request
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submittingDecision || !decisionReason.trim()}
+                      onClick={() => void handleDecision('declined')}
+                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <XCircle size={16} />
+                      Decline request
                     </button>
                   </div>
                 </div>
-              )
-            })}
-          </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm text-slate-500">
+              Open the desk from a secure mentor link to load a specific request.
+            </div>
+          )}
         </SectionCard>
 
         <div className="space-y-6">
           <SectionCard>
             <SectionHeading
-              eyebrow="Upcoming meetings"
-              title="Keep an eye on what is already on the calendar"
-              description="Meetings stay visible with their context so mentors can prep quickly and CFE can chase attendance if needed."
+              eyebrow="Scheduling"
+              title="Share the meeting slot"
+              description="Once the mentor accepts, this step sends the meeting details back into the CFE-managed pipeline."
             />
-            <div className="space-y-4">
-              {scheduled.map((request) => (
-                <div key={request.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-lg font-semibold text-slate-950">{request.ventureName}</h3>
-                      <p className="mt-2 text-sm text-slate-600">{formatFullDate(request.meetingAt)}</p>
-                    </div>
-                    <a
-                      href={request.calendlyLink}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
-                    >
-                      <Video size={16} />
-                      Open link
-                    </a>
+
+            {request ? (
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <Link2 size={16} />
+                    Meeting link
+                  </span>
+                  <input
+                    value={scheduleDraft.calendlyLink}
+                    onChange={(event) => setScheduleDraft((current) => ({ ...current, calendlyLink: event.target.value }))}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                  />
+                </label>
+                <label className="block">
+                  <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <Clock3 size={16} />
+                    Meeting slot
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={scheduleDraft.meetingAt}
+                    onChange={(event) => setScheduleDraft((current) => ({ ...current, meetingAt: event.target.value }))}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={!canSchedule || submittingSchedule || !scheduleDraft.calendlyLink || !scheduleDraft.meetingAt}
+                  onClick={() => void handleSchedule()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  <CalendarCheck2 size={16} />
+                  {submittingSchedule ? 'Saving slot...' : 'Share slot'}
+                </button>
+                {request.meetingAt ? (
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                    Meeting confirmed for {formatFullDate(request.meetingAt)}
                   </div>
-                  <p className="mt-4 text-sm leading-6 text-slate-600">{request.desiredOutcome}</p>
-                </div>
-              ))}
-            </div>
+                ) : null}
+              </div>
+            ) : null}
           </SectionCard>
 
           <SectionCard>
             <SectionHeading
-              eyebrow="After the meeting"
-              title="Return a concise note to CFE"
-              description="The note closes the loop, informs next steps, and helps CFE decide whether another mentor or a second session is warranted."
+              eyebrow="After the call"
+              title="Leave one useful feedback note"
+              description="The note should help CFE decide whether the founder needs follow-up, another mentor, or a second session."
             />
-            <div className="space-y-4">
-              {scheduled.map((request) => (
-                <div key={request.id} className="rounded-[24px] border border-slate-200 bg-white p-5">
-                  <div className="flex items-center gap-3">
-                    <MessagesSquare size={18} className="text-slate-500" />
-                    <h3 className="text-lg font-semibold text-slate-950">{request.ventureName}</h3>
-                  </div>
+            {request ? (
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                    <MessagesSquare size={16} />
+                    Mentor notes
+                  </span>
                   <textarea
-                    className="mt-4 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
-                    placeholder="What changed after the conversation? What should CFE do next?"
-                    value={feedbackDrafts[request.id] || ''}
+                    value={feedbackDraft.mentorNotes}
                     onChange={(event) =>
-                      setFeedbackDrafts((current) => ({
+                      setFeedbackDraft((current) => ({
                         ...current,
-                        [request.id]: event.target.value,
+                        mentorNotes: event.target.value,
+                      }))
+                    }
+                    className="mt-2 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                    placeholder="What changed after the conversation?"
+                  />
+                </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={feedbackDraft.nextStepRequired}
+                    onChange={(event) =>
+                      setFeedbackDraft((current) => ({
+                        ...current,
+                        nextStepRequired: event.target.checked,
                       }))
                     }
                   />
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleSaveFeedback(request.id)}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                    >
-                      <CheckCircle2 size={16} />
-                      Save feedback
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  A clear next step is required from the founder or CFE
+                </label>
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={feedbackDraft.secondSessionRecommended}
+                    onChange={(event) =>
+                      setFeedbackDraft((current) => ({
+                        ...current,
+                        secondSessionRecommended: event.target.checked,
+                      }))
+                    }
+                  />
+                  Recommend a second mentor session
+                </label>
+                <button
+                  type="button"
+                  disabled={!canLeaveFeedback || submittingFeedback || feedbackDraft.mentorNotes.trim().length < 5}
+                  onClick={() => void handleFeedback()}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  <ShieldCheck size={16} />
+                  {submittingFeedback ? 'Saving note...' : 'Save feedback'}
+                </button>
+              </div>
+            ) : null}
           </SectionCard>
         </div>
       </div>

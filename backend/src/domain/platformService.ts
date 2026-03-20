@@ -47,6 +47,19 @@ const approveSchema = z.object({
   ownerName: z.string().min(2),
 })
 
+const mentorRespondSchema = z.object({
+  decision: z.enum(['accepted', 'declined']),
+  reason: z.string().min(5).optional(),
+}).superRefine((value, context) => {
+  if (value.decision === 'declined' && !value.reason) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['reason'],
+      message: 'A decline reason is required',
+    })
+  }
+})
+
 const jwtTextEncoder = new TextEncoder()
 
 type ServiceDeps = {
@@ -63,14 +76,14 @@ export class PlatformService {
   constructor(private readonly deps: ServiceDeps) {}
 
   async requestMagicLink(email: string) {
-    const user = this.deps.repository.findUserByEmail(email)
+    const user = await this.deps.repository.findUserByEmail(email)
 
     if (!user) {
       return { accepted: true }
     }
 
     const token = randomToken()
-    this.deps.repository.saveMagicLink({
+    await this.deps.repository.saveMagicLink({
       id: `ml-${randomToken().slice(0, 10)}`,
       userId: user.id,
       tokenHash: sha256(token),
@@ -83,23 +96,23 @@ export class PlatformService {
       name: user.name,
     })
 
-    this.recordOutbox('auth.magic_link_requested', 'auth', user.id, { email: user.email })
+    await this.recordOutbox('auth.magic_link_requested', 'auth', user.id, { email: user.email })
 
     return { accepted: true, token }
   }
 
   async verifyMagicLink(token: string) {
-    const record = this.deps.repository.listMagicLinks().find((item) => item.tokenHash === sha256(token))
+    const record = (await this.deps.repository.listMagicLinks()).find((item) => item.tokenHash === sha256(token))
 
     if (!record || record.consumedAt || new Date(record.expiresAt).getTime() < Date.now()) {
       throw new Error('Invalid or expired magic link')
     }
 
-    const user = this.requireUser(record.userId)
-    this.deps.repository.saveMagicLink({ ...record, consumedAt: nowIso() })
+    const user = await this.requireUser(record.userId)
+    await this.deps.repository.saveMagicLink({ ...record, consumedAt: nowIso() })
 
     const refreshToken = randomToken()
-    const session = this.deps.repository.saveSession({
+    const session = await this.deps.repository.saveSession({
       id: `sess-${randomToken().slice(0, 10)}`,
       userId: user.id,
       refreshTokenHash: sha256(refreshToken),
@@ -108,7 +121,7 @@ export class PlatformService {
 
     const accessToken = await this.signAccessToken(user)
 
-    this.recordAudit({
+    await this.recordAudit({
       entityType: 'auth',
       entityId: session.id,
       actorType: 'user',
@@ -121,21 +134,21 @@ export class PlatformService {
   }
 
   async refreshSession(refreshToken: string) {
-    const session = this.deps.repository.findSessionByHash(sha256(refreshToken))
+    const session = await this.deps.repository.findSessionByHash(sha256(refreshToken))
 
     if (!session || session.revokedAt || new Date(session.expiresAt).getTime() < Date.now()) {
       throw new Error('Invalid session')
     }
 
-    const user = this.requireUser(session.userId)
+    const user = await this.requireUser(session.userId)
     const accessToken = await this.signAccessToken(user)
     return { accessToken, user }
   }
 
-  logout(refreshToken: string) {
-    const session = this.deps.repository.findSessionByHash(sha256(refreshToken))
+  async logout(refreshToken: string) {
+    const session = await this.deps.repository.findSessionByHash(sha256(refreshToken))
     if (session) {
-      this.deps.repository.revokeSession(session.id)
+      await this.deps.repository.revokeSession(session.id)
     }
   }
 
@@ -144,16 +157,18 @@ export class PlatformService {
       issuer: this.deps.jwtIssuer,
       audience: this.deps.jwtAudience,
     })
-    return this.requireUser(String(verified.payload.sub))
+    return await this.requireUser(String(verified.payload.sub))
   }
 
   getMe(user: User) {
     return { user }
   }
 
-  listVentures(user: User) {
-    const memberships = this.deps.repository.listMemberships()
-    const ventures = this.deps.repository.listVentures()
+  async listVentures(user: User) {
+    const [memberships, ventures] = await Promise.all([
+      this.deps.repository.listMemberships(),
+      this.deps.repository.listVentures(),
+    ])
 
     if (user.role === 'cfe') {
       return { ventures }
@@ -163,43 +178,45 @@ export class PlatformService {
     return { ventures: ventures.filter((venture) => ventureIds.includes(venture.id)) }
   }
 
-  getVenture(user: User, ventureId: string) {
-    const venture = this.authorizeVentureAccess(user, ventureId)
+  async getVenture(user: User, ventureId: string) {
+    const venture = await this.authorizeVentureAccess(user, ventureId)
     return { venture }
   }
 
-  listRequests(user: User) {
+  async listRequests(user: User) {
     if (user.role === 'cfe') {
-      return { requests: this.listRequestViews() }
+      return { requests: await this.listRequestViews() }
     }
 
-    const ventureIds = this.deps.repository
-      .listMemberships()
+    const memberships = await this.deps.repository.listMemberships()
+    const requestViews = await this.listRequestViews()
+    const ventureIds = memberships
       .filter((membership) => membership.userId === user.id)
       .map((membership) => membership.ventureId)
 
     return {
-      requests: this.listRequestViews().filter((request) => ventureIds.includes(request.ventureId)),
+      requests: requestViews.filter((request) => ventureIds.includes(request.ventureId)),
     }
   }
 
-  listRequestsForVenture(user: User, ventureId: string) {
-    this.authorizeVentureAccess(user, ventureId)
+  async listRequestsForVenture(user: User, ventureId: string) {
+    await this.authorizeVentureAccess(user, ventureId)
     return {
-      requests: this.listRequestViews().filter((request) => request.ventureId === ventureId),
+      requests: (await this.listRequestViews()).filter((request) => request.ventureId === ventureId),
     }
   }
 
-  createRequest(user: User, ventureId: string, input: unknown) {
+  async createRequest(user: User, ventureId: string, input: unknown) {
     if (user.role !== 'founder') {
       throw new Error('Only founders can submit requests')
     }
 
-    const venture = this.authorizeVentureAccess(user, ventureId)
+    const venture = await this.authorizeVentureAccess(user, ventureId)
     const payload = requestCreateSchema.parse(input)
+    const existingRequestIds = (await this.deps.repository.listRequests()).map((request) => request.id)
     const requestId = nextPrefixedId(
       'REQ',
-      this.deps.repository.listRequests().map((request) => request.id),
+      existingRequestIds,
     )
     const createdAt = nowIso()
 
@@ -221,14 +238,12 @@ export class PlatformService {
       submittedAt: createdAt,
     }
 
-    this.deps.repository.saveRequest(request)
+    await this.deps.repository.saveRequest(request)
     const reversedArtifactRefs = [...payload.artifactRefs].reverse()
-    reversedArtifactRefs.forEach((artifactName, index) => {
-      this.deps.repository.saveArtifact({
-        id: nextPrefixedId(
-          'art',
-          this.deps.repository.listArtifactsForRequest(request.id).map((artifact) => artifact.id),
-        ),
+    for (const [index, artifactName] of reversedArtifactRefs.entries()) {
+      const artifactId = `art-${String(reversedArtifactRefs.length - index).padStart(2, '0')}`
+      await this.deps.repository.saveArtifact({
+        id: artifactId,
         organizationId: venture.organizationId,
         requestId: request.id,
         uploaderUserId: user.id,
@@ -241,8 +256,8 @@ export class PlatformService {
         createdAt,
         completedAt: createdAt,
       })
-    })
-    this.deps.repository.replaceShortlistsForRequest(
+    }
+    await this.deps.repository.replaceShortlistsForRequest(
       request.id,
       payload.preferredMentorIds.map((mentorId, index) => ({
         id: `mrs-${request.id}-${index + 1}`,
@@ -252,7 +267,7 @@ export class PlatformService {
       })),
     )
 
-    this.recordAudit({
+    await this.recordAudit({
       entityType: 'mentor_request',
       entityId: request.id,
       actorType: 'user',
@@ -261,23 +276,66 @@ export class PlatformService {
       toStatus: 'cfe_review',
       payload: { ventureId },
     })
-    this.recordOutbox('request.submitted', 'mentor_request', request.id, { ventureId, requestId: request.id })
+    await this.recordOutbox('request.submitted', 'mentor_request', request.id, { ventureId, requestId: request.id })
 
-    return { request: this.requireRequestView(request.id) }
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  approveRequest(user: User, requestId: string, input: unknown) {
+  async submitRequest(user: User, requestId: string) {
+    if (user.role !== 'founder') {
+      throw new Error('Only founders can resubmit requests')
+    }
+
+    const request = await this.authorizeRequestAccess(user, requestId)
+
+    if (request.founderUserId !== user.id) {
+      throw new Error('Forbidden')
+    }
+
+    if (!['draft', 'needs_work'].includes(request.status)) {
+      throw new Error('Only draft or returned requests can be submitted')
+    }
+
+    const next = {
+      ...request,
+      status: 'cfe_review' as const,
+      submittedAt: nowIso(),
+      updatedAt: nowIso(),
+    }
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: request.status === 'draft' ? 'request.submitted' : 'request.resubmitted',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: {},
+    })
+    await this.recordOutbox(
+      request.status === 'draft' ? 'request.submitted' : 'request.resubmitted',
+      'mentor_request',
+      request.id,
+      { ventureId: request.ventureId, requestId: request.id },
+    )
+
+    return { request: await this.requireRequestView(request.id) }
+  }
+
+  async approveRequest(user: User, requestId: string, input: unknown) {
     this.assertRole(user, 'cfe')
     const payload = approveSchema.parse(input)
-    const request = this.requireRequest(requestId)
+    const request = await this.requireRequest(requestId)
+    const cfeOwner = await this.deps.repository.findUserByEmail(`${payload.ownerName.toLowerCase().replace(/\s+/g, '.')}@mentorme.test`)
     const next = {
       ...request,
       status: 'awaiting_mentor' as const,
       updatedAt: nowIso(),
-      cfeOwnerId: this.deps.repository.findUserByEmail(`${payload.ownerName.toLowerCase().replace(/\s+/g, '.')}@mentorme.test`)?.id || user.id,
+      cfeOwnerId: cfeOwner?.id || user.id,
     }
-    this.deps.repository.saveRequest(next)
-    this.recordAudit({
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
       entityType: 'mentor_request',
       entityId: request.id,
       actorType: 'user',
@@ -287,22 +345,22 @@ export class PlatformService {
       toStatus: next.status,
       payload: { ownerName: payload.ownerName },
     })
-    this.recordOutbox('request.approved', 'mentor_request', request.id, { ownerName: payload.ownerName })
-    return { request: this.requireRequestView(request.id) }
+    await this.recordOutbox('request.approved', 'mentor_request', request.id, { ownerName: payload.ownerName })
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  returnRequest(user: User, requestId: string, input: unknown) {
+  async returnRequest(user: User, requestId: string, input: unknown) {
     this.assertRole(user, 'cfe')
     const payload = returnSchema.parse(input)
-    const request = this.requireRequest(requestId)
+    const request = await this.requireRequest(requestId)
     const next = {
       ...request,
       status: 'needs_work' as const,
       mentorNotes: payload.reason,
       updatedAt: nowIso(),
     }
-    this.deps.repository.saveRequest(next)
-    this.recordAudit({
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
       entityType: 'mentor_request',
       entityId: request.id,
       actorType: 'user',
@@ -312,16 +370,16 @@ export class PlatformService {
       toStatus: next.status,
       payload: { reason: payload.reason },
     })
-    this.recordOutbox('request.returned', 'mentor_request', request.id, { reason: payload.reason })
-    return { request: this.requireRequestView(request.id) }
+    await this.recordOutbox('request.returned', 'mentor_request', request.id, { reason: payload.reason })
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  closeRequest(user: User, requestId: string) {
+  async closeRequest(user: User, requestId: string) {
     this.assertRole(user, 'cfe')
-    const request = this.requireRequest(requestId)
+    const request = await this.requireRequest(requestId)
     const next = { ...request, status: 'closed' as const, updatedAt: nowIso() }
-    this.deps.repository.saveRequest(next)
-    this.recordAudit({
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
       entityType: 'mentor_request',
       entityId: request.id,
       actorType: 'user',
@@ -331,24 +389,24 @@ export class PlatformService {
       toStatus: 'closed',
       payload: {},
     })
-    return { request: this.requireRequestView(request.id) }
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  listMentors(user: User) {
-    const mentors = this.deps.repository.listMentors()
+  async listMentors(user: User) {
+    const mentors = await this.deps.repository.listMentors()
     return {
       mentors: user.role === 'cfe' ? mentors : mentors.filter((mentor) => mentor.visibility === 'Active'),
     }
   }
 
-  createMentor(user: User, input: Omit<MentorProfile, 'organizationId'>) {
+  async createMentor(user: User, input: Omit<MentorProfile, 'organizationId'>) {
     this.assertRole(user, 'cfe')
     const mentor = {
       ...input,
       organizationId: user.organizationId,
     }
-    this.deps.repository.saveMentor(mentor)
-    this.recordAudit({
+    await this.deps.repository.saveMentor(mentor)
+    await this.recordAudit({
       entityType: 'mentor',
       entityId: mentor.id,
       actorType: 'user',
@@ -359,9 +417,9 @@ export class PlatformService {
     return { mentor }
   }
 
-  updateMentor(user: User, mentorId: string, updates: Partial<MentorProfile>) {
+  async updateMentor(user: User, mentorId: string, updates: Partial<MentorProfile>) {
     this.assertRole(user, 'cfe')
-    const mentor = this.deps.repository.findMentorById(mentorId)
+    const mentor = await this.deps.repository.findMentorById(mentorId)
     if (!mentor) {
       throw new Error('Mentor not found')
     }
@@ -371,8 +429,8 @@ export class PlatformService {
       id: mentor.id,
       organizationId: mentor.organizationId,
     }
-    this.deps.repository.saveMentor(next)
-    this.recordAudit({
+    await this.deps.repository.saveMentor(next)
+    await this.recordAudit({
       entityType: 'mentor',
       entityId: mentor.id,
       actorType: 'user',
@@ -384,13 +442,14 @@ export class PlatformService {
   }
 
   async presignArtifact(user: User, requestId: string, input: unknown) {
-    this.authorizeRequestAccess(user, requestId)
+    await this.authorizeRequestAccess(user, requestId)
     const payload = presignSchema.parse(input)
+    const existingArtifactIds = (await this.deps.repository.listArtifactsForRequest(requestId)).map((artifact) =>
+      artifact.id.replace('art-', 'art-'),
+    )
     const artifactId = nextPrefixedId(
       'art',
-      this.deps.repository
-        .listArtifactsForRequest(requestId)
-        .map((artifact) => artifact.id.replace('art-', 'art-')),
+      existingArtifactIds,
     )
     const storageKey = artifactStorageKey(requestId, payload.filename)
     const upload = await this.deps.storage.createPresignedUpload({
@@ -413,8 +472,8 @@ export class PlatformService {
       createdAt: nowIso(),
     }
 
-    this.deps.repository.saveArtifact(artifact)
-    this.recordAudit({
+    await this.deps.repository.saveArtifact(artifact)
+    await this.recordAudit({
       entityType: 'artifact',
       entityId: artifact.id,
       actorType: 'user',
@@ -426,9 +485,9 @@ export class PlatformService {
     return { artifact, uploadUrl: upload.uploadUrl }
   }
 
-  completeArtifact(user: User, requestId: string, artifactId: string) {
-    this.authorizeRequestAccess(user, requestId)
-    const artifact = this.deps.repository.findArtifactById(artifactId)
+  async completeArtifact(user: User, requestId: string, artifactId: string) {
+    await this.authorizeRequestAccess(user, requestId)
+    const artifact = await this.deps.repository.findArtifactById(artifactId)
 
     if (!artifact || artifact.requestId !== requestId) {
       throw new Error('Artifact not found')
@@ -439,8 +498,8 @@ export class PlatformService {
       status: 'uploaded' as const,
       completedAt: nowIso(),
     }
-    this.deps.repository.saveArtifact(next)
-    this.recordAudit({
+    await this.deps.repository.saveArtifact(next)
+    await this.recordAudit({
       entityType: 'artifact',
       entityId: artifact.id,
       actorType: 'user',
@@ -453,13 +512,13 @@ export class PlatformService {
 
   async createMentorOutreach(user: User, requestId: string) {
     this.assertRole(user, 'cfe')
-    const request = this.requireRequest(requestId)
+    const request = await this.requireRequest(requestId)
     if (!request.mentorId) {
       throw new Error('Cannot create mentor outreach without a selected mentor')
     }
-    const mentor = this.requireMentor(request.mentorId)
+    const mentor = await this.requireMentor(request.mentorId)
     const token = randomToken()
-    this.deps.repository.saveExternalActionToken({
+    await this.deps.repository.saveExternalActionToken({
       id: `eat-${randomToken().slice(0, 10)}`,
       requestId,
       mentorId: mentor.id,
@@ -474,19 +533,102 @@ export class PlatformService {
       requestId,
       token,
     })
-    this.recordOutbox('mentor.outreach_created', 'mentor_request', requestId, { mentorId: mentor.id })
+    await this.recordOutbox('mentor.outreach_created', 'mentor_request', requestId, { mentorId: mentor.id })
     return { mentorActionToken: token }
   }
 
-  mentorSchedule(token: string, input: unknown) {
+  async getMentorAction(token: string) {
+    const actionToken = await this.requireExternalToken(token)
+    const mentor = await this.deps.repository.findMentorById(actionToken.mentorId)
+
+    if (!mentor) {
+      throw new Error('Mentor not found')
+    }
+
+    return {
+      mentor,
+      mentorAction: {
+        expiresAt: actionToken.expiresAt,
+        purpose: actionToken.purpose,
+        respondedAt: actionToken.respondedAt,
+        response: actionToken.response,
+        responseReason: actionToken.responseReason,
+      },
+      request: await this.requireRequestView(actionToken.requestId),
+    }
+  }
+
+  async mentorRespond(token: string, input: unknown) {
+    const payload = mentorRespondSchema.parse(input)
+    const actionToken = await this.requireExternalToken(token)
+
+    if (actionToken.respondedAt) {
+      throw new Error('Action link has already been used')
+    }
+
+    await this.deps.repository.saveExternalActionToken({
+      ...actionToken,
+      response: payload.decision,
+      respondedAt: nowIso(),
+      responseReason: payload.reason,
+    })
+
+    const request = await this.requireRequest(actionToken.requestId)
+
+    if (payload.decision === 'accepted') {
+      await this.recordAudit({
+        entityType: 'mentor_request',
+        entityId: request.id,
+        actorType: 'mentor',
+        action: 'mentor.accepted',
+        fromStatus: request.status,
+        toStatus: request.status,
+        payload: { mentorId: actionToken.mentorId },
+      })
+      await this.recordOutbox('mentor.accepted', 'mentor_request', request.id, { mentorId: actionToken.mentorId })
+
+      return { decision: payload.decision, request: await this.requireRequestView(request.id) }
+    }
+
+    const next = {
+      ...request,
+      mentorId: undefined,
+      status: 'awaiting_mentor' as const,
+      updatedAt: nowIso(),
+    }
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      actorType: 'mentor',
+      action: 'mentor.declined',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: { mentorId: actionToken.mentorId, reason: payload.reason || '' },
+    })
+    await this.recordOutbox('mentor.declined', 'mentor_request', request.id, {
+      mentorId: actionToken.mentorId,
+      reason: payload.reason || '',
+    })
+
+    return { decision: payload.decision, request: await this.requireRequestView(request.id) }
+  }
+
+  async mentorSchedule(token: string, input: unknown) {
     const payload = scheduleSchema.parse(input)
-    const actionToken = this.requireExternalToken(token)
-    const request = this.requireRequest(actionToken.requestId)
+    const actionToken = await this.requireExternalToken(token)
+
+    if (actionToken.response === 'declined') {
+      throw new Error('Cannot schedule a request after declining it')
+    }
+
+    const request = await this.requireRequest(actionToken.requestId)
+    const existingMeetingIds = (await this.deps.repository.listMeetingsForRequest(request.id)).map((meeting) => meeting.id)
     const meetingId = nextPrefixedId(
       'meet',
-      this.deps.repository.listMeetingsForRequest(request.id).map((meeting) => meeting.id),
+      existingMeetingIds,
     )
-    this.deps.repository.saveMeeting({
+    await this.deps.repository.saveMeeting({
       id: meetingId,
       organizationId: request.organizationId,
       requestId: request.id,
@@ -503,29 +645,29 @@ export class PlatformService {
       calendlyLink: payload.calendlyLink,
       updatedAt: nowIso(),
     }
-    this.deps.repository.saveRequest(next)
-    this.recordAudit({
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
       entityType: 'meeting',
       entityId: meetingId,
       actorType: 'mentor',
       action: 'meeting.scheduled',
       payload: { requestId: request.id },
     })
-    this.recordOutbox('meeting.scheduled', 'mentor_request', request.id, { meetingId })
-    return { request: this.requireRequestView(request.id) }
+    await this.recordOutbox('meeting.scheduled', 'mentor_request', request.id, { meetingId })
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  mentorFeedback(token: string, input: unknown) {
+  async mentorFeedback(token: string, input: unknown) {
     const payload = feedbackSchema.parse(input)
-    const actionToken = this.requireExternalToken(token)
-    const request = this.requireRequest(actionToken.requestId)
-    const meeting = this.deps.repository.listMeetingsForRequest(request.id)[0]
+    const actionToken = await this.requireExternalToken(token)
+    const request = await this.requireRequest(actionToken.requestId)
+    const meeting = (await this.deps.repository.listMeetingsForRequest(request.id))[0]
 
     if (!meeting) {
       throw new Error('No meeting exists for this request')
     }
 
-    this.deps.repository.saveFeedback({
+    await this.deps.repository.saveFeedback({
       id: `mf-${randomToken().slice(0, 10)}`,
       organizationId: request.organizationId,
       requestId: request.id,
@@ -543,8 +685,8 @@ export class PlatformService {
       mentorNotes: payload.mentorNotes,
       updatedAt: nowIso(),
     }
-    this.deps.repository.saveRequest(next)
-    this.recordAudit({
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
       entityType: 'mentor_request',
       entityId: request.id,
       actorType: 'mentor',
@@ -556,18 +698,18 @@ export class PlatformService {
         secondSessionRecommended: payload.secondSessionRecommended,
       },
     })
-    this.recordOutbox('request.feedback_recorded', 'mentor_request', request.id, {})
-    return { request: this.requireRequestView(request.id) }
+    await this.recordOutbox('request.feedback_recorded', 'mentor_request', request.id, {})
+    return { request: await this.requireRequestView(request.id) }
   }
 
-  calendlyWebhook(eventId: string, payload: Record<string, unknown>) {
-    const duplicate = this.deps.repository.findWebhookReceipt('calendly', eventId)
+  async calendlyWebhook(eventId: string, payload: Record<string, unknown>) {
+    const duplicate = await this.deps.repository.findWebhookReceipt('calendly', eventId)
 
     if (duplicate) {
       return { accepted: true, duplicate: true }
     }
 
-    this.deps.repository.saveWebhookReceipt({
+    await this.deps.repository.saveWebhookReceipt({
       id: `wh-${randomToken().slice(0, 10)}`,
       provider: 'calendly',
       eventId,
@@ -581,7 +723,7 @@ export class PlatformService {
     )
 
     if (requestId) {
-      const request = this.requireRequest(requestId)
+      const request = await this.requireRequest(requestId)
       const scheduledAt = String(
         (payload.payload as { scheduled_at?: string } | undefined)?.scheduled_at || request.meetingAt || nowIso(),
       )
@@ -591,11 +733,12 @@ export class PlatformService {
           request.calendlyLink ||
           '',
       )
+      const existingMeetingIds = (await this.deps.repository.listMeetingsForRequest(request.id)).map((meeting) => meeting.id)
       const meetingId = nextPrefixedId(
         'meet',
-        this.deps.repository.listMeetingsForRequest(request.id).map((meeting) => meeting.id),
+        existingMeetingIds,
       )
-      this.deps.repository.saveMeeting({
+      await this.deps.repository.saveMeeting({
         id: meetingId,
         organizationId: request.organizationId,
         requestId: request.id,
@@ -606,7 +749,7 @@ export class PlatformService {
         joinLink,
         status: 'scheduled',
       })
-      this.deps.repository.saveRequest({
+      await this.deps.repository.saveRequest({
         ...request,
         status: 'scheduled',
         meetingAt: scheduledAt,
@@ -634,15 +777,14 @@ export class PlatformService {
     }
   }
 
-  private authorizeVentureAccess(user: User, ventureId: string) {
-    const venture = this.requireVenture(ventureId)
+  private async authorizeVentureAccess(user: User, ventureId: string) {
+    const venture = await this.requireVenture(ventureId)
 
     if (user.role === 'cfe') {
       return venture
     }
 
-    const membership = this.deps.repository
-      .listMemberships()
+    const membership = (await this.deps.repository.listMemberships())
       .find((item) => item.userId === user.id && item.ventureId === ventureId)
 
     if (!membership) {
@@ -652,29 +794,36 @@ export class PlatformService {
     return venture
   }
 
-  private authorizeRequestAccess(user: User, requestId: string) {
-    const request = this.requireRequest(requestId)
-    this.authorizeVentureAccess(user, request.ventureId)
+  private async authorizeRequestAccess(user: User, requestId: string) {
+    const request = await this.requireRequest(requestId)
+    await this.authorizeVentureAccess(user, request.ventureId)
     return request
   }
 
-  private requireRequestView(requestId: string) {
-    const request = this.listRequestViews().find((item) => item.id === requestId)
+  private async requireRequestView(requestId: string) {
+    const request = (await this.listRequestViews()).find((item) => item.id === requestId)
     if (!request) {
       throw new Error('Request not found')
     }
     return request
   }
 
-  private listRequestViews(): RequestView[] {
-    const ventures = new Map(this.deps.repository.listVentures().map((venture) => [venture.id, venture]))
-    const mentors = new Map(this.deps.repository.listMentors().map((mentor) => [mentor.id, mentor]))
-    const users = new Map(this.deps.repository.listUsers().map((user) => [user.id, user]))
+  private async listRequestViews(): Promise<RequestView[]> {
+    const [ventures, mentors, users, requests] = await Promise.all([
+      this.deps.repository.listVentures(),
+      this.deps.repository.listMentors(),
+      this.deps.repository.listUsers(),
+      this.deps.repository.listRequests(),
+    ])
+    const venturesById = new Map(ventures.map((venture) => [venture.id, venture]))
+    const mentorsById = new Map(mentors.map((mentor) => [mentor.id, mentor]))
+    const usersById = new Map(users.map((user) => [user.id, user]))
 
-    return this.deps.repository.listRequests().map((request) => {
-      const venture = ventures.get(request.ventureId)
-      const mentor = request.mentorId ? mentors.get(request.mentorId) : undefined
-      const cfeOwner = request.cfeOwnerId ? users.get(request.cfeOwnerId)?.name : undefined
+    return await Promise.all(requests.map(async (request) => {
+      const artifactList = (await this.deps.repository.listArtifactsForRequest(request.id)).map((artifact) => artifact.filename)
+      const venture = venturesById.get(request.ventureId)
+      const mentor = request.mentorId ? mentorsById.get(request.mentorId) : undefined
+      const cfeOwner = request.cfeOwnerId ? usersById.get(request.cfeOwnerId)?.name : undefined
 
       return {
         id: request.id,
@@ -689,50 +838,50 @@ export class PlatformService {
         status: request.status,
         createdAt: request.createdAt,
         challenge: request.challenge,
-        artifactList: this.deps.repository.listArtifactsForRequest(request.id).map((artifact) => artifact.filename),
+        artifactList,
         desiredOutcome: request.desiredOutcome,
         cfeOwner,
         mentorNotes: request.mentorNotes,
         meetingAt: request.meetingAt,
         calendlyLink: request.calendlyLink,
       }
-    })
+    }))
   }
 
-  private requireUser(userId: string) {
-    const user = this.deps.repository.findUserById(userId)
+  private async requireUser(userId: string) {
+    const user = await this.deps.repository.findUserById(userId)
     if (!user) {
       throw new Error('User not found')
     }
     return user
   }
 
-  private requireVenture(ventureId: string) {
-    const venture = this.deps.repository.findVentureById(ventureId)
+  private async requireVenture(ventureId: string) {
+    const venture = await this.deps.repository.findVentureById(ventureId)
     if (!venture) {
       throw new Error('Venture not found')
     }
     return venture
   }
 
-  private requireRequest(requestId: string) {
-    const request = this.deps.repository.findRequestById(requestId)
+  private async requireRequest(requestId: string) {
+    const request = await this.deps.repository.findRequestById(requestId)
     if (!request) {
       throw new Error('Request not found')
     }
     return request
   }
 
-  private requireMentor(mentorId: string) {
-    const mentor = this.deps.repository.findMentorById(mentorId)
+  private async requireMentor(mentorId: string) {
+    const mentor = await this.deps.repository.findMentorById(mentorId)
     if (!mentor) {
       throw new Error('Mentor not found')
     }
     return mentor
   }
 
-  private requireExternalToken(token: string) {
-    const record = this.deps.repository.findExternalActionTokenByHash(sha256(token))
+  private async requireExternalToken(token: string) {
+    const record = await this.deps.repository.findExternalActionTokenByHash(sha256(token))
 
     if (!record || new Date(record.expiresAt).getTime() < Date.now()) {
       throw new Error('Invalid or expired action token')
@@ -741,12 +890,13 @@ export class PlatformService {
     return record
   }
 
-  private recordAudit(input: Omit<AuditEvent, 'id' | 'organizationId' | 'createdAt'> & { organizationId?: string }) {
+  private async recordAudit(input: Omit<AuditEvent, 'id' | 'organizationId' | 'createdAt'> & { organizationId?: string }) {
+    const users = input.actorUserId ? [] : await this.deps.repository.listUsers()
     const organizationId =
       input.organizationId ||
-      (input.actorUserId ? this.requireUser(input.actorUserId).organizationId : this.deps.repository.listUsers()[0]?.organizationId)
+      (input.actorUserId ? (await this.requireUser(input.actorUserId)).organizationId : users[0]?.organizationId)
 
-    this.deps.repository.saveAuditEvent({
+    await this.deps.repository.saveAuditEvent({
       id: `audit-${randomToken().slice(0, 10)}`,
       organizationId: organizationId || 'org-mentorme',
       createdAt: nowIso(),
@@ -754,8 +904,8 @@ export class PlatformService {
     })
   }
 
-  private recordOutbox(topic: string, aggregateType: string, aggregateId: string, payload: Record<string, unknown>) {
-    const event = this.deps.repository.saveOutboxEvent({
+  private async recordOutbox(topic: string, aggregateType: string, aggregateId: string, payload: Record<string, unknown>) {
+    const event = await this.deps.repository.saveOutboxEvent({
       id: `out-${randomToken().slice(0, 10)}`,
       topic,
       aggregateType,

@@ -65,6 +65,29 @@ describe('AppState API helpers', () => {
       calendlyUrl: 'https://calendly.com/naval',
     })
   })
+
+  it('does not force a JSON content-type header for authorized POSTs without a body', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'fresh-token', user: { role: 'cfe' } }))
+      .mockResolvedValueOnce(jsonResponse({ mentorActionToken: 'token-123' }, 201))
+
+    const client = createApiClient('http://localhost:3001')
+
+    await client.loginForPath('/cfe')
+    await client.createMentorOutreach('REQ-003')
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/requests/REQ-003/mentor-outreach',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.not.objectContaining({
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
 })
 
 const jsonResponse = (body, status = 200) => ({
