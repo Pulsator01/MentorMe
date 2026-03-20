@@ -91,17 +91,16 @@ The AI routes listed on the mid-sem page are roadmap items only:
 
 Do not imply they exist.
 
-### 6. Some older docs are stale
+### 6. The main presentation docs are now aligned with the current build
 
-The newest code is ahead of some older docs.
+The README, system architecture doc, code-review packet, mid-sem readiness note, and video script pack now reflect the same current implementation state:
 
-Examples:
+- routed mentor desk is live
+- Prisma runtime selection is implemented
+- the corrected endpoint inventory is `28` total with `26` green and `2` white
+- the remaining work is product polish and AI, not missing core non-AI workflow
 
-- `docs/code-review-readiness.md` still says mentor accept/decline is not implemented.
-- `docs/system-architecture.md` still speaks about Prisma as if runtime wiring were still pending.
-- `docs/midsem-readiness.md` still lists Prisma runtime as a next step even though runtime selection and Prisma smoke testing already exist.
-
-For this submission, use this audit pack and the current code, not the older doc wording.
+The remaining presentation risk is no longer documentation drift. It is using old screenshots or quoting older endpoint counts from memory.
 
 ## Rubric Readiness
 
@@ -220,9 +219,9 @@ Color logic:
 
 ### Still incomplete for presentation polish
 
-- update the progress sheet you present so it includes all `28` endpoints, not the older `22`
-- use Swagger screenshots for backend-complete routes that are not yet in the current UI
-- avoid using stale talking points from older docs
+- capture fresh screenshots from the current routed flows and Swagger
+- use the corrected `28`-endpoint sheet everywhere in the deck
+- keep the market slide honest by presenting `300-500` programs as a conservative inference, not an official government total
 
 ## What You Should And Should Not Claim
 
@@ -236,7 +235,7 @@ Color logic:
 ### Do not claim
 
 - "AI features are already built."
-- "Older docs are fully aligned with the latest implementation."
+- "`300-500` target programs is an official government count."
 
 ## Recommended Mid-Sem Demo Scope
 

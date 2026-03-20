@@ -258,7 +258,7 @@ On-slide text:
 - Swagger UI at `/docs/`
 - Backend workflow tests
 - Frontend route tests
-- Browser E2E for founder and mentor-network flows
+- Browser E2E for founder, mentor-network, and secure mentor flows
 - Prisma E2E smoke against PostgreSQL
 
 Add this block to the slide:
@@ -284,7 +284,6 @@ On-slide text:
 - Add explicit sign-in and logout UX
 - Replace stub artifact storage with real object storage
 - Improve mentor-side live refresh after secure-link load
-- Add explicit sign-in UX beyond demo bootstrap
 - Build the two planned AI endpoints
 
 Add one final line:
@@ -312,9 +311,9 @@ What to say:
 
 ### What not to say on camera
 
-- do not say the mentor dashboard is fully live in the routed app
 - do not say AI endpoints are already implemented
-- do not use the older stale endpoint counts from the existing readiness page without correcting them
+- do not say `300-500` programs is an official government total
+- do not use older stale endpoint counts without correcting them
 
 ### Best way to handle the professor's 70% requirement
 
