@@ -245,7 +245,8 @@ Keep the live demo tight:
 1. `/founders`
 2. `/cfe`
 3. `/cfe/network`
-4. `/students`
-5. `http://localhost:3001/docs/`
+4. `/mentors/desk`
+5. `/students`
+6. `http://localhost:3001/docs/`
 
 That gives you the strongest story with the least risk.
