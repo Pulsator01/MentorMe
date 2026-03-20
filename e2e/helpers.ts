@@ -20,6 +20,15 @@ const isApiPath = (url: string, pathname: string) => {
   }
 }
 
+const isRequestListPath = (url: string) => {
+  try {
+    const pathname = new URL(url).pathname
+    return pathname === '/requests' || /^\/ventures\/[^/]+\/requests$/.test(pathname)
+  } catch {
+    return false
+  }
+}
+
 export const gotoAndHydrate = async (page: Page, pathname: string) => {
   const hydration = waitForRouteHydration(page)
 
@@ -50,7 +59,7 @@ const waitForRouteHydration = (page: Page) => {
 
 const waitForStateSync = (page: Page) => {
   const venturesResponse = page.waitForResponse((response) => isApiPath(response.url(), '/ventures') && response.status() === 200)
-  const requestsResponse = page.waitForResponse((response) => isApiPath(response.url(), '/requests') && response.status() === 200)
+  const requestsResponse = page.waitForResponse((response) => isRequestListPath(response.url()) && response.status() === 200)
   const mentorsResponse = page.waitForResponse((response) => isApiPath(response.url(), '/mentors') && response.status() === 200)
 
   return Promise.all([venturesResponse, requestsResponse, mentorsResponse])

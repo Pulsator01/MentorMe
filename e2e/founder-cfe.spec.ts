@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { actAndHydrate, gotoAndHydrate, reloadAndHydrate, resetDatabase } from './helpers'
+import { gotoAndHydrate, resetDatabase } from './helpers'
 
 test.describe.configure({ mode: 'serial' })
 
@@ -25,9 +25,7 @@ test('founder request moves into the CFE approval queue through the UI', async (
       response.url().endsWith('/ventures/v-ecodrone/requests') &&
       response.status() === 201,
   )
-  await actAndHydrate(page, async () => {
-    await page.getByRole('button', { name: 'Send to CFE Review' }).click()
-  })
+  await page.getByRole('button', { name: 'Send to CFE Review' }).click()
   const createResponse = await createResponsePromise
   const createBody = (await createResponse.json()) as { request: { id: string } }
   const requestId = createBody.request.id
@@ -40,22 +38,37 @@ test('founder request moves into the CFE approval queue through the UI', async (
   await expect(founderCard).toBeVisible()
   await expect(founderCard).toContainText('cfe review')
   await expect(founderCard).toContainText('3 attached items')
+  const presignResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/requests/${requestId}/artifacts/presign`) &&
+      response.status() === 201,
+  )
+  const completeResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/requests/${requestId}/artifacts/complete`) &&
+      response.status() === 200,
+  )
+  await page.getByLabel(`Upload artifact for ${requestId}`).setInputFiles({
+    name: 'browser-followup-note.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Founder uploaded another supporting note after submission.'),
+  })
+  await presignResponsePromise
+  await completeResponsePromise
+  await expect(founderCard).toContainText('4 attached items')
+  await expect(founderCard).toContainText('browser-followup-note.txt')
 
-  await gotoAndHydrate(page, '/cfe')
-  const queuedCard = page
+  const cfePage = await page.context().newPage()
+  await gotoAndHydrate(cfePage, '/cfe')
+  const queuedCard = cfePage
     .getByText(uniqueChallenge, { exact: true })
     .locator('xpath=ancestor::div[contains(@class,"rounded-3xl") and contains(@class,"border")][1]')
   await expect(queuedCard).toBeVisible()
   await expect(queuedCard).toContainText(requestId)
-  await actAndHydrate(page, async () => {
-    await queuedCard.getByRole('button', { name: 'Approve' }).click()
-  })
+  await queuedCard.getByRole('button', { name: 'Approve' }).click()
 
-  await gotoAndHydrate(page, '/founders')
-  await reloadAndHydrate(page)
-
-  const approvedFounderCard = page
-    .getByText(uniqueChallenge, { exact: true })
-    .locator('xpath=ancestor::div[contains(@class,"rounded-3xl") and contains(@class,"border")][1]')
-  await expect(approvedFounderCard).toContainText('awaiting mentor')
+  await expect(founderCard).toContainText('awaiting mentor')
+  await cfePage.close()
 })

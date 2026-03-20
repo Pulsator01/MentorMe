@@ -78,10 +78,14 @@ flowchart TD
 - founder request submission
 - founder resubmission after CFE return
 - CFE return and approve actions
+- CFE close request action
 - mentor roster create and update
+- routed mentor desk with secure link inspection
 - secure mentor accept/decline response endpoint
 - mentor scheduling and feedback capture
 - artifact presign and complete flow
+- founder-side artifact upload UI
+- frontend live update consumption with polling fallback
 - calendly webhook idempotency
 - Swagger UI at `/docs/` and OpenAPI JSON at `/docs/json`
 - Prisma schema covering the production data model
@@ -91,8 +95,8 @@ flowchart TD
 
 ### Still after mid-sem
 
-- boot local PostgreSQL in the dev environment and run the Prisma migrate/seed flow
-- consume SSE in the frontend for live request updates
+- add explicit sign-in and logout UX beyond demo bootstrap
+- replace stub upload URLs with real object storage
 - add production-grade AI endpoints
 
 ## 7. Feedback Learnings Reflected In The Product

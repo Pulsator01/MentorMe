@@ -44,7 +44,7 @@ export default defineConfig({
   },
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: 'http://127.0.0.1:4175',
     headless: true,
     viewport: { width: 1440, height: 960 },
     trace: 'retain-on-failure',
@@ -55,11 +55,11 @@ export default defineConfig({
   webServer: [
     {
       command: 'tsx backend/src/server.ts',
-      url: 'http://127.0.0.1:3001/docs/json',
+      url: 'http://127.0.0.1:3301/docs/json',
       reuseExistingServer: true,
       env: {
         ...sharedEnv,
-        API_PORT: '3001',
+        API_PORT: '3301',
         EXPOSE_DEBUG_TOKENS: 'true',
       },
       stdout: 'pipe',
@@ -67,12 +67,12 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'vite --host 127.0.0.1 --port 4173',
-      url: 'http://127.0.0.1:4173',
+      command: 'vite --host 127.0.0.1 --port 4175',
+      url: 'http://127.0.0.1:4175',
       reuseExistingServer: true,
       env: {
         ...sharedEnv,
-        VITE_API_BASE_URL: 'http://127.0.0.1:3001',
+        VITE_API_BASE_URL: 'http://127.0.0.1:3301',
       },
       stdout: 'pipe',
       stderr: 'pipe',
