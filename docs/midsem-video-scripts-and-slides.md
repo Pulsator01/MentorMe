@@ -126,9 +126,14 @@ What to say:
 
 Presenter backup note for Slide 5:
 
-- `300 incubators`: Startup India Funding Guide says the Seed Fund Scheme is designed to support an estimated 3,600 entrepreneurs through `300 incubators`
-- `72 AICs`: Atal Innovation Mission official impact page reports `72` Atal Incubation Centres
+- Verified on `2026-03-20`
+- `300 incubators`: Startup India Funding Guide says the Seed Fund Scheme is designed to support an estimated `3,600 entrepreneurs through 300 incubators`
+- `72 AICs`: Atal Innovation Mission official impact and overview pages report `72` Atal Incubation Centres
+- `300-500` programs is an inference for the beachhead slide, not an official government count. Present it as a conservative range that starts from those two official ecosystem anchors and leaves room for overlap.
 - `INR 6-25 crore TAM`: pitch assumption based on `300-500` programs and `INR 2-5 lakh` annual contract value
+- Sources:
+  - [Startup India Funding Guide](https://www.startupindia.gov.in/content/sih/en/funding.html)
+  - [Atal Innovation Mission](https://aim.gov.in/)
 
 ## Video 2
 

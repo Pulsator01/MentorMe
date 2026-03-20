@@ -24,6 +24,7 @@ This document maps the professor's mid-sem expectations to the current MentorMe 
 - Core users: founders, students supporting ventures, CFE/incubation operators, mentors
 - Broader market: incubators, entrepreneurship cells, accelerator programs, innovation offices, startup support teams
 - Commercial wedge: program operations software for mentor routing, capacity control, and follow-through
+- Endpoint inventory used for the presentation: `28` total, `26` green, `0` yellow, `2` white
 
 ## 3. System Flow
 
@@ -107,7 +108,10 @@ flowchart TD
 
 ## 8. Verification
 
-- Backend tests: `npm test -- backend/src/app.test.ts`
-- Frontend tests: `npm test -- src/App.test.jsx src/context/AppState.test.jsx`
+- Full test suite: `npm test`
+- Lint: `npm run lint`
+- Typecheck: `npx tsc -p /Users/owlxshri/Desktop/MentorMe/tsconfig.json`
+- Browser E2E: `npm run e2e:ui`
+- Prisma E2E: `npm run e2e:prisma`
 - Swagger UI: `http://localhost:3001/docs/`
 - Persistence architecture: `docs/persistence-architecture.md`
