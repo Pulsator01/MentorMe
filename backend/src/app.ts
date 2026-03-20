@@ -495,6 +495,16 @@ const buildOpenApiDocument = () =>
         },
       },
     },
+    '/mentor-actions/{token}': {
+      get: {
+        tags: ['Mentors'],
+        summary: 'Inspect a secure mentor action link',
+        parameters: [pathParameter('token', 'Secure mentor action token')],
+        responses: {
+          200: jsonResponse('Mentor action detail'),
+        },
+      },
+    },
     '/mentor-actions/{token}/respond': {
       post: {
         tags: ['Mentors'],
@@ -975,6 +985,21 @@ export const createApp = (options: AppOptions) => {
     }
   })
 
+  app.get('/mentor-actions/:token', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Inspect a secure mentor action link',
+      params: stringIdParamSchema('token', 'Secure mentor action token'),
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(10) }).parse(request.params)
+      return await service.getMentorAction(params.token)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
   app.post('/mentor-actions/:token/respond', {
     schema: {
       tags: ['Mentors'],
@@ -1053,23 +1078,30 @@ export const createApp = (options: AppOptions) => {
       summary: 'Open the request update event stream',
       security: bearerSecurity,
     },
-  }, async (_request, reply) => {
-    reply.raw.setHeader('Content-Type', 'text/event-stream')
-    reply.raw.setHeader('Cache-Control', 'no-cache')
-    reply.raw.setHeader('Connection', 'keep-alive')
-    reply.hijack()
+  }, async (request, reply) => {
+    try {
+      await readAuthUser(request)
 
-    const send = (event: Event) => {
-      const detail = (event as CustomEvent<Record<string, unknown>>).detail
-      reply.raw.write(`data: ${JSON.stringify(detail)}\n\n`)
+      reply.raw.setHeader('Content-Type', 'text/event-stream')
+      reply.raw.setHeader('Cache-Control', 'no-cache')
+      reply.raw.setHeader('Connection', 'keep-alive')
+      reply.raw.flushHeaders?.()
+      reply.hijack()
+
+      const send = (event: Event) => {
+        const detail = (event as CustomEvent<Record<string, unknown>>).detail
+        reply.raw.write(`data: ${JSON.stringify(detail)}\n\n`)
+      }
+
+      events.addEventListener('request.updated', send)
+      reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
+      reply.raw.on('close', () => {
+        events.removeEventListener('request.updated', send)
+        reply.raw.end()
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
     }
-
-    events.addEventListener('request.updated', send)
-    reply.raw.write(`data: ${JSON.stringify({ type: 'connected' })}\n\n`)
-    reply.raw.on('close', () => {
-      events.removeEventListener('request.updated', send)
-      reply.raw.end()
-    })
   })
 
   return app

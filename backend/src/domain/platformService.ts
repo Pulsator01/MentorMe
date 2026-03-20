@@ -537,6 +537,27 @@ export class PlatformService {
     return { mentorActionToken: token }
   }
 
+  async getMentorAction(token: string) {
+    const actionToken = await this.requireExternalToken(token)
+    const mentor = await this.deps.repository.findMentorById(actionToken.mentorId)
+
+    if (!mentor) {
+      throw new Error('Mentor not found')
+    }
+
+    return {
+      mentor,
+      mentorAction: {
+        expiresAt: actionToken.expiresAt,
+        purpose: actionToken.purpose,
+        respondedAt: actionToken.respondedAt,
+        response: actionToken.response,
+        responseReason: actionToken.responseReason,
+      },
+      request: await this.requireRequestView(actionToken.requestId),
+    }
+  }
+
   async mentorRespond(token: string, input: unknown) {
     const payload = mentorRespondSchema.parse(input)
     const actionToken = await this.requireExternalToken(token)

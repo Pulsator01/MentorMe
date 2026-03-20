@@ -453,6 +453,38 @@ describe('MentorMe backend workflow', () => {
     expect(events.map((event) => event.action)).toContain('mentor.declined')
   })
 
+  it('loads secure mentor action details for a generated outreach link', async () => {
+    const { app } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const outreachRes = await app.inject({
+      method: 'POST',
+      url: '/requests/REQ-003/mentor-outreach',
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+
+    expect(outreachRes.statusCode).toBe(201)
+    const token = parseJson<{ mentorActionToken: string }>(outreachRes).mentorActionToken
+
+    const detailRes = await app.inject({
+      method: 'GET',
+      url: `/mentor-actions/${token}`,
+    })
+
+    expect(detailRes.statusCode).toBe(200)
+    const detailBody = parseJson<{
+      mentor: { id: string; name: string }
+      mentorAction: { purpose: string; response?: string }
+      request: { id: string; status: string }
+    }>(detailRes)
+    expect(detailBody.mentor.id).toBe('m-radhika')
+    expect(detailBody.mentor.name).toBe('Dr. Radhika Gupta')
+    expect(detailBody.mentorAction.purpose).toBe('mentor_request')
+    expect(detailBody.mentorAction.response).toBeUndefined()
+    expect(detailBody.request.id).toBe('REQ-003')
+    expect(detailBody.request.status).toBe('awaiting_mentor')
+  })
+
   it('serves Swagger UI and a usable OpenAPI document for endpoint testing', async () => {
     const { app } = buildTestApp()
 
@@ -466,6 +498,7 @@ describe('MentorMe backend workflow', () => {
     expect(jsonBody.openapi).toBe('3.1.0')
     expect(jsonBody.info.title).toBe('MentorMe API')
     expect(jsonBody.paths['/ventures/{ventureId}/requests']).toBeTruthy()
+    expect(jsonBody.paths['/mentor-actions/{token}']).toBeTruthy()
     expect(jsonBody.paths['/mentor-actions/{token}/respond']).toBeTruthy()
 
     const uiRes = await app.inject({
@@ -516,6 +549,18 @@ describe('MentorMe backend workflow', () => {
       'https://api.calendly.com/scheduled_events/evt_123',
     )
     expect((await repository.findRequestById('REQ-003'))?.calendlyLink).toBe('https://api.calendly.com/scheduled_events/evt_123')
+  })
+
+  it('rejects unauthenticated notification stream requests', async () => {
+    const { app } = buildTestApp()
+
+    const notificationsRes = await app.inject({
+      method: 'GET',
+      url: '/notifications/stream',
+    })
+
+    expect(notificationsRes.statusCode).toBe(400)
+    expect(notificationsRes.body).toContain('Unauthorized')
   })
 })
 
