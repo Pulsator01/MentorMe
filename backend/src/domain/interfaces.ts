@@ -57,6 +57,36 @@ export type MeetingSummaryOutput = {
   studentActionItems: string[]
 }
 
+export type MentorRecommendationInput = {
+  brl?: number
+  challenge: string
+  desiredOutcome?: string
+  domain?: string
+  maxResults?: number
+  stage?: string
+  trl?: number
+  ventureName: string
+}
+
+export type MentorRecommendationCandidate = Pick<
+  MentorProfile,
+  'bio' | 'domains' | 'focus' | 'id' | 'location' | 'monthlyLimit' | 'name' | 'responseWindow' | 'stages' | 'title' | 'tolerance'
+>
+
+export type MentorRecommendationOutput = {
+  provider: 'heuristic' | 'openai'
+  routingNote: string
+  searchTags: string[]
+  shortlist: Array<{
+    caution?: string
+    mentorId: string
+    mentorName: string
+    reasons: string[]
+    score: number
+    title: string
+  }>
+}
+
 export interface PlatformRepository {
   listUsers(): Promise<User[]>
   findUserByEmail(email: string): Promise<User | undefined>
@@ -115,4 +145,5 @@ export interface QueuePublisher {
 export interface AiGateway {
   generateMeetingSummary(input: MeetingSummaryInput): Promise<MeetingSummaryOutput>
   generateRequestBrief(input: RequestBriefInput): Promise<RequestBriefOutput>
+  recommendMentors(input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }): Promise<MentorRecommendationOutput>
 }

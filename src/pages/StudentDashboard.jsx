@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BrainCircuit, FileUp, Lightbulb, Send, Target } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import NudgeFeed from '../components/NudgeFeed'
@@ -53,8 +53,32 @@ const getMatchScore = (mentor, form) => {
   return Math.min(99, score)
 }
 
+const getFallbackReasons = (mentor, form) => {
+  const tokens = domainTokens(`${form.domain} ${form.challenge} ${form.desiredOutcome}`)
+  const domainHits = mentor.domains.filter((domain) => tokens.some((token) => domain.toLowerCase().includes(token)))
+  const focusHits = mentor.focus.filter((focus) => tokens.some((token) => focus.toLowerCase().includes(token)))
+
+  return [
+    domainHits.length > 0 ? `Domain overlap: ${domainHits.slice(0, 2).join(', ')}` : '',
+    focusHits.length > 0 ? `Functional fit: ${focusHits.slice(0, 2).join(', ')}` : '',
+    mentor.stages.some((stage) => stage.toLowerCase() === form.stage.toLowerCase())
+      ? `Has experience with ${form.stage} stage asks`
+      : '',
+    mentor.tolerance === 'High' ? 'High patience tolerance suits an evolving founder ask' : '',
+  ].filter(Boolean)
+}
+
 function StudentDashboard() {
-  const { venture, mentors, requests, submitRequest, resubmitRequest, uploadArtifact, generateAiRequestBrief } = useAppState()
+  const {
+    venture,
+    mentors,
+    requests,
+    submitRequest,
+    resubmitRequest,
+    uploadArtifact,
+    generateAiMentorRecommendations,
+    generateAiRequestBrief,
+  } = useAppState()
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
   const [resubmittingId, setResubmittingId] = useState('')
@@ -65,6 +89,9 @@ function StudentDashboard() {
   const [aiSuggestion, setAiSuggestion] = useState(null)
   const [aiError, setAiError] = useState('')
   const [isGeneratingBrief, setIsGeneratingBrief] = useState(false)
+  const [aiMentorRecommendations, setAiMentorRecommendations] = useState(null)
+  const [mentorRecommendationError, setMentorRecommendationError] = useState('')
+  const [isGeneratingMentorRecommendations, setIsGeneratingMentorRecommendations] = useState(false)
   const [form, setForm] = useState({
     ventureName: venture.name,
     stage: venture.stage,
@@ -91,17 +118,53 @@ function StudentDashboard() {
 
   const [selectedMentorId, setSelectedMentorId] = useState(availableMentors[0]?.id || '')
 
-  const recommendedMentors = useMemo(
+  const fallbackRecommendedMentors = useMemo(
     () =>
       availableMentors
-        .map((mentor) => ({ ...mentor, score: getMatchScore(mentor, form) }))
+        .map((mentor) => ({
+          ...mentor,
+          score: getMatchScore(mentor, form),
+          reasons: getFallbackReasons(mentor, form),
+          recommendationProvider: 'fallback',
+        }))
         .sort((left, right) => right.score - left.score)
         .slice(0, 3),
     [availableMentors, form],
   )
 
+  const recommendedMentors = useMemo(() => {
+    if (!aiMentorRecommendations?.shortlist?.length) {
+      return fallbackRecommendedMentors
+    }
+
+    return aiMentorRecommendations.shortlist
+      .map((item) => {
+        const mentor = availableMentors.find((candidate) => candidate.id === item.mentorId)
+        if (!mentor) {
+          return null
+        }
+
+        return {
+          ...mentor,
+          score: item.score,
+          reasons: item.reasons,
+          caution: item.caution,
+          recommendationProvider: aiMentorRecommendations.provider,
+        }
+      })
+      .filter(Boolean)
+  }, [aiMentorRecommendations, availableMentors, fallbackRecommendedMentors])
+
   const selectedMentor =
     recommendedMentors.find((mentor) => mentor.id === selectedMentorId) || recommendedMentors[0] || null
+
+  useEffect(() => {
+    if (recommendedMentors.some((mentor) => mentor.id === selectedMentorId)) {
+      return
+    }
+
+    setSelectedMentorId(recommendedMentors[0]?.id || '')
+  }, [recommendedMentors, selectedMentorId])
 
   const requestCounts = {
     queued: founderRequests.filter((request) => ['draft', 'cfe_review', 'awaiting_mentor'].includes(request.status)).length,
@@ -245,7 +308,35 @@ function StudentDashboard() {
       challenge: aiSuggestion.challenge,
       desiredOutcome: aiSuggestion.desiredOutcome,
     }))
+    setAiMentorRecommendations(null)
+    setMentorRecommendationError('')
     setFlashMessage(`Applied ${aiSuggestion.provider} brief suggestion`)
+  }
+
+  const handleGenerateMentorRecommendations = async () => {
+    setIsGeneratingMentorRecommendations(true)
+    setMentorRecommendationError('')
+
+    try {
+      const result = await generateAiMentorRecommendations({
+        ventureName: form.ventureName,
+        domain: form.domain,
+        stage: form.stage,
+        trl: Number(form.trl),
+        brl: Number(form.brl),
+        challenge: form.challenge,
+        desiredOutcome: form.desiredOutcome,
+        maxResults: 3,
+      })
+      setAiMentorRecommendations(result.recommendations)
+      if (result.recommendations.shortlist[0]?.mentorId) {
+        setSelectedMentorId(result.recommendations.shortlist[0].mentorId)
+      }
+    } catch (error) {
+      setMentorRecommendationError(error.message || 'The AI mentor matcher is unavailable right now.')
+    } finally {
+      setIsGeneratingMentorRecommendations(false)
+    }
   }
 
   return (
@@ -524,13 +615,59 @@ function StudentDashboard() {
               title="Pick a likely starting point"
               description="Founders do not directly connect with mentors here. This simply gives CFE a stronger first shortlist."
               action={
-                selectedMentor ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-                    Selected: {selectedMentor.name}
-                  </div>
-                ) : null
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleGenerateMentorRecommendations}
+                    disabled={isGeneratingMentorRecommendations || availableMentors.length === 0}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <BrainCircuit size={16} />
+                    {isGeneratingMentorRecommendations
+                      ? 'Ranking mentors...'
+                      : aiMentorRecommendations
+                        ? 'Refresh AI ranking'
+                        : 'Recommend with AI'}
+                  </button>
+                  {selectedMentor ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                      Selected: {selectedMentor.name}
+                    </div>
+                  ) : null}
+                </div>
               }
             />
+            {mentorRecommendationError ? (
+              <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+                {mentorRecommendationError}
+              </div>
+            ) : null}
+            {aiMentorRecommendations ? (
+              <div className="mb-4 rounded-3xl border border-sky-200 bg-sky-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700">{aiMentorRecommendations.provider} ranking</p>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-700">{aiMentorRecommendations.routingNote}</p>
+                  </div>
+                  <Badge tone="blue">{aiMentorRecommendations.shortlist.length} mentors shortlisted</Badge>
+                </div>
+                {aiMentorRecommendations.searchTags.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {aiMentorRecommendations.searchTags.slice(0, 5).map((tag) => (
+                      <Badge key={tag} tone="blue">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mb-4 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm leading-6 text-slate-600">
+                  The fallback shortlist uses domain overlap, stage fit, and mentor tolerance. Run the AI matcher to rank active mentors from the database with clearer routing reasons for CFE.
+                </p>
+              </div>
+            )}
             <div className="space-y-3">
               {recommendedMentors.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
@@ -563,7 +700,7 @@ function StudentDashboard() {
                         {mentor.score}%
                       </p>
                       <p className={cn('text-[11px] uppercase tracking-[0.22em]', selectedMentorId === mentor.id ? 'text-slate-400' : 'text-slate-500')}>
-                        Match
+                        {mentor.recommendationProvider === 'fallback' ? 'Fallback fit' : 'AI rank'}
                       </p>
                     </div>
                   </div>
@@ -591,6 +728,40 @@ function StudentDashboard() {
                       Responds in {mentor.responseWindow}. Monthly capacity: {mentor.monthlyLimit} sessions.
                     </p>
                   </div>
+                  {mentor.reasons?.length ? (
+                    <div
+                      className={cn(
+                        'mt-4 rounded-2xl border px-4 py-3',
+                        selectedMentorId === mentor.id
+                          ? 'border-slate-700 bg-slate-800/70'
+                          : 'border-slate-200 bg-slate-50',
+                      )}
+                    >
+                      <p className={cn('text-xs font-semibold uppercase tracking-[0.22em]', selectedMentorId === mentor.id ? 'text-slate-300' : 'text-slate-500')}>
+                        Why this mentor
+                      </p>
+                      <ul className={cn('mt-2 space-y-2 text-sm leading-6', selectedMentorId === mentor.id ? 'text-slate-200' : 'text-slate-600')}>
+                        {mentor.reasons.slice(0, 3).map((reason) => (
+                          <li key={`${mentor.id}-${reason}`} className="flex gap-2">
+                            <span aria-hidden="true">•</span>
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {mentor.caution ? (
+                    <div
+                      className={cn(
+                        'mt-3 rounded-2xl border px-4 py-3 text-sm leading-6',
+                        selectedMentorId === mentor.id
+                          ? 'border-amber-400/40 bg-amber-400/10 text-amber-100'
+                          : 'border-amber-200 bg-amber-50 text-amber-900',
+                      )}
+                    >
+                      Caution: {mentor.caution}
+                    </div>
+                  ) : null}
                 </button>
               ))}
             </div>

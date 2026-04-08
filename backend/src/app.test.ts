@@ -520,6 +520,7 @@ describe('MentorMe backend workflow', () => {
     expect(jsonBody.paths['/mentor-actions/{token}/respond']).toBeTruthy()
     expect(jsonBody.paths['/ai/request-brief']).toBeTruthy()
     expect(jsonBody.paths['/ai/meeting-summary']).toBeTruthy()
+    expect(jsonBody.paths['/ai/mentor-recommendations']).toBeTruthy()
 
     const uiRes = await app.inject({
       method: 'GET',
@@ -582,6 +583,58 @@ describe('MentorMe backend workflow', () => {
     expect(body.summary.provider).toBe('heuristic')
     expect(body.summary.founderActionItems.length).toBeGreaterThan(0)
     expect(generateMeetingSummary).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns AI-ranked mentor recommendations from active mentor profiles only', async () => {
+    const { app } = buildTestApp((state) => {
+      state.mentors.push({
+        id: 'm-paused-growth',
+        organizationId: state.organization.id,
+        name: 'Paused Growth Mentor',
+        email: 'paused.growth@mentorme.test',
+        title: 'Growth Advisor',
+        location: 'Remote',
+        focus: ['Growth loops', 'Fundraising'],
+        stages: ['MVP', 'Pilot'],
+        domains: ['Industrial drones'],
+        tolerance: 'High',
+        monthlyLimit: 2,
+        visibility: 'Paused',
+        responseWindow: '48 hours',
+        calendlyUrl: '',
+        bio: 'Strong fit, but intentionally paused.',
+      })
+    })
+    const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ai/mentor-recommendations',
+      headers: { authorization: `Bearer ${founderToken}` },
+      payload: {
+        ventureName: 'EcoDrone Systems',
+        domain: 'Industrial drones',
+        stage: 'MVP',
+        trl: 4,
+        brl: 3,
+        challenge: 'Need help tightening fundraising framing and sequencing pilot conversations.',
+        desiredOutcome: 'Leave with a sharper investor story and a clearer pilot wedge.',
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = parseJson<{
+      recommendations: {
+        provider: string
+        routingNote: string
+        shortlist: Array<{ mentorId: string; reasons: string[]; score: number }>
+      }
+    }>(response)
+    expect(body.recommendations.provider).toBe('heuristic')
+    expect(body.recommendations.shortlist.length).toBeGreaterThan(0)
+    expect(body.recommendations.shortlist.every((item) => item.mentorId !== 'm-paused-growth')).toBe(true)
+    expect(body.recommendations.shortlist[0].reasons.length).toBeGreaterThan(0)
+    expect(body.recommendations.routingNote.length).toBeGreaterThan(0)
   })
 
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {

@@ -1,6 +1,9 @@
 import type {
   MeetingSummaryInput,
   MeetingSummaryOutput,
+  MentorRecommendationInput,
+  MentorRecommendationCandidate,
+  MentorRecommendationOutput,
   RequestBriefInput,
   RequestBriefOutput,
 } from '../domain/interfaces'
@@ -113,6 +116,46 @@ const meetingSummarySchema: JsonSchemaDefinition = {
       'followUpQuestions',
       'secondSessionRecommended',
     ],
+  },
+}
+
+const mentorRecommendationSchema: JsonSchemaDefinition = {
+  name: 'mentor_recommendation_shortlist',
+  description: 'AI-ranked shortlist of mentors drawn strictly from the provided mentor database candidates.',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      provider: { type: 'string', enum: ['openai'] },
+      routingNote: { type: 'string' },
+      searchTags: {
+        type: 'array',
+        items: { type: 'string' },
+        minItems: 1,
+      },
+      shortlist: {
+        type: 'array',
+        minItems: 1,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            mentorId: { type: 'string' },
+            mentorName: { type: 'string' },
+            title: { type: 'string' },
+            score: { type: 'number', minimum: 0, maximum: 100 },
+            reasons: {
+              type: 'array',
+              minItems: 1,
+              items: { type: 'string' },
+            },
+            caution: { type: 'string' },
+          },
+          required: ['mentorId', 'mentorName', 'title', 'score', 'reasons'],
+        },
+      },
+    },
+    required: ['provider', 'routingNote', 'searchTags', 'shortlist'],
   },
 }
 
@@ -252,6 +295,18 @@ export class OpenAiGateway {
         input,
       },
       meetingSummarySchema,
+    )
+  }
+
+  async recommendMentors(input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }): Promise<MentorRecommendationOutput> {
+    return await this.client.generateStructured<MentorRecommendationOutput>(
+      this.options.model,
+      'You are the MentorMe mentor ranking assistant. You must rank mentors strictly from the supplied candidate list only. Do not invent mentor IDs or names. Pick the strongest shortlist for the founder request by weighing domain fit, stage fit, functional focus, mentor tolerance, and likely usefulness for CFE routing. Keep reasons concise and concrete.',
+      {
+        task: 'mentor_recommendations',
+        input,
+      },
+      mentorRecommendationSchema,
     )
   }
 

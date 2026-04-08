@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from 'vitest'
+import type { MentorRecommendationCandidate } from '../domain/interfaces'
 import { runAiBenchmark } from './evals'
 
 describe('runAiBenchmark', () => {
@@ -26,6 +27,18 @@ describe('runAiBenchmark', () => {
         followUpQuestions: ['question'],
         secondSessionRecommended: true,
       })),
+      recommendMentors: vi.fn(async ({ candidates }) => ({
+        provider: 'heuristic' as const,
+        routingNote: 'route it',
+        searchTags: ['fundraising'],
+        shortlist: candidates.slice(0, 2).map((candidate: MentorRecommendationCandidate, index: number) => ({
+          mentorId: candidate.id,
+          mentorName: candidate.name,
+          title: candidate.title,
+          score: 95 - index,
+          reasons: ['Strong fit'],
+        })),
+      })),
     }
 
     const judge = {
@@ -43,11 +56,12 @@ describe('runAiBenchmark', () => {
 
     const report = await runAiBenchmark(generator, judge, 'heuristic', 'heuristic')
 
-    expect(report.total).toBe(4)
-    expect(report.passed).toBe(4)
+    expect(report.total).toBe(6)
+    expect(report.passed).toBe(6)
     expect(report.averageScore).toBe(4.25)
     expect(generator.generateRequestBrief).toHaveBeenCalledTimes(2)
     expect(generator.generateMeetingSummary).toHaveBeenCalledTimes(2)
-    expect(judge.judgeCase).toHaveBeenCalledTimes(4)
+    expect(generator.recommendMentors).toHaveBeenCalledTimes(2)
+    expect(judge.judgeCase).toHaveBeenCalledTimes(6)
   })
 })

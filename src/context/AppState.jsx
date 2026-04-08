@@ -430,6 +430,12 @@ export const createApiClient = (baseUrl) => {
         body: JSON.stringify(payload),
       })
     },
+    generateMentorRecommendations(payload) {
+      return authorizedJson('/ai/mentor-recommendations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
     generateMeetingSummary(payload) {
       return authorizedJson('/ai/meeting-summary', {
         method: 'POST',
@@ -727,6 +733,13 @@ export function AppStateProvider({ children }) {
       }
 
       return await backendRef.current.client.generateRequestBrief(payload)
+    },
+    generateAiMentorRecommendations: async (payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('The AI mentor matcher requires the API backend to be running.')
+      }
+
+      return await backendRef.current.client.generateMentorRecommendations(payload)
     },
     generateAiMeetingSummary: async (payload) => {
       if (!backendRef.current.client) {

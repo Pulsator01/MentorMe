@@ -234,6 +234,21 @@ const meetingSummaryBodySchema = {
   required: ['ventureName', 'meetingNotes'],
 }
 
+const mentorRecommendationBodySchema = {
+  type: 'object',
+  properties: {
+    ventureName: { type: 'string' },
+    domain: { type: 'string' },
+    stage: { type: 'string' },
+    trl: { type: 'integer', minimum: 1, maximum: 9 },
+    brl: { type: 'integer', minimum: 1, maximum: 9 },
+    challenge: { type: 'string' },
+    desiredOutcome: { type: 'string' },
+    maxResults: { type: 'integer', minimum: 1, maximum: 5 },
+  },
+  required: ['ventureName', 'challenge'],
+}
+
 const openApiInfo = {
   title: 'MentorMe API',
   description: 'Mentor routing, intake, and follow-through API for the MentorMe platform.',
@@ -638,6 +653,17 @@ const buildOpenApiDocument = () =>
         },
       },
     },
+    '/ai/mentor-recommendations': {
+      post: {
+        tags: ['AI'],
+        summary: 'Rank active mentors from the database for a founder request',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(mentorRecommendationBodySchema),
+        responses: {
+          200: jsonResponse('Generated mentor recommendations'),
+        },
+      },
+    },
   },
 }) as OpenAPIV3_1.Document
 
@@ -1025,6 +1051,22 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       return await service.generateMeetingSummary(user, request.body)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/ai/mentor-recommendations', {
+    schema: {
+      tags: ['AI'],
+      summary: 'Rank active mentors from the database for a founder request',
+      security: bearerSecurity,
+      body: mentorRecommendationBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.generateMentorRecommendations(user, request.body)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }

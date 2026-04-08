@@ -1,6 +1,9 @@
 import type {
   MeetingSummaryInput,
   MeetingSummaryOutput,
+  MentorRecommendationCandidate,
+  MentorRecommendationInput,
+  MentorRecommendationOutput,
   RequestBriefInput,
   RequestBriefOutput,
 } from '../src/domain/interfaces'
@@ -19,6 +22,14 @@ export type MeetingSummaryEvalCase = {
   input: MeetingSummaryInput
   reference: MeetingSummaryOutput
   task: 'meeting_summary'
+}
+
+export type MentorRecommendationEvalCase = {
+  description: string
+  id: string
+  input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }
+  reference: MentorRecommendationOutput
+  task: 'mentor_recommendation'
 }
 
 export const requestBriefCases: RequestBriefEvalCase[] = [
@@ -157,6 +168,173 @@ export const meetingSummaryCases: MeetingSummaryEvalCase[] = [
         'Which approval blocker appears most often across the hospital admin interviews?',
       ],
       secondSessionRecommended: true,
+    },
+  },
+]
+
+export const mentorRecommendationCases: MentorRecommendationEvalCase[] = [
+  {
+    id: 'mentor-ecodrone-fundraising',
+    task: 'mentor_recommendation',
+    description: 'Founder needs fundraising and pilot-structuring mentors for an industrial drone venture.',
+    input: {
+      ventureName: 'EcoDrone Systems',
+      domain: 'Industrial drones',
+      stage: 'MVP',
+      trl: 4,
+      brl: 3,
+      challenge: 'Need help tightening fundraising framing and sequencing pilot conversations.',
+      desiredOutcome: 'Leave with a sharper investor story and clearer pilot wedge.',
+      candidates: [
+        {
+          id: 'm-naval',
+          name: 'Naval Bhatia',
+          title: 'Ex-founder and fundraising coach',
+          location: 'Delhi',
+          focus: ['Fundraising', 'Storytelling', 'Early GTM'],
+          stages: ['MVP', 'Pilot', 'Scale'],
+          domains: ['Industrial drones', 'Climate tech'],
+          tolerance: 'High',
+          monthlyLimit: 3,
+          responseWindow: '48 hours',
+          bio: 'Helps deep-tech founders tighten investor narratives and pilot sequencing.',
+        },
+        {
+          id: 'm-arjun',
+          name: 'Arjun Menon',
+          title: 'Hardware and ops operator',
+          location: 'Bengaluru',
+          focus: ['Hardware ops', 'Pilot design', 'Manufacturing'],
+          stages: ['TRL 3+', 'MVP', 'Pilot'],
+          domains: ['Industrial drones', 'Robotics'],
+          tolerance: 'Medium',
+          monthlyLimit: 2,
+          responseWindow: '72 hours',
+          bio: 'Supports pilot design and operational sequencing for hardware startups.',
+        },
+        {
+          id: 'm-radhika',
+          name: 'Dr. Radhika Sen',
+          title: 'Healthcare compliance mentor',
+          location: 'Remote',
+          focus: ['Regulatory', 'Procurement'],
+          stages: ['Pilot', 'Scale'],
+          domains: ['Digital health'],
+          tolerance: 'High',
+          monthlyLimit: 2,
+          responseWindow: '48 hours',
+          bio: 'Strong in healthcare compliance, but not this venture domain.',
+        },
+      ],
+    },
+    reference: {
+      provider: 'heuristic',
+      searchTags: ['industrial drones', 'mvp', 'fundraising', 'pilot design'],
+      routingNote: 'Start with fundraising and pilot-structure mentors, then let CFE decide the final outreach order.',
+      shortlist: [
+        {
+          mentorId: 'm-naval',
+          mentorName: 'Naval Bhatia',
+          title: 'Ex-founder and fundraising coach',
+          score: 96,
+          reasons: [
+            'Strong fundraising fit for the investor-story ask.',
+            'Knows industrial drone and early GTM contexts.',
+          ],
+        },
+        {
+          mentorId: 'm-arjun',
+          mentorName: 'Arjun Menon',
+          title: 'Hardware and ops operator',
+          score: 89,
+          reasons: [
+            'Can help structure pilot sequencing and hardware execution.',
+            'Relevant industrial drone and MVP-stage exposure.',
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: 'mentor-healthsathi-regulatory',
+    task: 'mentor_recommendation',
+    description: 'Founder needs hospital procurement and compliance guidance for a digital health venture.',
+    input: {
+      ventureName: 'HealthSathi',
+      domain: 'Digital health',
+      stage: 'Pilot',
+      trl: 5,
+      brl: 4,
+      challenge: 'Need help with regulatory sequencing and hospital procurement readiness.',
+      desiredOutcome: 'Leave with a compliance checklist and a cleaner buyer-discovery plan.',
+      candidates: [
+        {
+          id: 'm-radhika',
+          name: 'Dr. Radhika Sen',
+          title: 'Healthcare compliance mentor',
+          location: 'Remote',
+          focus: ['Regulatory', 'Hospital procurement', 'Healthcare buyer discovery'],
+          stages: ['Pilot', 'Scale'],
+          domains: ['Digital health', 'Medtech'],
+          tolerance: 'High',
+          monthlyLimit: 2,
+          responseWindow: '48 hours',
+          bio: 'Guides founders through regulatory readiness and hospital buying workflows.',
+        },
+        {
+          id: 'm-naval',
+          name: 'Naval Bhatia',
+          title: 'Ex-founder and fundraising coach',
+          location: 'Delhi',
+          focus: ['Fundraising', 'Storytelling', 'Early GTM'],
+          stages: ['MVP', 'Pilot', 'Scale'],
+          domains: ['SaaS', 'Climate tech'],
+          tolerance: 'High',
+          monthlyLimit: 3,
+          responseWindow: '48 hours',
+          bio: 'Great general startup coach, but not domain-specific here.',
+        },
+        {
+          id: 'm-meera',
+          name: 'Meera Kapoor',
+          title: 'Hospital operations advisor',
+          location: 'Chandigarh',
+          focus: ['Procurement', 'Hospital operations'],
+          stages: ['Pilot'],
+          domains: ['Digital health'],
+          tolerance: 'Medium',
+          monthlyLimit: 1,
+          responseWindow: '72 hours',
+          bio: 'Supports hospital buying-process mapping and rollout discipline.',
+        },
+      ],
+    },
+    reference: {
+      provider: 'heuristic',
+      searchTags: ['digital health', 'pilot', 'regulatory', 'healthcare buyer discovery'],
+      routingNote: 'Prioritize mentors with direct healthcare compliance or hospital buying-process experience.',
+      shortlist: [
+        {
+          mentorId: 'm-radhika',
+          mentorName: 'Dr. Radhika Sen',
+          title: 'Healthcare compliance mentor',
+          score: 97,
+          reasons: [
+            'Best fit for regulatory sequencing and hospital procurement.',
+            'Direct digital-health and pilot-stage experience.',
+          ],
+        },
+        {
+          mentorId: 'm-meera',
+          mentorName: 'Meera Kapoor',
+          title: 'Hospital operations advisor',
+          score: 88,
+          reasons: [
+            'Strong hospital operations and procurement fit.',
+            'Useful second mentor for buyer-process mapping.',
+          ],
+        },
+      ],
     },
   },
 ]

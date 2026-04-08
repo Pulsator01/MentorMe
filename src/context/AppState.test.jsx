@@ -116,6 +116,48 @@ describe('AppState API helpers', () => {
       }),
     )
   })
+
+  it('sends authorized AI mentor recommendation requests with a JSON body', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'fresh-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          recommendations: {
+            provider: 'heuristic',
+            shortlist: [{ mentorId: 'm-radhika', score: 94 }],
+          },
+        }),
+      )
+
+    const client = createApiClient('http://localhost:3001')
+
+    await client.loginForPath('/founders')
+    const response = await client.generateMentorRecommendations({
+      ventureName: 'EcoDrone Systems',
+      domain: 'Industrial drones',
+      stage: 'MVP',
+      challenge: 'Need help tightening fundraising framing and sequencing pilot conversations.',
+    })
+
+    expect(response).toEqual({
+      recommendations: {
+        provider: 'heuristic',
+        shortlist: [{ mentorId: 'm-radhika', score: 94 }],
+      },
+    })
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/ai/mentor-recommendations',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer fresh-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
 })
 
 const jsonResponse = (body, status = 200) => ({

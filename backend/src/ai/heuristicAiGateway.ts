@@ -1,6 +1,9 @@
 import type {
   MeetingSummaryInput,
   MeetingSummaryOutput,
+  MentorRecommendationCandidate,
+  MentorRecommendationInput,
+  MentorRecommendationOutput,
   RequestBriefInput,
   RequestBriefOutput,
 } from '../domain/interfaces'
@@ -24,6 +27,20 @@ const pickBullets = (value: string, fallback: string[]) => {
 }
 
 const unique = (items: string[]) => Array.from(new Set(items.filter(Boolean)))
+
+const tokenize = (value: string) =>
+  cleanText(value)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((item) => item.length > 2)
+
+const overlap = (haystack: string[], needles: string[]) =>
+  unique(
+    haystack.filter((item) => {
+      const value = item.toLowerCase()
+      return needles.some((needle) => value.includes(needle) || needle.includes(value))
+    }),
+  )
 
 const keywordTags = (input: string) => {
   const text = input.toLowerCase()
@@ -49,6 +66,57 @@ const extractActionItems = (notes: string, fallback: string[]) => {
   )
 
   return candidates.length > 0 ? unique(candidates).slice(0, 4) : fallback
+}
+
+const buildSearchTags = (input: MentorRecommendationInput) =>
+  unique([
+    input.domain ? input.domain.toLowerCase() : '',
+    input.stage ? input.stage.toLowerCase() : '',
+    ...keywordTags(`${input.challenge} ${input.desiredOutcome || ''} ${input.domain || ''}`),
+  ]).slice(0, 6)
+
+const scoreMentor = (mentor: MentorRecommendationCandidate, input: MentorRecommendationInput, searchTags: string[]) => {
+  const queryTokens = tokenize(`${input.domain || ''} ${input.challenge} ${input.desiredOutcome || ''}`)
+  const focusHits = overlap(mentor.focus, searchTags.concat(queryTokens))
+  const domainHits = overlap(mentor.domains, searchTags.concat(queryTokens))
+  const stageMatch = input.stage
+    ? mentor.stages.some((stage) => stage.toLowerCase() === input.stage?.toLowerCase())
+    : false
+  const exploratoryAsk =
+    !input.trl ||
+    input.trl <= 4 ||
+    /(fundrais|pilot|story|position|explor|first intro|narrative|go-to-market)/i.test(input.challenge)
+
+  let score = 44
+  score += focusHits.length * 11
+  score += domainHits.length * 9
+  score += stageMatch ? 16 : 0
+  score += mentor.tolerance === 'High' ? (exploratoryAsk ? 8 : 5) : mentor.tolerance === 'Medium' ? 4 : 1
+  score += Math.min(6, mentor.monthlyLimit * 2)
+
+  const reasons = unique([
+    domainHits.length > 0 ? `Domain overlap: ${domainHits.slice(0, 2).join(', ')}` : '',
+    focusHits.length > 0 ? `Functional fit: ${focusHits.slice(0, 2).join(', ')}` : '',
+    stageMatch && input.stage ? `Has experience with ${input.stage} stage ventures` : '',
+    mentor.tolerance === 'High' && exploratoryAsk ? 'High patience tolerance suits an evolving founder ask' : '',
+    mentor.monthlyLimit > 0 ? `Current bandwidth supports up to ${mentor.monthlyLimit} sessions per month` : '',
+  ]).slice(0, 4)
+
+  let caution = ''
+  if (mentor.tolerance === 'Low' && exploratoryAsk) {
+    caution = 'Lower patience tolerance means CFE should send a very tight brief before outreach.'
+  } else if (mentor.monthlyLimit <= 1) {
+    caution = 'Limited monthly capacity means CFE should use this mentor selectively.'
+  }
+
+  return {
+    mentorId: mentor.id,
+    mentorName: mentor.name,
+    title: mentor.title,
+    score: Math.min(99, score),
+    reasons: reasons.length > 0 ? reasons : ['General strategic fit based on the current founder ask.'],
+    ...(caution ? { caution } : {}),
+  }
 }
 
 export class HeuristicAiGateway {
@@ -129,6 +197,27 @@ export class HeuristicAiGateway {
     }
   }
 
+  async recommendMentors(
+    input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] },
+  ): Promise<MentorRecommendationOutput> {
+    const searchTags = buildSearchTags(input)
+    const limit = Math.min(Math.max(input.maxResults || 3, 1), 5)
+    const shortlist = input.candidates
+      .map((mentor) => scoreMentor(mentor, input, searchTags))
+      .sort((left, right) => right.score - left.score || left.mentorName.localeCompare(right.mentorName))
+      .slice(0, limit)
+
+    return {
+      provider: 'heuristic',
+      searchTags: searchTags.length > 0 ? searchTags : ['general strategy'],
+      routingNote:
+        shortlist.length > 0
+          ? 'Use this shortlist as the founder-facing suggestion layer, then let CFE confirm patience fit, context quality, and final outreach timing.'
+          : 'No active mentors matched strongly enough. Expand the mentor roster or tighten the founder brief before routing.',
+      shortlist,
+    }
+  }
+
   async judgeCase(payload: {
     actualOutput: Record<string, unknown>
     referenceOutput: Record<string, unknown>
@@ -140,10 +229,16 @@ export class HeuristicAiGateway {
     const overlapWords = unique(reference.split(/[^a-z0-9]+/).filter((item) => item.length > 4))
     const matchedWords = overlapWords.filter((item) => actual.includes(item))
     const overlapScore = overlapWords.length === 0 ? 5 : Math.min(5, (matchedWords.length / overlapWords.length) * 5)
-    const structureScore = Array.isArray((payload.actualOutput as any).mentorFitTags) || Array.isArray((payload.actualOutput as any).keyTakeaways) ? 5 : 3
+    const structureScore =
+      Array.isArray((payload.actualOutput as any).mentorFitTags) ||
+      Array.isArray((payload.actualOutput as any).keyTakeaways) ||
+      Array.isArray((payload.actualOutput as any).shortlist)
+        ? 5
+        : 3
     const actionScore =
       Array.isArray((payload.actualOutput as any).founderActionItems) ||
-      Array.isArray((payload.actualOutput as any).mentorFitTags)
+      Array.isArray((payload.actualOutput as any).mentorFitTags) ||
+      Array.isArray((payload.actualOutput as any).shortlist)
         ? 4
         : 2
 

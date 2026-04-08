@@ -85,6 +85,17 @@ const meetingSummarySchema = z.object({
   meetingNotes: z.string().min(30),
 })
 
+const mentorRecommendationSchema = z.object({
+  ventureName: z.string().min(2),
+  domain: z.string().min(2).optional(),
+  stage: z.string().min(2).optional(),
+  trl: z.number().int().min(1).max(9).optional(),
+  brl: z.number().int().min(1).max(9).optional(),
+  challenge: z.string().min(10),
+  desiredOutcome: z.string().min(5).optional(),
+  maxResults: z.number().int().min(1).max(5).optional(),
+})
+
 const jwtTextEncoder = new TextEncoder()
 
 type ServiceDeps = {
@@ -806,6 +817,47 @@ export class PlatformService {
     const payload = meetingSummarySchema.parse(input)
     return {
       summary: await this.deps.ai.generateMeetingSummary(payload),
+    }
+  }
+
+  async generateMentorRecommendations(user: User, input: unknown) {
+    if (!['founder', 'student', 'cfe'].includes(user.role)) {
+      throw new Error('Forbidden')
+    }
+
+    const payload = mentorRecommendationSchema.parse(input)
+    const candidates = (await this.deps.repository.listMentors())
+      .filter((mentor) => mentor.visibility === 'Active')
+      .map((mentor) => ({
+        id: mentor.id,
+        name: mentor.name,
+        title: mentor.title,
+        location: mentor.location,
+        focus: mentor.focus,
+        stages: mentor.stages,
+        domains: mentor.domains,
+        tolerance: mentor.tolerance,
+        monthlyLimit: mentor.monthlyLimit,
+        responseWindow: mentor.responseWindow,
+        bio: mentor.bio,
+      }))
+
+    if (candidates.length === 0) {
+      return {
+        recommendations: {
+          provider: 'heuristic' as const,
+          routingNote: 'No active mentors are available right now. Ask CFE to reactivate or add mentors before routing.',
+          searchTags: [],
+          shortlist: [],
+        },
+      }
+    }
+
+    return {
+      recommendations: await this.deps.ai.recommendMentors({
+        ...payload,
+        candidates,
+      }),
     }
   }
 

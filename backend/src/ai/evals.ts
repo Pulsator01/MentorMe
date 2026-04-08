@@ -1,5 +1,5 @@
 import type { AiGateway } from '../domain/interfaces'
-import { meetingSummaryCases, requestBriefCases } from '../../evals/cases'
+import { meetingSummaryCases, mentorRecommendationCases, requestBriefCases } from '../../evals/cases'
 import { HeuristicAiGateway } from './heuristicAiGateway'
 import { createAiGateway } from './runtime'
 import type { JudgeResult } from './openAiGateway'
@@ -11,7 +11,7 @@ export type EvalCaseResult = {
   overallScore: number
   pass: boolean
   summary: string
-  task: 'meeting_summary' | 'request_brief'
+  task: 'meeting_summary' | 'mentor_recommendation' | 'request_brief'
 }
 
 export type EvalReport = {
@@ -27,7 +27,7 @@ type JudgeGateway = {
   judgeCase(payload: Record<string, unknown>): Promise<JudgeResult>
 }
 
-const cases = [...requestBriefCases, ...meetingSummaryCases]
+const cases = [...requestBriefCases, ...meetingSummaryCases, ...mentorRecommendationCases]
 
 export const runAiBenchmark = async (
   generator: AiGateway,
@@ -41,7 +41,9 @@ export const runAiBenchmark = async (
     const actualOutput =
       currentCase.task === 'request_brief'
         ? await generator.generateRequestBrief(currentCase.input)
-        : await generator.generateMeetingSummary(currentCase.input)
+        : currentCase.task === 'meeting_summary'
+          ? await generator.generateMeetingSummary(currentCase.input)
+          : await generator.recommendMentors(currentCase.input)
 
     const judgement = await judge.judgeCase({
       task: currentCase.task,
