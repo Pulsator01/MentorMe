@@ -240,8 +240,8 @@ Title:
 
 On-slide text:
 
-- Total endpoints presented: `28`
-- Green: `28`
+- Total endpoints presented: `29`
+- Green: `29`
 - Yellow: `0`
 - White: `0`
 - Completion: `100%`
@@ -250,7 +250,7 @@ On-slide text:
 
 Add this sentence to the slide:
 
-`All core non-AI endpoints are implemented, and the two AI endpoints are now built and benchmarked.`
+`All core non-AI endpoints are implemented, and the three AI endpoints are now built and benchmarked.`
 
 Visual:
 
@@ -259,7 +259,7 @@ Visual:
 
 What to say:
 
-"Here is the corrected progress sheet. We are presenting twenty-eight endpoints, and all twenty-eight are now green. That means the full presented inventory is implemented. The non-AI set is fully green, and the two AI routes are also implemented and benchmarked. So the engineering story is no longer that AI is planned. The engineering story is that the core workflow is complete and the AI layer is now part of the build."
+"Here is the corrected progress sheet. We are presenting twenty-nine endpoints, and all twenty-nine are now green. That means the full presented inventory is implemented. The non-AI set is fully green, and the three AI routes are also implemented and benchmarked. So the engineering story is no longer that AI is planned. The engineering story is that the core workflow is complete and the AI layer is now part of the build."
 
 ### Slide 4
 
@@ -337,7 +337,7 @@ Visual:
 
 What to say:
 
-"The remaining work is honest and clear. We now have the operating core working through the routed product, including artifact upload, secure mentor actions, live cross-workspace updates, and the two AI endpoints with benchmarks. The remaining engineering work is production polish: explicit sign-in and logout, real object storage instead of stub upload URLs, stronger mentor-page refresh behavior after the secure link is already open, and then public deployment with real credentials. So the right summary is this: the workflow and AI review layer are built, and the next layer is production hardening and public launch."
+"The remaining work is honest and clear. We now have the operating core working through the routed product, including artifact upload, secure mentor actions, live cross-workspace updates, and the three AI endpoints with benchmarks. The remaining engineering work is production polish: explicit sign-in and logout, real object storage instead of stub upload URLs, stronger mentor-page refresh behavior after the secure link is already open, and then public deployment with real credentials. So the right summary is this: the workflow and AI review layer are built, and the next layer is production hardening and public launch."
 
 ## Video 2 Speaker Notes
 
@@ -358,7 +358,7 @@ What to say:
 ### Slide 3 presenter notes
 
 - Timing target: `1:30-2:10`
-- Say the counts slowly: `28 total, 28 green, 0 white`.
+- Say the counts slowly: `29 total, 29 green, 0 white`.
 - Do not mention any older endpoint counts on camera.
 - Land on `100 percent of the presented inventory is implemented`.
 

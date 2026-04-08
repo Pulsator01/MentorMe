@@ -25,8 +25,8 @@ This document maps the professor's mid-sem expectations to the current MentorMe 
 - Core users: founders, students supporting ventures, CFE/incubation operators, mentors
 - Broader market: incubators, entrepreneurship cells, accelerator programs, innovation offices, and startup support teams
 - Commercial wedge: program operations software for mentor routing, capacity control, and follow-through
-- Endpoint inventory used for the presentation: `28` total, `28` green, `0` yellow, `0` white
-- AI review status: both AI endpoints are implemented and covered by `4` benchmark cases through `npm run eval:ai`
+- Endpoint inventory used for the presentation: `29` total, `29` green, `0` yellow, `0` white
+- AI review status: all three AI endpoints are implemented and covered by `6` benchmark cases through `npm run eval:ai`
 
 ## 3. System Flow
 
@@ -74,8 +74,9 @@ flowchart TD
 | T5 | Artifact handling | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
 | T6 | Mentor directory and capacity tuning | `src/pages/MentorPortfolio.jsx`, `backend/src/app.ts` |
 | T7 | AI request-brief endpoint and founder drafting UI | `backend/src/ai/*`, `src/pages/StudentDashboard.jsx`, `backend/evals/cases.ts` |
-| T8 | AI meeting-summary endpoint and student follow-through UI | `backend/src/ai/*`, `src/pages/StudentWorkspace.jsx`, `backend/evals/cases.ts` |
-| T9 | Deployment and review surface | `src/pages/MidsemReadiness.jsx`, `src/data/midsemReadiness.js`, `render.yaml` |
+| T8 | AI mentor-recommendation endpoint and founder shortlist UI | `backend/src/ai/*`, `src/pages/StudentDashboard.jsx`, `backend/evals/cases.ts` |
+| T9 | AI meeting-summary endpoint and student follow-through UI | `backend/src/ai/*`, `src/pages/StudentWorkspace.jsx`, `backend/evals/cases.ts` |
+| T10 | Deployment and review surface | `src/pages/MidsemReadiness.jsx`, `src/data/midsemReadiness.js`, `render.yaml` |
 
 ## 6. Honest Mid-Sem Status
 
@@ -96,7 +97,7 @@ flowchart TD
 - Prisma schema covering the production data model
 - runtime selection between seeded memory and Prisma/PostgreSQL persistence
 - backend regression tests for core request, mentor-action, AI, and health-check flows
-- AI request-brief and meeting-summary endpoints
+- AI request-brief, mentor-recommendation, and meeting-summary endpoints
 - evaluation benchmarks with sample cases and an LLM-as-judge path
 - a tracked Render deployment blueprint and API health probe
 
@@ -113,13 +114,13 @@ flowchart TD
 - Mentor access is mediated through CFE because low-context requests waste mentor time.
 - Returned briefs are part of the product workflow, not an exception, so founders can now re-submit directly.
 - Student work is separated from founder work because prep and follow-through require a different view.
-- AI assistance is constrained to brief drafting and follow-through summarization so the product improves operator clarity instead of replacing the operator judgment layer.
+- AI assistance is constrained to mentor ranking, brief drafting, and follow-through summarization so the product improves operator clarity instead of replacing the operator judgment layer.
 
 ## 8. Verification
 
 - Full test suite: `npm test`
 - Lint: `npm run lint`
-- Typecheck: `npx tsc -p /Users/owlxshri/Desktop/MentorMe/tsconfig.json`
+- Typecheck: `npx tsc -p tsconfig.json`
 - AI benchmark: `npm run eval:ai`
 - Browser E2E: `npm run e2e:ui`
 - Prisma E2E: `npm run e2e:prisma`

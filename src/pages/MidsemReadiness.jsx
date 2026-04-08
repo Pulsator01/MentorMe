@@ -162,7 +162,7 @@ function MidsemReadiness() {
           <SectionHeading
             eyebrow="AI review"
             title="AI endpoints and benchmark coverage"
-            description="These are the two AI routes, the sample-case benchmark behind them, and the judge logic that protects quality when models change."
+            description="These are the three AI routes, the sample-case benchmark behind them, and the judge logic that protects quality when models change."
             action={
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 {aiBenchmarkSnapshot.benchmarkCases} eval cases • {aiBenchmarkSnapshot.passThreshold} pass threshold

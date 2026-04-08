@@ -5,6 +5,7 @@ Date: `2026-04-09`
 This document defines the AI layer requested for the next review:
 
 - `POST /ai/request-brief`
+- `POST /ai/mentor-recommendations`
 - `POST /ai/meeting-summary`
 - an evaluation benchmark with sample cases
 - an LLM-as-judge path for quality checks whenever the model changes
@@ -12,10 +13,11 @@ This document defines the AI layer requested for the next review:
 
 ## Goal
 
-MentorMe already has the non-AI operating workflow. The AI layer should now help at the two highest-leverage points:
+MentorMe already has the non-AI operating workflow. The AI layer now helps at three high-leverage points:
 
 1. turning rough founder notes into a cleaner mentor-ready request brief
-2. turning raw meeting notes into structured follow-through tasks
+2. ranking mentors strictly from the active mentor database for a given founder request
+3. turning raw meeting notes into structured follow-through tasks
 
 ## Architecture
 
@@ -42,6 +44,10 @@ flowchart TD
     RB2 --> RB3["structured brief suggestion"]
     RB3 --> RB4["populate challenge / outcome / mentor tags"]
 
+    MR1["Founder request + active mentor database"] --> MR2["POST /ai/mentor-recommendations"]
+    MR2 --> MR3["ranked shortlist + routing reasons"]
+    MR3 --> MR4["founder picks a stronger starting mentor for CFE"]
+
     MS1["Raw meeting notes or transcript"] --> MS2["POST /ai/meeting-summary"]
     MS2 --> MS3["summary + action items"]
     MS3 --> MS4["student / founder / CFE follow-through"]
@@ -53,11 +59,12 @@ flowchart TD
 | --- | --- | --- | --- |
 | AI1 | Add runtime-selectable AI provider contract | Keep the app deployable with real AI and testable offline | `backend/src/domain/interfaces.ts`, `backend/src/ai/*`, `backend/src/server.ts` |
 | AI2 | Implement request-brief endpoint | Help founders shape rough notes into a stronger CFE-ready brief | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
-| AI3 | Implement meeting-summary endpoint | Help students convert messy notes into concrete follow-through | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
-| AI4 | Cover AI endpoints with tests | Prevent regressions in contract, validation, and provider wiring | `backend/src/app.test.ts` |
-| AI5 | Add benchmark fixtures and eval runner | Compare models safely when the AI provider changes | `backend/evals/*`, `backend/src/ai/evals.ts`, `backend/scripts/run-ai-evals.ts` |
-| AI6 | Expose AI helpers in the UI | Make the AI layer demoable in the product, not just Swagger | `src/context/AppState.jsx`, `src/pages/StudentDashboard.jsx`, `src/pages/StudentWorkspace.jsx` |
-| AI7 | Document deployment and credential requirements | Make the AI-enabled stack runnable beyond local demo mode | `README.md`, `.env.example`, `docs/ai-endpoints-and-evals.md` |
+| AI3 | Implement mentor-recommendation endpoint | Rank only the mentors already present in the database and explain why they fit | `backend/src/app.ts`, `backend/src/domain/platformService.ts`, `src/pages/StudentDashboard.jsx` |
+| AI4 | Implement meeting-summary endpoint | Help students convert messy notes into concrete follow-through | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
+| AI5 | Cover AI endpoints with tests | Prevent regressions in contract, validation, and provider wiring | `backend/src/app.test.ts`, `src/context/AppState.test.jsx` |
+| AI6 | Add benchmark fixtures and eval runner | Compare models safely when the AI provider changes | `backend/evals/*`, `backend/src/ai/evals.ts`, `backend/scripts/run-ai-evals.ts` |
+| AI7 | Expose AI helpers in the UI | Make the AI layer demoable in the product, not just Swagger | `src/context/AppState.jsx`, `src/pages/StudentDashboard.jsx`, `src/pages/StudentWorkspace.jsx` |
+| AI8 | Document deployment and credential requirements | Make the AI-enabled stack runnable beyond local demo mode | `README.md`, `.env.example`, `docs/ai-endpoints-and-evals.md` |
 
 ## Runtime Strategy
 
@@ -96,9 +103,9 @@ npm run start:worker
 ## Benchmark Design
 
 - Benchmark fixtures live in `backend/evals/cases.ts`
-- `backend/scripts/run-ai-evals.ts` runs both AI tasks across those cases
+- `backend/scripts/run-ai-evals.ts` runs all three AI tasks across those cases
 - the report includes per-case pass/fail plus average score
-- the current benchmark pack covers `4` cases total across the two AI endpoints
+- the current benchmark pack covers `6` cases total across the three AI endpoints
 - the judge path uses:
   - OpenAI structured outputs when `AI_JUDGE_PROVIDER=openai` or `auto` with a valid key
   - the built-in heuristic judge otherwise
@@ -119,7 +126,7 @@ This gives the project a benchmark that works offline for local verification and
 
 ## Honest Scope Boundary
 
-- The AI endpoints will be fully implemented and callable from the API and product UI.
-- The eval benchmark will be fully implemented, with sample cases and an LLM-judge path.
+- The AI endpoints are fully implemented and callable from the API and product UI.
+- The eval benchmark is fully implemented, with sample cases and an LLM-judge path.
 - Running the OpenAI-backed path still depends on external credentials.
 - Actual internet deployment still depends on platform credentials that are not stored in the repo.

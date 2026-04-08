@@ -36,7 +36,7 @@ export const journeyChecklist = [
   },
   {
     name: 'AI assist',
-    detail: 'Founders can draft a mentor-ready brief and students can turn raw meeting notes into structured follow-through through the AI endpoint layer.',
+    detail: 'Founders can rank mentors from the live database, draft a mentor-ready brief, and students can turn raw meeting notes into structured follow-through through the AI endpoint layer.',
     status: 'done',
   },
 ]
@@ -260,6 +260,14 @@ export const endpointChecklist = [
   },
   {
     method: 'POST',
+    path: '/ai/mentor-recommendations',
+    category: 'AI',
+    screen: 'Founder mentor shortlist',
+    purpose: 'Rank active mentors from the live database for a founder request.',
+    status: 'done',
+  },
+  {
+    method: 'POST',
     path: '/ai/meeting-summary',
     category: 'AI',
     screen: 'Student follow-up',
@@ -269,8 +277,8 @@ export const endpointChecklist = [
 ]
 
 export const aiBenchmarkSnapshot = {
-  endpoints: 2,
-  benchmarkCases: 4,
+  endpoints: 3,
+  benchmarkCases: 6,
   passThreshold: '75%',
   defaultProvider: 'Heuristic locally for deterministic demos, OpenAI automatically when credentials are present.',
   judgeMode: 'LLM-as-judge via OpenAI structured outputs, with a heuristic rubric fallback for offline verification.',
@@ -283,6 +291,14 @@ export const aiBenchmarkChecklist = [
     samples: '2 sample input/output cases',
     judge:
       'Scores routing clarity, missing information, mentor fit, and whether the generated brief is strong enough for CFE review.',
+    status: 'done',
+  },
+  {
+    name: 'Founder mentor ranking benchmark',
+    endpoint: '/ai/mentor-recommendations',
+    samples: '2 sample input/output cases',
+    judge:
+      'Scores shortlist quality, reason clarity, candidate faithfulness, and whether the routing note is credible for CFE.',
     status: 'done',
   },
   {

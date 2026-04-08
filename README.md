@@ -89,9 +89,10 @@ The default local `.env` expects PostgreSQL on `localhost:5432`. For local demo 
 
 ## AI Endpoints And Evals
 
-MentorMe now includes two AI workflow endpoints:
+MentorMe now includes three AI workflow endpoints:
 
 - `POST /ai/request-brief`
+- `POST /ai/mentor-recommendations`
 - `POST /ai/meeting-summary`
 
 These run through a runtime-selectable AI layer:
@@ -106,7 +107,7 @@ The benchmark runner is wired as:
 npm run eval:ai
 ```
 
-The default benchmark pack currently runs `4` sample cases across the two AI endpoints and enforces the pass threshold configured by `AI_EVAL_MIN_PASS_RATE`.
+The default benchmark pack currently runs `6` sample cases across the three AI endpoints and enforces the pass threshold configured by `AI_EVAL_MIN_PASS_RATE`.
 
 The judge path is also configurable:
 

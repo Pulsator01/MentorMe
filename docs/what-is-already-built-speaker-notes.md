@@ -50,11 +50,11 @@ Title: `Endpoint Progress Sheet`
 
 Speaker notes:
 
-"This is the endpoint progress sheet for the project. We are presenting twenty-eight endpoints in total, and all twenty-eight are now green, meaning implemented. That gives us one hundred percent completion on the presented inventory. The non-AI set is fully green, and the two AI endpoints are also implemented and benchmarked with sample cases plus an LLM-as-judge path. Since the course expectation was that at least seventy percent of endpoints should be implemented, and that all non-AI endpoints should ideally be done, our current status is safely above that threshold."
+"This is the endpoint progress sheet for the project. We are presenting twenty-nine endpoints in total, and all twenty-nine are now green, meaning implemented. That gives us one hundred percent completion on the presented inventory. The non-AI set is fully green, and the three AI endpoints are also implemented and benchmarked with sample cases plus an LLM-as-judge path. Since the course expectation was that at least seventy percent of endpoints should be implemented, and that all non-AI endpoints should ideally be done, our current status is safely above that threshold."
 
 Presenter cues:
 
-- Say the numbers slowly: `28 total, 28 green, 0 yellow, 0 white`.
+- Say the numbers slowly: `29 total, 29 green, 0 yellow, 0 white`.
 - Point to the AI rows and explicitly say `implemented and benchmarked AI endpoints`.
 - End with `we are well past the 70 percent requirement`.
 
@@ -92,7 +92,7 @@ Title: `What Is Still Left`
 
 Speaker notes:
 
-"The remaining work is honest and clearly scoped. First, we still need a more explicit sign-in and logout user experience for production use. Second, artifact uploads currently use stub storage behavior, so that needs to be replaced with real object storage. Third, we want stronger mentor-side live refresh behavior after the secure link is already open. And fourth, public deployment still needs real platform credentials and secrets. The right final summary is this: using the corrected endpoint inventory, we are at one hundred percent completion on the presented sheet, the AI endpoints are built and benchmarked, and the remaining work is production polish plus public launch."
+"The remaining work is honest and clearly scoped. First, we still need a more explicit sign-in and logout user experience for production use. Second, artifact uploads currently use stub storage behavior, so that needs to be replaced with real object storage. Third, we want stronger mentor-side live refresh behavior after the secure link is already open. And fourth, public deployment still needs real platform credentials and secrets. The right final summary is this: using the corrected endpoint inventory, we are at one hundred percent completion on the presented sheet, the three AI endpoints are built and benchmarked, and the remaining work is production polish plus public launch."
 
 Presenter cues:
 

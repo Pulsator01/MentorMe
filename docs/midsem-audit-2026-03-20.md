@@ -33,7 +33,7 @@ MentorMe is now mid-sem ready for both the original implementation review and th
 
 - The core founder -> CFE -> mentor -> student workflow is implemented.
 - The API progress sheet is now fully green for the presentation inventory.
-- The two AI endpoints are implemented, surfaced in the UI, and covered by a benchmark runner with sample cases and an LLM-as-judge path.
+- The three AI endpoints are implemented, surfaced in the UI, and covered by a benchmark runner with sample cases and an LLM-as-judge path.
 - Swagger, API tests, browser E2E, Prisma smoke testing, lint, typecheck, and the AI benchmark all pass locally.
 - The remaining risk is no longer missing code. The remaining risk is external deployment access and presentation discipline.
 
@@ -56,13 +56,14 @@ flowchart LR
 
 ### 1. The presentation endpoint inventory is now fully implemented
 
-The mid-sem readiness data and the current backend contract now match. For the presentation inventory, the backend exposes `28` implemented endpoints, including the two AI routes.
+The mid-sem readiness data and the current backend contract now match. For the presentation inventory, the backend exposes `29` implemented endpoints, including the three AI routes.
 
 ### 2. The AI review requirement is now covered properly
 
 The repo now includes:
 
 - `POST /ai/request-brief`
+- `POST /ai/mentor-recommendations`
 - `POST /ai/meeting-summary`
 - sample benchmark cases in `backend/evals/cases.ts`
 - an eval runner in `backend/scripts/run-ai-evals.ts`
@@ -72,7 +73,7 @@ This directly answers the professor's requirement to benchmark AI endpoints and 
 
 ### 3. The AI layer is demoable in the product, not only on Swagger
 
-The founder workspace now lets users turn rough notes into a mentor-ready brief, and the student workspace now turns messy meeting notes into structured follow-through. This means the AI layer can be shown through a real user journey.
+The founder workspace now lets users rank active mentors from the live database, turn rough notes into a mentor-ready brief, and the student workspace now turns messy meeting notes into structured follow-through. This means the AI layer can be shown through a real user journey.
 
 ### 4. The deployment story is now concrete enough to present honestly
 
@@ -100,13 +101,13 @@ Color logic:
 
 ### Summary Numbers
 
-- Total endpoints to present: `28`
-- Green: `28`
+- Total endpoints to present: `29`
+- Green: `29`
 - Yellow: `0`
 - White: `0`
-- Completion: `28 / 28 = 100%`
+- Completion: `29 / 29 = 100%`
 - Non-AI green: `26 / 26 = 100%`
-- AI green: `2 / 2 = 100%`
+- AI green: `3 / 3 = 100%`
 
 ### Detailed Sheet
 
@@ -139,6 +140,7 @@ Color logic:
 | `POST /webhooks/calendly` | Green | Swagger + tests | Implemented and idempotent |
 | `GET /notifications/stream` | Green | UI + backend | Frontend consumes live updates with polling fallback |
 | `POST /ai/request-brief` | Green | UI + Swagger | Founder AI drafting flow is implemented and benchmarked |
+| `POST /ai/mentor-recommendations` | Green | UI + Swagger | Founder AI mentor ranking from active DB profiles is implemented and benchmarked |
 | `POST /ai/meeting-summary` | Green | UI + Swagger | Student AI summary flow is implemented and benchmarked |
 
 ## What Is Done
@@ -152,7 +154,7 @@ Color logic:
 - mentor network creation, visibility control, and capacity tuning
 - mentor secure desk accept, schedule, and feedback flow
 - student prep and follow-through workspace
-- founder AI brief drafting
+- founder AI mentor ranking and brief drafting
 - student AI meeting-summary generation
 - Swagger UI and OpenAPI JSON
 - browser E2E for founder flow, mentor network, and secure mentor flow
@@ -170,7 +172,7 @@ Color logic:
 - secure mentor scheduling
 - secure mentor feedback
 - Calendly webhook handling
-- AI brief and AI summary endpoints
+- AI brief, mentor-recommendation, and AI summary endpoints
 - health probe endpoint
 
 ### Data layer and verification done
@@ -203,7 +205,7 @@ Color logic:
 ### Safe claims
 
 - "The full presentation endpoint inventory is implemented."
-- "The two AI endpoints are built and benchmarked."
+- "The three AI endpoints are built and benchmarked."
 - "Swagger UI, API tests, browser E2E, Prisma smoke testing, lint, typecheck, and the AI benchmark are already in place."
 - "The mentor operation pipeline works from founder intake through CFE review, mentor outreach, scheduling, feedback, follow-through, and AI-assisted summarization."
 
