@@ -429,6 +429,8 @@ flowchart TD
 - external mentor inspect/respond/schedule/feedback endpoints
 - runtime selection between memory and Prisma/PostgreSQL persistence
 - Prisma/PostgreSQL schema for production data model
+- AI brief-generation and meeting-summary endpoints
+- benchmark fixtures plus an LLM-as-judge evaluation path
 - automated tests for core frontend and backend flows
 
 ### Defined now but not fully implemented yet
@@ -437,17 +439,17 @@ flowchart TD
 - production email provider
 - production storage provider
 - durable queue/worker infrastructure
-- planned AI brief-generation and meeting-summary endpoints
 - hardened webhook verification and deployment integrations
+- public deployment with real platform credentials
 
 ### Mid-sem review targets from here
 
 - finalize product pitch
 - release product trailer
-- implement all non-AI endpoints
-- implement at least one AI endpoint
-- define AI evaluation strategy
-- define benchmarking strategy
+- present the full endpoint sheet
+- present the built AI endpoints
+- show the benchmark strategy and sample cases
+- show deployment readiness and the honest external blockers
 
 ## 8. Honest Review Summary
 
@@ -465,6 +467,7 @@ The honest implementation answer for review should be:
 - the **backend contract is implemented and tested**
 - the **persistent Prisma/PostgreSQL runtime is implemented and smoke-tested**
 - the **memory repository still exists as a safe fallback for demos and tests**
-- the remaining work is explicit auth UX, production infrastructure adapters, and the planned AI endpoints
+- the **AI endpoints are implemented, benchmarked, and callable from the product UI**
+- the remaining work is explicit auth UX, production infrastructure adapters, worker hardening, and public deployment
 
-That is a defensible position for the current checkpoint because the core non-AI workflow is implemented end to end and the remaining work is now polish and roadmap scope rather than missing operations plumbing.
+That is a defensible position for the current checkpoint because the full review surface is now implemented end to end and the remaining work is now polish, production infrastructure, and public launch rather than missing product plumbing.

@@ -87,6 +87,61 @@ npm run e2e:prisma
 
 The default local `.env` expects PostgreSQL on `localhost:5432`. For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.
 
+## AI Endpoints And Evals
+
+MentorMe now includes two AI workflow endpoints:
+
+- `POST /ai/request-brief`
+- `POST /ai/meeting-summary`
+
+These run through a runtime-selectable AI layer:
+
+- `AI_PROVIDER=auto` uses OpenAI when `OPENAI_API_KEY` is present, otherwise falls back to the built-in heuristic provider
+- `AI_PROVIDER=openai` fails fast if the OpenAI key is missing
+- `AI_PROVIDER=heuristic` forces deterministic local behavior for demos and tests
+
+The benchmark runner is wired as:
+
+```bash
+npm run eval:ai
+```
+
+The default benchmark pack currently runs `4` sample cases across the two AI endpoints and enforces the pass threshold configured by `AI_EVAL_MIN_PASS_RATE`.
+
+The judge path is also configurable:
+
+- `AI_JUDGE_PROVIDER=auto`
+- `AI_JUDGE_PROVIDER=openai`
+- `AI_JUDGE_PROVIDER=heuristic`
+
+In practice, use the heuristic path for local smoke runs and the OpenAI judge path before changing default models or deploying AI updates.
+
+## Deployment Notes
+
+The repo is now deployment-ready in terms of app structure, env contract, and startup commands:
+
+```bash
+npm run build
+npm run start:api
+npm run start:worker
+```
+
+For hosted deployments, the API now exposes `GET /healthz` and the repo includes a tracked [render.yaml](/Users/owlxshri/Desktop/MentorMe/render.yaml) blueprint for the frontend, API, worker, and PostgreSQL stack.
+
+For a real deployment, set at least:
+
+- `VITE_API_BASE_URL`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `JWT_ISSUER`
+- `JWT_AUDIENCE`
+- `COOKIE_SECRET`
+- `AI_PROVIDER`
+- `AI_JUDGE_PROVIDER`
+- `OPENAI_API_KEY` if using the OpenAI-backed path
+
+The frontend can stay on a static host such as Vercel with the existing [vercel.json](/Users/owlxshri/Desktop/MentorMe/vercel.json), or you can deploy the full stack with the tracked Render blueprint. The Fastify API honors the platform `PORT` env, and the worker shares the same Prisma-backed persistence contract.
+
 ## Review Docs
 
 For the code review package, use:

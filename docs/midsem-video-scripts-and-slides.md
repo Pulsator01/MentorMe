@@ -135,6 +135,44 @@ Presenter backup note for Slide 5:
   - [Startup India Funding Guide](https://www.startupindia.gov.in/content/sih/en/funding.html)
   - [Atal Innovation Mission](https://aim.gov.in/)
 
+## Video 1 Speaker Notes
+
+### Slide 1 presenter notes
+
+- Timing target: `0:00-0:25`
+- Open with the category first: "MentorMe is a mentorship operations platform."
+- Point across the four roles as you say founder, CFE, student, and mentor so the workflow is visually easy to remember.
+- Stress `controlled workflow` because that is the core product idea.
+
+### Slide 2 presenter notes
+
+- Timing target: `0:25-0:55`
+- Use the CFE screen as proof that this is not just a mentor list or matching app.
+- Say `mentor operations` slowly and clearly. That is the framing line most people will remember.
+- Pause briefly after `mentors lose patience` so the pain point lands.
+
+### Slide 3 presenter notes
+
+- Timing target: `0:55-1:35`
+- Tell Aarav's story like a real founder journey, not like a features checklist.
+- While speaking, point to the structured brief, artifacts, and status tracking on the founder screen.
+- Emphasize that founders can see mentor suggestions but cannot bypass CFE.
+
+### Slide 4 presenter notes
+
+- Timing target: `1:35-2:15`
+- Move quickly through CFE and student workflow, then slow down for the mentor moment with Radhika.
+- If you show `/mentors/desk`, call out the secure link, quick decision, scheduling, and feedback.
+- End the slide on `the learning comes back into the system`.
+
+### Slide 5 presenter notes
+
+- Timing target: `2:15-2:55`
+- Say `the buyer is the program, not the founder` very clearly.
+- Present `300-500` as a conservative range, not as an official government total.
+- If asked about the TAM math, say it is a pitch estimate using the stated annual contract range.
+- End with the AI and analytics roadmap so the product feels bigger than the current semester build.
+
 ## Video 2
 
 Goal: implementation progress  
@@ -203,15 +241,16 @@ Title:
 On-slide text:
 
 - Total endpoints presented: `28`
-- Green: `26`
+- Green: `28`
 - Yellow: `0`
-- White: `2`
-- Conservative completion: `92.9%`
+- White: `0`
+- Completion: `100%`
 - Non-AI green: `100%`
+- AI green: `100%`
 
 Add this sentence to the slide:
 
-`All core non-AI endpoints are implemented. The remaining white routes are AI features.`
+`All core non-AI endpoints are implemented, and the two AI endpoints are now built and benchmarked.`
 
 Visual:
 
@@ -220,7 +259,7 @@ Visual:
 
 What to say:
 
-"Here is the corrected progress sheet. The backend currently exposes 26 implemented non-AI routes, and for the presentation we are showing 28 endpoints total when we include two planned AI routes. That gives us 26 green and 2 white, which is 92.9 percent completion overall and full completion on the presented non-AI set. The only remaining white items are the AI routes, which we are honestly presenting as planned."
+"Here is the corrected progress sheet. We are presenting twenty-eight endpoints, and all twenty-eight are now green. That means the full presented inventory is implemented. The non-AI set is fully green, and the two AI routes are also implemented and benchmarked. So the engineering story is no longer that AI is planned. The engineering story is that the core workflow is complete and the AI layer is now part of the build."
 
 ### Slide 4
 
@@ -260,6 +299,7 @@ On-slide text:
 - Frontend route tests
 - Browser E2E for founder, mentor-network, and secure mentor flows
 - Prisma E2E smoke against PostgreSQL
+- `npm run eval:ai` with sample cases and an LLM-as-judge path
 
 Add this block to the slide:
 
@@ -271,7 +311,7 @@ Add this block to the slide:
 
 What to say:
 
-"We also focused on verification. The API is testable on Swagger UI. The backend has workflow regression tests, the frontend has route tests, the browser layer has end-to-end tests for the founder and mentor-network flows, and Prisma has a live smoke test against PostgreSQL. On the product side, feedback changed the design in three important ways. First, CFE became the gatekeeper because low-context requests waste mentor time. Second, returned requests became a real workflow rather than an edge case, which is why founder resubmission now exists. Third, student work was separated from founder work so preparation and follow-through get their own workspace."
+"We also focused on verification. The API is testable on Swagger UI. The backend has workflow regression tests, the frontend has route tests, the browser layer has end-to-end tests for the founder and mentor-network flows, Prisma has a live smoke test against PostgreSQL, and the AI layer now has a benchmark runner with sample cases plus an LLM-as-judge path. On the product side, feedback changed the design in three important ways. First, CFE became the gatekeeper because low-context requests waste mentor time. Second, returned requests became a real workflow rather than an edge case, which is why founder resubmission now exists. Third, student work was separated from founder work so preparation and follow-through get their own workspace."
 
 ### Slide 6
 
@@ -284,11 +324,12 @@ On-slide text:
 - Add explicit sign-in and logout UX
 - Replace stub artifact storage with real object storage
 - Improve mentor-side live refresh after secure-link load
-- Build the two planned AI endpoints
+- Deploy the public stack with real hosting credentials
+- Run the OpenAI-backed benchmark before changing the production AI model
 
 Add one final line:
 
-`So the non-AI operating core is done. The remaining work is production polish and AI.`
+`So the core workflow and the AI review layer are built. The remaining work is production polish and public deployment.`
 
 Visual:
 
@@ -296,7 +337,51 @@ Visual:
 
 What to say:
 
-"The remaining work is honest and clear. We now have the non-AI operating core working through the routed product, including artifact upload, secure mentor actions, and live cross-workspace updates. The remaining engineering work is production polish: explicit sign-in and logout, real object storage instead of stub upload URLs, stronger mentor-page refresh behavior after the secure link is already open, and then the two planned AI endpoints. So the right summary is this: the non-AI operating core is done, and the next layer is production hardening and AI."
+"The remaining work is honest and clear. We now have the operating core working through the routed product, including artifact upload, secure mentor actions, live cross-workspace updates, and the two AI endpoints with benchmarks. The remaining engineering work is production polish: explicit sign-in and logout, real object storage instead of stub upload URLs, stronger mentor-page refresh behavior after the secure link is already open, and then public deployment with real credentials. So the right summary is this: the workflow and AI review layer are built, and the next layer is production hardening and public launch."
+
+## Video 2 Speaker Notes
+
+### Slide 1 presenter notes
+
+- Timing target: `0:00-0:45`
+- Open with `this is not only a frontend mockup`.
+- Point once at the product UI and once at Swagger so the audience immediately sees both frontend and backend.
+- If Swagger is already open, keep it visible for two seconds before moving on.
+
+### Slide 2 presenter notes
+
+- Timing target: `0:45-1:30`
+- Use the flow diagram as the map for the whole implementation section.
+- Say `core lifecycle plus AI support layer` so the audience hears that AI is already in the product.
+- Stress that mentor outreach is secure and token-based, not just a visual mock.
+
+### Slide 3 presenter notes
+
+- Timing target: `1:30-2:10`
+- Say the counts slowly: `28 total, 28 green, 0 white`.
+- Do not mention any older endpoint counts on camera.
+- Land on `100 percent of the presented inventory is implemented`.
+
+### Slide 4 presenter notes
+
+- Timing target: `2:10-2:55`
+- Do not read the schema like a shopping list. Group it into users, ventures, mentors, requests, meetings, and audit/runtime tables.
+- Point out that the schema supports real multi-user operations, not a toy class-project database.
+- Finish the slide on `production data model`.
+
+### Slide 5 presenter notes
+
+- Timing target: `2:55-3:50`
+- Start with verification first so the claims feel credible.
+- When you mention feedback, tie each learning to one visible product change.
+- If time is tight, compress the testing list into one sentence and spend more time on the three feedback-driven changes.
+
+### Slide 6 presenter notes
+
+- Timing target: `3:50-4:35`
+- Present the remaining work as production polish and public launch work, not as missing core functionality.
+- Be very clear that the AI endpoints are implemented and benchmarked, while the public deployment still depends on credentials.
+- End with the exact summary line: `the workflow and AI review layer are built, and the next layer is production hardening and public launch.`
 
 ## Recording Notes
 
@@ -311,7 +396,7 @@ What to say:
 
 ### What not to say on camera
 
-- do not say AI endpoints are already implemented
+- do not say the public deployment is already live unless you have the URL on screen
 - do not say `300-500` programs is an official government total
 - do not use older stale endpoint counts without correcting them
 
@@ -319,4 +404,4 @@ What to say:
 
 Say this clearly:
 
-"Using the corrected endpoint inventory, we are at 92.9 percent overall completion, and all presented non-AI endpoints are implemented. The remaining unfinished items are the planned AI endpoints and the production-polish work around explicit sign-in, logout, and storage."
+"Using the corrected endpoint inventory, we are at one hundred percent implementation on the presented endpoint sheet. The remaining unfinished items are public deployment and production-polish work around explicit sign-in, logout, storage, and worker hardening."

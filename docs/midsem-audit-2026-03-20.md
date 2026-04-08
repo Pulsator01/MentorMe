@@ -1,8 +1,8 @@
 # Mid-Sem Audit
 
-Date: `2026-03-20`
+Date: `2026-04-09`
 
-This audit is based on the current codebase, not the older presentation notes. Source-of-truth files checked for this audit:
+This audit is based on the current codebase and the professor's later AI-review note. Source-of-truth files checked for this audit:
 
 - `src/App.jsx`
 - `src/pages/StudentDashboard.jsx`
@@ -10,12 +10,18 @@ This audit is based on the current codebase, not the older presentation notes. S
 - `src/pages/AdminDashboard.jsx`
 - `src/pages/MentorPortfolio.jsx`
 - `src/pages/MentorDashboard.jsx`
+- `src/pages/MidsemReadiness.jsx`
 - `src/context/AppState.jsx`
 - `src/data/midsemReadiness.js`
 - `backend/src/app.ts`
 - `backend/src/app.test.ts`
+- `backend/src/ai/*`
+- `backend/src/domain/platformService.ts`
+- `backend/evals/cases.ts`
+- `backend/scripts/run-ai-evals.ts`
 - `backend/scripts/prisma-e2e.ts`
 - `backend/prisma/schema.prisma`
+- `render.yaml`
 - `README.md`
 - `docs/midsem-readiness.md`
 - `docs/system-architecture.md`
@@ -23,12 +29,13 @@ This audit is based on the current codebase, not the older presentation notes. S
 
 ## Executive Verdict
 
-MentorMe is in a strong mid-sem position if you present it honestly.
+MentorMe is now mid-sem ready for both the original implementation review and the later AI-focused follow-up.
 
-- The core founder -> CFE -> mentor operations workflow is implemented.
-- The project is above the professor's 70% endpoint threshold even under conservative counting.
-- Swagger, API tests, browser E2E, and Prisma smoke testing are already in place.
-- The biggest presentation risk is no longer missing core product work. The risk is presenting stale counts or older screenshots.
+- The core founder -> CFE -> mentor -> student workflow is implemented.
+- The API progress sheet is now fully green for the presentation inventory.
+- The two AI endpoints are implemented, surfaced in the UI, and covered by a benchmark runner with sample cases and an LLM-as-judge path.
+- Swagger, API tests, browser E2E, Prisma smoke testing, lint, typecheck, and the AI benchmark all pass locally.
+- The remaining risk is no longer missing code. The remaining risk is external deployment access and presentation discipline.
 
 ## Audit Map
 
@@ -39,78 +46,47 @@ flowchart LR
     B -->|approve| D["Mentor outreach token"]
     D --> E["Mentor schedule + feedback endpoints"]
     E --> F["Student prep + follow-through"]
+    F --> G["AI meeting summary"]
 
-    G["Green"] --> G1["Implemented and usable today"]
-    Y["Yellow"] --> Y1["Partially integrated"]
-    W["White"] --> W1["Planned only"]
+    H["Green"] --> H1["Implemented and usable today"]
+    X["External"] --> X1["Needs hosting credentials or production secrets"]
 ```
 
 ## Most Important Findings
 
-### 1. The current progress sheet was undercounting real implemented endpoints, and that gap is now fixed
+### 1. The presentation endpoint inventory is now fully implemented
 
-The mid-sem readiness data now matches the current backend inventory. After the final pass, the backend in `backend/src/app.ts` exposes `26` implemented non-AI routes plus `2` planned AI routes.
+The mid-sem readiness data and the current backend contract now match. For the presentation inventory, the backend exposes `28` implemented endpoints, including the two AI routes.
 
-The final UI and docs now include the previously missing implemented routes:
+### 2. The AI review requirement is now covered properly
 
-- `POST /auth/logout`
-- `GET /me`
-- `GET /ventures/:ventureId`
-- `GET /ventures/:ventureId/requests`
-- `POST /requests/:requestId/close`
-- `GET /mentor-actions/:token`
-
-This matters because the sheet you present should now use the corrected inventory, not the older count.
-
-### 2. The previously missing product-facing flows are now surfaced in the routed UI
-
-The app now includes:
-
-- real founder-side artifact upload through `presign` and `complete`
-- routed mentor desk flow at `/mentors/desk`
-- secure mentor-link inspection, accept, schedule, and feedback
-- CFE close-request control in the live board
-- frontend consumption of live request updates through the notifications stream, with polling fallback
-
-For the presentation, these can now be shown in the actual product, not only in Swagger.
-
-### 3. The mentor self-serve UI is now routed and usable
-
-`src/pages/MentorDashboard.jsx` is now mounted from `src/App.jsx` at `/mentors/desk` and powered by the secure mentor-action backend routes.
-
-### 4. Real-time updates are now product-complete enough to present
-
-`GET /notifications/stream` is now consumed by the frontend, and the browser E2E flow proves founder and CFE views update without manual reload. A polling fallback was added so the product keeps working even if the stream disconnects.
-
-### 5. AI endpoints are still not implemented yet
-
-The AI routes listed on the mid-sem page are roadmap items only:
+The repo now includes:
 
 - `POST /ai/request-brief`
 - `POST /ai/meeting-summary`
+- sample benchmark cases in `backend/evals/cases.ts`
+- an eval runner in `backend/scripts/run-ai-evals.ts`
+- a configurable judge path that can use OpenAI structured outputs or a heuristic fallback
 
-Do not imply they exist.
+This directly answers the professor's requirement to benchmark AI endpoints and keep a repeatable QoS check when models change.
 
-### 6. The main presentation docs are now aligned with the current build
+### 3. The AI layer is demoable in the product, not only on Swagger
 
-The README, system architecture doc, code-review packet, mid-sem readiness note, and video script pack now reflect the same current implementation state:
+The founder workspace now lets users turn rough notes into a mentor-ready brief, and the student workspace now turns messy meeting notes into structured follow-through. This means the AI layer can be shown through a real user journey.
 
-- routed mentor desk is live
-- Prisma runtime selection is implemented
-- the corrected endpoint inventory is `28` total with `26` green and `2` white
-- the remaining work is product polish and AI, not missing core non-AI workflow
+### 4. The deployment story is now concrete enough to present honestly
 
-The remaining presentation risk is no longer documentation drift. It is using old screenshots or quoting older endpoint counts from memory.
+The API exposes `GET /healthz`, the server respects the platform `PORT`, and the repo includes `render.yaml` for the frontend, API, worker, and PostgreSQL stack. That makes deployment readiness real in the codebase even though actual public deployment still depends on platform credentials.
 
 ## Rubric Readiness
 
 | Rubric area | Honest status | What to say in the presentation |
 | --- | --- | --- |
 | Product pitch clarity | Strong | Lead with the role-based story: founder asks, CFE triages, mentors respond, students close the loop. |
-| Product need definition and validation | Medium-strong | The need is clear. Validation is qualitative, so speak in terms of feedback patterns, not fake interview counts. |
-| Completeness of API endpoints and DB design | Strong | Fastify routes, Swagger, Prisma schema, and runtime selection are real. Just present the corrected endpoint list. |
-| Implementation progress | Strong | Conservative counting now clears the threshold comfortably. Core non-AI workflow is implemented and tested. |
-| Lessons from feedback | Medium-strong | You have clear product learnings, but you must explicitly connect each learning to a product change. |
+| Product need definition and validation | Medium-strong | The need is clear. Validation is still qualitative, so speak in terms of repeated feedback patterns, not invented user-study counts. |
+| Completeness of API endpoints and DB design | Strong | Fastify routes, Swagger, Prisma schema, and runtime selection are real and fully presentable. |
+| Implementation progress | Strong | The presentation inventory is fully implemented and the verification stack is broad. |
+| Lessons from feedback | Strong | You can now tie product changes to user feedback and tie AI design to operational clarity rather than hype. |
 
 ## Corrected Endpoint Progress Sheet
 
@@ -125,12 +101,12 @@ Color logic:
 ### Summary Numbers
 
 - Total endpoints to present: `28`
-- Green: `26`
+- Green: `28`
 - Yellow: `0`
-- White: `2`
-- Conservative completion: `26 / 28 = 92.9%`
+- White: `0`
+- Completion: `28 / 28 = 100%`
 - Non-AI green: `26 / 26 = 100%`
-- Non-AI backend implementation: `26 / 26 = 100%`
+- AI green: `2 / 2 = 100%`
 
 ### Detailed Sheet
 
@@ -139,7 +115,7 @@ Color logic:
 | `POST /auth/magic-link/request` | Green | UI + Swagger | Used by demo role bootstrap |
 | `POST /auth/magic-link/verify` | Green | UI + Swagger | Used by demo role bootstrap |
 | `POST /auth/refresh` | Green | UI + Swagger | Cookie-based session refresh is implemented |
-| `POST /auth/logout` | Green | Swagger | Implemented, but no visible logout control in current UI |
+| `POST /auth/logout` | Green | Swagger | Implemented, but current UI still uses demo bootstrap instead of a visible logout control |
 | `GET /me` | Green | Swagger | Implemented, not surfaced in current UI |
 | `GET /ventures` | Green | UI + Swagger | Used by app hydration |
 | `GET /requests` | Green | UI + Swagger | Used by CFE hydration |
@@ -162,8 +138,8 @@ Color logic:
 | `POST /mentor-actions/:token/feedback` | Green | UI + Swagger | Routed mentor desk feedback works |
 | `POST /webhooks/calendly` | Green | Swagger + tests | Implemented and idempotent |
 | `GET /notifications/stream` | Green | UI + backend | Frontend consumes live updates with polling fallback |
-| `POST /ai/request-brief` | White | Planned | Not implemented |
-| `POST /ai/meeting-summary` | White | Planned | Not implemented |
+| `POST /ai/request-brief` | Green | UI + Swagger | Founder AI drafting flow is implemented and benchmarked |
+| `POST /ai/meeting-summary` | Green | UI + Swagger | Student AI summary flow is implemented and benchmarked |
 
 ## What Is Done
 
@@ -172,12 +148,12 @@ Color logic:
 - founder request composition and submission
 - founder resubmission of returned briefs
 - founder artifact upload to an existing request
-- CFE approve and return actions
-- CFE close request action
-- CFE mentor-link generation
+- CFE approve, return, outreach, and close actions
 - mentor network creation, visibility control, and capacity tuning
 - mentor secure desk accept, schedule, and feedback flow
 - student prep and follow-through workspace
+- founder AI brief drafting
+- student AI meeting-summary generation
 - Swagger UI and OpenAPI JSON
 - browser E2E for founder flow, mentor network, and secure mentor flow
 
@@ -194,6 +170,8 @@ Color logic:
 - secure mentor scheduling
 - secure mentor feedback
 - Calendly webhook handling
+- AI brief and AI summary endpoints
+- health probe endpoint
 
 ### Data layer and verification done
 
@@ -202,6 +180,8 @@ Color logic:
 - live Prisma E2E smoke against PostgreSQL
 - backend workflow tests
 - frontend route tests
+- AI benchmark runner with sample fixtures
+- lint and typecheck
 
 ## What Is Left
 
@@ -210,42 +190,34 @@ Color logic:
 - add a visible logout and explicit sign-in flow instead of relying on demo-role bootstrap
 - replace the stub artifact storage URL with real object storage
 - keep improving mentor-side live sync so external-token pages also refresh after load
+- promote the worker from scaffold to real outbox processing
 
-### Still incomplete for roadmap scope
+### Still incomplete for deployment and production launch
 
-- AI request-brief endpoint
-- AI meeting-summary endpoint
-- production auth and explicit sign-in UX instead of demo route-based bootstrap
-
-### Still incomplete for presentation polish
-
-- capture fresh screenshots from the current routed flows and Swagger
-- use the corrected `28`-endpoint sheet everywhere in the deck
-- keep the market slide honest by presenting `300-500` programs as a conservative inference, not an official government total
+- provision public hosting accounts and secrets
+- run the Render blueprint or equivalent platform deployment
+- run the OpenAI-backed benchmark before choosing the production default AI model
 
 ## What You Should And Should Not Claim
 
 ### Safe claims
 
-- "The core non-AI workflow is implemented."
-- "We are above the 70% endpoint threshold."
-- "Swagger UI, API tests, browser E2E, and Prisma smoke testing are already in place."
-- "The mentor operation pipeline works from founder intake through CFE review, mentor outreach, scheduling, feedback, and close-out."
+- "The full presentation endpoint inventory is implemented."
+- "The two AI endpoints are built and benchmarked."
+- "Swagger UI, API tests, browser E2E, Prisma smoke testing, lint, typecheck, and the AI benchmark are already in place."
+- "The mentor operation pipeline works from founder intake through CFE review, mentor outreach, scheduling, feedback, follow-through, and AI-assisted summarization."
 
 ### Do not claim
 
-- "AI features are already built."
+- "The public deployment is already live" unless you actually deploy it and have the URL.
+- "The OpenAI-backed AI path has been verified in production" unless you run it with real credentials.
 - "`300-500` target programs is an official government count."
 
 ## Recommended Mid-Sem Demo Scope
 
-Keep the live demo tight:
-
-1. `/founders`
-2. `/cfe`
-3. `/cfe/network`
-4. `/mentors/desk`
-5. `/students`
-6. `http://localhost:3001/docs/`
-
-That gives you the strongest story with the least risk.
+1. Founder request composer with AI brief drafting
+2. CFE board showing review, approval, and mentor outreach
+3. Mentor desk showing secure accept/schedule/feedback
+4. Student workspace showing AI meeting-summary output
+5. Swagger UI with the AI endpoints visible
+6. `/midsem` page showing the all-green progress sheet and benchmark/deployment cards

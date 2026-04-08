@@ -331,7 +331,7 @@ sequenceDiagram
 2. Replace stub email, storage, and queue adapters with real infrastructure behind the existing interfaces.
 3. Harden mentor-desk live refresh for already-open secure-link pages after external events.
 4. Promote the worker from scaffold to real outbox processing.
-5. Add the planned AI brief-generation and meeting-summary layers on top of the current workflow core.
+5. Deploy the existing AI brief-generation and meeting-summary layers with the OpenAI-backed benchmark path turned on before model changes.
 
 ## Source Map
 

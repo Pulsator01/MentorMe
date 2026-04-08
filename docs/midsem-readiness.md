@@ -1,6 +1,6 @@
 # Mid-Sem Readiness
 
-This document maps the professor's mid-sem expectations to the current MentorMe build, the product scope, and the remaining engineering work.
+This document maps the professor's mid-sem expectations to the current MentorMe build, the product scope, the AI review additions, and the honest remaining work.
 
 ## 1. What Needed To Exist
 
@@ -17,14 +17,16 @@ This document maps the professor's mid-sem expectations to the current MentorMe 
 - At least 70% endpoint implementation
 - All core non-AI endpoints implemented
 - Test coverage for API flows
+- AI endpoints with benchmarks and an evaluation path for model changes
 
 ## 2. Current Product Position
 
 - Product name: `MentorMe`
 - Core users: founders, students supporting ventures, CFE/incubation operators, mentors
-- Broader market: incubators, entrepreneurship cells, accelerator programs, innovation offices, startup support teams
+- Broader market: incubators, entrepreneurship cells, accelerator programs, innovation offices, and startup support teams
 - Commercial wedge: program operations software for mentor routing, capacity control, and follow-through
-- Endpoint inventory used for the presentation: `28` total, `26` green, `0` yellow, `2` white
+- Endpoint inventory used for the presentation: `28` total, `28` green, `0` yellow, `0` white
+- AI review status: both AI endpoints are implemented and covered by `4` benchmark cases through `npm run eval:ai`
 
 ## 3. System Flow
 
@@ -38,6 +40,7 @@ flowchart LR
     E --> G["Meeting happens"]
     G --> H["Mentor feedback captured"]
     H --> I["Student and founder follow-up"]
+    I --> J["AI summary and benchmarked QoS checks"]
 ```
 
 ## 4. Data Model Coverage
@@ -60,17 +63,19 @@ flowchart TD
     MR --> WR["WebhookReceipt"]
 ```
 
-## 5. Endpoint Traceability
+## 5. Endpoint And Review Traceability
 
 | Task | Product/engineering intent | Main files |
 | --- | --- | --- |
 | T1 | Founder intake and request submission | `src/pages/StudentDashboard.jsx`, `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
-| T2 | CFE review and return/approve | `src/pages/AdminDashboard.jsx`, `src/components/KanbanBoard.jsx`, `backend/src/app.ts` |
+| T2 | CFE review and return/approve/close | `src/pages/AdminDashboard.jsx`, `src/components/KanbanBoard.jsx`, `backend/src/app.ts` |
 | T3 | Founder resubmission of returned briefs | `src/pages/StudentDashboard.jsx`, `src/context/AppState.jsx`, `backend/src/app.ts` |
 | T4 | Mentor outreach accept/decline and scheduling | `backend/src/app.ts`, `backend/src/domain/platformService.ts`, `backend/src/app.test.ts` |
 | T5 | Artifact handling | `backend/src/app.ts`, `backend/src/domain/platformService.ts` |
 | T6 | Mentor directory and capacity tuning | `src/pages/MentorPortfolio.jsx`, `backend/src/app.ts` |
-| T7 | Mid-sem progress sheet and product review surface | `src/pages/MidsemReadiness.jsx`, `src/data/midsemReadiness.js` |
+| T7 | AI request-brief endpoint and founder drafting UI | `backend/src/ai/*`, `src/pages/StudentDashboard.jsx`, `backend/evals/cases.ts` |
+| T8 | AI meeting-summary endpoint and student follow-through UI | `backend/src/ai/*`, `src/pages/StudentWorkspace.jsx`, `backend/evals/cases.ts` |
+| T9 | Deployment and review surface | `src/pages/MidsemReadiness.jsx`, `src/data/midsemReadiness.js`, `render.yaml` |
 
 ## 6. Honest Mid-Sem Status
 
@@ -78,8 +83,7 @@ flowchart TD
 
 - founder request submission
 - founder resubmission after CFE return
-- CFE return and approve actions
-- CFE close request action
+- CFE return, approve, outreach, and close actions
 - mentor roster create and update
 - routed mentor desk with secure link inspection
 - secure mentor accept/decline response endpoint
@@ -91,27 +95,34 @@ flowchart TD
 - Swagger UI at `/docs/` and OpenAPI JSON at `/docs/json`
 - Prisma schema covering the production data model
 - runtime selection between seeded memory and Prisma/PostgreSQL persistence
-- backend regression tests for core request and mentor-action flows
-- a coded progress sheet for product and endpoint status
+- backend regression tests for core request, mentor-action, AI, and health-check flows
+- AI request-brief and meeting-summary endpoints
+- evaluation benchmarks with sample cases and an LLM-as-judge path
+- a tracked Render deployment blueprint and API health probe
 
 ### Still after mid-sem
 
-- add explicit sign-in and logout UX beyond demo bootstrap
+- deploy the public stack with real hosting credentials and secrets
 - replace stub upload URLs with real object storage
-- add production-grade AI endpoints
+- replace demo role bootstrap with explicit sign-in and logout UX
+- promote the worker from scaffold to real outbox processing
+- run the OpenAI-backed benchmark before switching the default AI provider in production
 
 ## 7. Feedback Learnings Reflected In The Product
 
 - Mentor access is mediated through CFE because low-context requests waste mentor time.
 - Returned briefs are part of the product workflow, not an exception, so founders can now re-submit directly.
 - Student work is separated from founder work because prep and follow-through require a different view.
+- AI assistance is constrained to brief drafting and follow-through summarization so the product improves operator clarity instead of replacing the operator judgment layer.
 
 ## 8. Verification
 
 - Full test suite: `npm test`
 - Lint: `npm run lint`
 - Typecheck: `npx tsc -p /Users/owlxshri/Desktop/MentorMe/tsconfig.json`
+- AI benchmark: `npm run eval:ai`
 - Browser E2E: `npm run e2e:ui`
 - Prisma E2E: `npm run e2e:prisma`
 - Swagger UI: `http://localhost:3001/docs/`
+- Health probe: `http://localhost:3001/healthz`
 - Persistence architecture: `docs/persistence-architecture.md`
