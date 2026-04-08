@@ -7,13 +7,20 @@ import swaggerUi from '@fastify/swagger-ui'
 import type { OpenAPIV3, OpenAPIV3_1 } from 'openapi-types'
 import { z } from 'zod'
 import { PlatformService } from './domain/platformService'
-import type { EmailGateway, PlatformRepository, QueuePublisher, StorageService } from './domain/interfaces'
+import type {
+  AiGateway,
+  EmailGateway,
+  PlatformRepository,
+  QueuePublisher,
+  StorageService,
+} from './domain/interfaces'
 
 type AppOptions = {
   repository: PlatformRepository
   email: EmailGateway
   storage: StorageService
   queue: QueuePublisher
+  ai: AiGateway
   exposeTokens?: boolean
   jwtIssuer: string
   jwtAudience: string
@@ -197,6 +204,36 @@ const calendlyWebhookHeadersSchema = {
   required: ['x-calendly-event-id'],
 }
 
+const requestBriefBodySchema = {
+  type: 'object',
+  properties: {
+    ventureName: { type: 'string' },
+    domain: { type: 'string' },
+    stage: { type: 'string' },
+    trl: { type: 'integer', minimum: 1, maximum: 9 },
+    brl: { type: 'integer', minimum: 1, maximum: 9 },
+    rawNotes: { type: 'string' },
+    desiredOutcomeHint: { type: 'string' },
+    artifactRefs: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+  required: ['ventureName', 'rawNotes'],
+}
+
+const meetingSummaryBodySchema = {
+  type: 'object',
+  properties: {
+    ventureName: { type: 'string' },
+    mentorName: { type: 'string' },
+    requestChallenge: { type: 'string' },
+    desiredOutcome: { type: 'string' },
+    meetingNotes: { type: 'string' },
+  },
+  required: ['ventureName', 'meetingNotes'],
+}
+
 const openApiInfo = {
   title: 'MentorMe API',
   description: 'Mentor routing, intake, and follow-through API for the MentorMe platform.',
@@ -204,11 +241,13 @@ const openApiInfo = {
 }
 
 const openApiTags = [
+  { name: 'Infra', description: 'Operational health and deployment probes' },
   { name: 'Auth', description: 'Magic-link auth and session management' },
   { name: 'Ventures', description: 'Venture and mentor-request intake flows' },
   { name: 'Requests', description: 'CFE review, artifacts, outreach, and lifecycle transitions' },
   { name: 'Mentors', description: 'Mentor roster management and secure external actions' },
   { name: 'Integrations', description: 'Calendly and live update integration points' },
+  { name: 'AI', description: 'AI-assisted request drafting, meeting summaries, and evaluation support' },
 ]
 
 const openApiComponents = {
@@ -281,6 +320,15 @@ const buildOpenApiDocument = () =>
   tags: openApiTags,
   components: openApiComponents,
   paths: {
+    '/healthz': {
+      get: {
+        tags: ['Infra'],
+        summary: 'Liveness probe for deployments and local smoke checks',
+        responses: {
+          200: jsonResponse('Healthy service'),
+        },
+      },
+    },
     '/auth/magic-link/request': {
       post: {
         tags: ['Auth'],
@@ -568,6 +616,28 @@ const buildOpenApiDocument = () =>
         },
       },
     },
+    '/ai/request-brief': {
+      post: {
+        tags: ['AI'],
+        summary: 'Generate a mentor-ready founder brief from rough notes',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(requestBriefBodySchema),
+        responses: {
+          200: jsonResponse('Generated mentor-ready brief suggestion'),
+        },
+      },
+    },
+    '/ai/meeting-summary': {
+      post: {
+        tags: ['AI'],
+        summary: 'Generate a structured meeting summary and follow-through tasks',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(meetingSummaryBodySchema),
+        responses: {
+          200: jsonResponse('Generated meeting summary'),
+        },
+      },
+    },
   },
 }) as OpenAPIV3_1.Document
 
@@ -579,6 +649,7 @@ export const createApp = (options: AppOptions) => {
     email: options.email,
     storage: options.storage,
     queue: options.queue,
+    ai: options.ai,
     jwtIssuer: options.jwtIssuer,
     jwtAudience: options.jwtAudience,
     jwtSecret: options.jwtSecret,
@@ -623,6 +694,15 @@ export const createApp = (options: AppOptions) => {
   const emitEvent = (name: string, detail: Record<string, unknown>) => {
     events.dispatchEvent(new CustomEvent(name, { detail }))
   }
+
+  app.get('/healthz', {
+    schema: {
+      tags: ['Infra'],
+      summary: 'Liveness probe for deployments and local smoke checks',
+    },
+  }, async () => ({
+    status: 'ok',
+  }))
 
   app.post('/auth/magic-link/request', {
     schema: {
@@ -913,6 +993,38 @@ export const createApp = (options: AppOptions) => {
     try {
       const user = await readAuthUser(request)
       return await service.listMentors(user)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/ai/request-brief', {
+    schema: {
+      tags: ['AI'],
+      summary: 'Generate a mentor-ready founder brief from rough notes',
+      security: bearerSecurity,
+      body: requestBriefBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.generateRequestBrief(user, request.body)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/ai/meeting-summary', {
+    schema: {
+      tags: ['AI'],
+      summary: 'Generate a structured meeting summary and follow-through tasks',
+      security: bearerSecurity,
+      body: meetingSummaryBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.generateMeetingSummary(user, request.body)
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }

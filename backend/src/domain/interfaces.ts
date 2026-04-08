@@ -16,6 +16,47 @@ import type {
   WebhookReceipt,
 } from './types'
 
+export type RequestBriefInput = {
+  artifactRefs?: string[]
+  brl?: number
+  desiredOutcomeHint?: string
+  domain?: string
+  rawNotes: string
+  stage?: string
+  trl?: number
+  ventureName: string
+}
+
+export type RequestBriefOutput = {
+  briefSummary: string
+  cfeRoutingNote: string
+  challenge: string
+  desiredOutcome: string
+  mentorFitTags: string[]
+  missingInformation: string[]
+  provider: 'heuristic' | 'openai'
+  readinessSignals: string[]
+}
+
+export type MeetingSummaryInput = {
+  desiredOutcome?: string
+  meetingNotes: string
+  mentorName?: string
+  requestChallenge?: string
+  ventureName: string
+}
+
+export type MeetingSummaryOutput = {
+  cfeActionItems: string[]
+  executiveSummary: string
+  followUpQuestions: string[]
+  founderActionItems: string[]
+  keyTakeaways: string[]
+  provider: 'heuristic' | 'openai'
+  secondSessionRecommended: boolean
+  studentActionItems: string[]
+}
+
 export interface PlatformRepository {
   listUsers(): Promise<User[]>
   findUserByEmail(email: string): Promise<User | undefined>
@@ -69,4 +110,9 @@ export interface StorageService {
 
 export interface QueuePublisher {
   publish(topic: string, payload: Record<string, unknown>): Promise<void>
+}
+
+export interface AiGateway {
+  generateMeetingSummary(input: MeetingSummaryInput): Promise<MeetingSummaryOutput>
+  generateRequestBrief(input: RequestBriefInput): Promise<RequestBriefOutput>
 }

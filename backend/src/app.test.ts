@@ -1,7 +1,8 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app'
+import { HeuristicAiGateway } from './ai/heuristicAiGateway'
 import { createSeededInMemoryPlatformRepository } from './infra/inMemoryRepository'
 import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
@@ -16,12 +17,16 @@ const buildTestApp = (configureRepository?: SeedConfigurator) => {
   const email = createStubEmailGateway()
   const storage = createStubStorageService()
   const queue = createInlineQueuePublisher()
+  const ai = new HeuristicAiGateway()
+  const generateRequestBrief = vi.spyOn(ai, 'generateRequestBrief')
+  const generateMeetingSummary = vi.spyOn(ai, 'generateMeetingSummary')
 
   const app = createApp({
     repository,
     email,
     storage,
     queue,
+    ai,
     exposeTokens: true,
     jwtIssuer: 'mentor-me-test',
     jwtAudience: 'mentor-me-web',
@@ -29,12 +34,24 @@ const buildTestApp = (configureRepository?: SeedConfigurator) => {
     cookieSecret: 'cookie-secret',
   })
 
-  return { app, repository, email, storage, queue }
+  return { app, repository, email, storage, queue, ai, generateRequestBrief, generateMeetingSummary }
 }
 
 describe('MentorMe backend workflow', () => {
   beforeEach(async () => {
     // no-op placeholder to keep future global setup symmetric
+  })
+
+  it('exposes a deployment health check endpoint', async () => {
+    const { app } = buildTestApp()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/healthz',
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(parseJson<{ status: string }>(response).status).toBe('ok')
   })
 
   it('issues a magic link, verifies it, and returns the authenticated user context', async () => {
@@ -497,9 +514,12 @@ describe('MentorMe backend workflow', () => {
     const jsonBody = parseJson<{ openapi: string; info: { title: string }; paths: Record<string, unknown> }>(jsonRes)
     expect(jsonBody.openapi).toBe('3.1.0')
     expect(jsonBody.info.title).toBe('MentorMe API')
+    expect(jsonBody.paths['/healthz']).toBeTruthy()
     expect(jsonBody.paths['/ventures/{ventureId}/requests']).toBeTruthy()
     expect(jsonBody.paths['/mentor-actions/{token}']).toBeTruthy()
     expect(jsonBody.paths['/mentor-actions/{token}/respond']).toBeTruthy()
+    expect(jsonBody.paths['/ai/request-brief']).toBeTruthy()
+    expect(jsonBody.paths['/ai/meeting-summary']).toBeTruthy()
 
     const uiRes = await app.inject({
       method: 'GET',
@@ -509,6 +529,59 @@ describe('MentorMe backend workflow', () => {
     expect(uiRes.statusCode).toBe(200)
     expect(uiRes.headers['content-type']).toContain('text/html')
     expect(uiRes.body.toLowerCase()).toContain('swagger-ui')
+  })
+
+  it('generates a structured founder brief through the AI endpoint', async () => {
+    const { app, generateRequestBrief } = buildTestApp()
+    const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ai/request-brief',
+      headers: { authorization: `Bearer ${founderToken}` },
+      payload: {
+        ventureName: 'EcoDrone Systems',
+        domain: 'Industrial drones',
+        stage: 'MVP',
+        trl: 4,
+        brl: 3,
+        rawNotes:
+          'We built an MVP but the current investor story is messy and the founder is not sure how to sequence pilot conversations. Need help framing the next mentor discussion around traction proof and pilot focus.',
+        desiredOutcomeHint: 'Leave with a sharper investor story and pilot plan.',
+        artifactRefs: ['Pitch deck v4'],
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = parseJson<{ suggestion: { provider: string; mentorFitTags: string[] } }>(response)
+    expect(body.suggestion.provider).toBe('heuristic')
+    expect(body.suggestion.mentorFitTags.length).toBeGreaterThan(0)
+    expect(generateRequestBrief).toHaveBeenCalledTimes(1)
+  })
+
+  it('generates a structured meeting summary through the AI endpoint', async () => {
+    const { app, generateMeetingSummary } = buildTestApp()
+    const studentToken = await loginAs(app, 'ria.student@mentorme.test')
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/ai/meeting-summary',
+      headers: { authorization: `Bearer ${studentToken}` },
+      payload: {
+        ventureName: 'EcoDrone Systems',
+        mentorName: 'Naval Bhatia',
+        requestChallenge: 'Need help tightening fundraising framing and pilot sequencing.',
+        desiredOutcome: 'Leave with a better investor story and cleaner pilot next steps.',
+        meetingNotes:
+          'Mentor asked the founder to choose one pilot wedge, define the two traction metrics that matter, and send a tighter 8-slide deck before asking for the next intro. Student should update the pre-read and CFE should review whether an operations mentor is needed.',
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = parseJson<{ summary: { provider: string; founderActionItems: string[] } }>(response)
+    expect(body.summary.provider).toBe('heuristic')
+    expect(body.summary.founderActionItems.length).toBeGreaterThan(0)
+    expect(generateMeetingSummary).toHaveBeenCalledTimes(1)
   })
 
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {

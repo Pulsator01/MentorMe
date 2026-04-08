@@ -54,11 +54,17 @@ const getMatchScore = (mentor, form) => {
 }
 
 function StudentDashboard() {
-  const { venture, mentors, requests, submitRequest, resubmitRequest, uploadArtifact } = useAppState()
+  const { venture, mentors, requests, submitRequest, resubmitRequest, uploadArtifact, generateAiRequestBrief } = useAppState()
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
   const [resubmittingId, setResubmittingId] = useState('')
   const [uploadingRequestId, setUploadingRequestId] = useState('')
+  const [aiNotes, setAiNotes] = useState(
+    'We have a working MVP and a few pilot conversations, but our fundraising story is still messy. I need help deciding what proof matters most and how to position the next mentor meeting so it produces a sharper investor narrative.',
+  )
+  const [aiSuggestion, setAiSuggestion] = useState(null)
+  const [aiError, setAiError] = useState('')
+  const [isGeneratingBrief, setIsGeneratingBrief] = useState(false)
   const [form, setForm] = useState({
     ventureName: venture.name,
     stage: venture.stage,
@@ -206,6 +212,42 @@ function StudentDashboard() {
     }
   }
 
+  const handleGenerateBrief = async () => {
+    setIsGeneratingBrief(true)
+    setAiError('')
+
+    try {
+      const result = await generateAiRequestBrief({
+        ventureName: form.ventureName,
+        domain: form.domain,
+        stage: form.stage,
+        trl: Number(form.trl),
+        brl: Number(form.brl),
+        rawNotes: aiNotes,
+        desiredOutcomeHint: form.desiredOutcome,
+        artifactRefs: form.artifactList,
+      })
+      setAiSuggestion(result.suggestion)
+    } catch (error) {
+      setAiError(error.message || 'The AI brief assistant is unavailable right now.')
+    } finally {
+      setIsGeneratingBrief(false)
+    }
+  }
+
+  const handleApplySuggestion = () => {
+    if (!aiSuggestion) {
+      return
+    }
+
+    setForm((current) => ({
+      ...current,
+      challenge: aiSuggestion.challenge,
+      desiredOutcome: aiSuggestion.desiredOutcome,
+    }))
+    setFlashMessage(`Applied ${aiSuggestion.provider} brief suggestion`)
+  }
+
   return (
     <div className="space-y-5 pb-8">
       <SectionCard>
@@ -256,6 +298,83 @@ function StudentDashboard() {
           />
 
           <form className="space-y-5" onSubmit={handleSubmit}>
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">AI request brief assistant</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Paste rough notes first, then apply the suggested challenge and outcome to the form.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateBrief()}
+                  disabled={isGeneratingBrief}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <BrainCircuit size={16} />
+                  {isGeneratingBrief ? 'Generating...' : 'Draft with AI'}
+                </button>
+              </div>
+              <textarea
+                className="mt-4 min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none transition focus:border-amber-300"
+                value={aiNotes}
+                onChange={(event) => setAiNotes(event.target.value)}
+              />
+              {aiError ? (
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+                  {aiError}
+                </div>
+              ) : null}
+              {aiSuggestion ? (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">AI suggestion</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">{aiSuggestion.briefSummary}</p>
+                    </div>
+                    <Badge tone={aiSuggestion.provider === 'openai' ? 'emerald' : 'amber'}>{aiSuggestion.provider}</Badge>
+                  </div>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Mentor fit tags</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {aiSuggestion.mentorFitTags.map((item) => (
+                          <Badge key={item} tone="blue">
+                            {item}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Missing info</p>
+                      <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600">
+                        {(aiSuggestion.missingInformation.length > 0
+                          ? aiSuggestion.missingInformation
+                          : ['No major missing information flagged by the current assistant.']).map((item) => (
+                          <li key={item}>• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">CFE routing note</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">{aiSuggestion.cfeRoutingNote}</p>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={handleApplySuggestion}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      <Send size={16} />
+                      Apply to form
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Venture Name</span>

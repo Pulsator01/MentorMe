@@ -1,0 +1,89 @@
+databases:
+  - name: mentorme-db
+    databaseName: mentorme
+    user: mentorme
+    plan: free
+
+services:
+  - type: web
+    name: mentorme-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run prisma:generate
+    startCommand: npm run start:api
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mentorme-db
+          property: connectionString
+      - key: PERSISTENCE_BACKEND
+        value: prisma
+      - key: EXPOSE_DEBUG_TOKENS
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: JWT_ISSUER
+        value: mentorme-render
+      - key: JWT_AUDIENCE
+        value: mentorme-web
+      - key: AI_PROVIDER
+        value: auto
+      - key: AI_JUDGE_PROVIDER
+        value: auto
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: worker
+    name: mentorme-worker
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run prisma:generate
+    startCommand: npm run start:worker
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mentorme-db
+          property: connectionString
+      - key: PERSISTENCE_BACKEND
+        value: prisma
+      - key: JWT_SECRET
+        fromService:
+          type: web
+          name: mentorme-api
+          envVarKey: JWT_SECRET
+      - key: COOKIE_SECRET
+        fromService:
+          type: web
+          name: mentorme-api
+          envVarKey: COOKIE_SECRET
+      - key: JWT_ISSUER
+        value: mentorme-render
+      - key: JWT_AUDIENCE
+        value: mentorme-web
+      - key: AI_PROVIDER
+        value: auto
+      - key: AI_JUDGE_PROVIDER
+        value: auto
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: web
+    name: mentorme-web
+    runtime: static
+    plan: free
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://mentorme-api.onrender.com

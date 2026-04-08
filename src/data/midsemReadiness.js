@@ -36,8 +36,8 @@ export const journeyChecklist = [
   },
   {
     name: 'AI assist',
-    detail: 'The current non-AI workflow is complete; AI briefing and AI meeting-summary routes are still the next product layer.',
-    status: 'planned',
+    detail: 'Founders can draft a mentor-ready brief and students can turn raw meeting notes into structured follow-through through the AI endpoint layer.',
+    status: 'done',
   },
 ]
 
@@ -256,7 +256,7 @@ export const endpointChecklist = [
     category: 'AI',
     screen: 'Founder request composer',
     purpose: 'Turn raw notes into a mentor-ready brief.',
-    status: 'planned',
+    status: 'done',
   },
   {
     method: 'POST',
@@ -264,7 +264,34 @@ export const endpointChecklist = [
     category: 'AI',
     screen: 'Student follow-up',
     purpose: 'Summarize mentor conversations into next-step tasks.',
-    status: 'planned',
+    status: 'done',
+  },
+]
+
+export const aiBenchmarkSnapshot = {
+  endpoints: 2,
+  benchmarkCases: 4,
+  passThreshold: '75%',
+  defaultProvider: 'Heuristic locally for deterministic demos, OpenAI automatically when credentials are present.',
+  judgeMode: 'LLM-as-judge via OpenAI structured outputs, with a heuristic rubric fallback for offline verification.',
+}
+
+export const aiBenchmarkChecklist = [
+  {
+    name: 'Founder brief benchmark',
+    endpoint: '/ai/request-brief',
+    samples: '2 sample input/output cases',
+    judge:
+      'Scores routing clarity, missing information, mentor fit, and whether the generated brief is strong enough for CFE review.',
+    status: 'done',
+  },
+  {
+    name: 'Meeting summary benchmark',
+    endpoint: '/ai/meeting-summary',
+    samples: '2 sample input/output cases',
+    judge:
+      'Scores summary fidelity, role-specific action items, second-session signal quality, and follow-through usefulness.',
+    status: 'done',
   },
 ]
 
@@ -319,8 +346,35 @@ export const feedbackLearnings = [
 ]
 
 export const honestNextSteps = [
-  'Add the first production AI endpoint so the non-AI workflow gains an actual intelligence layer.',
+  'Run the OpenAI-backed eval benchmark before switching default models so QoS stays measurable when model choices change.',
+  'Deploy the Render blueprint with real production secrets and share the public URL with mentors for hands-on feedback.',
   'Replace demo role bootstrap with explicit sign-in, session handoff, and a user-visible logout flow.',
   'Swap the stub artifact upload URL for a real object-storage provider.',
   'Extend live updates into the mentor desk so external-token actions do not rely on refresh after load.',
+]
+
+export const deploymentChecklist = [
+  {
+    title: 'API health probe',
+    detail: 'The Fastify app now exposes GET /healthz so hosting platforms can verify liveness before routing traffic.',
+    status: 'done',
+  },
+  {
+    title: 'Static frontend plus Node services',
+    detail:
+      'The frontend stays deployable as a static Vite build while the Fastify API and worker run as separate Node services against PostgreSQL.',
+    status: 'done',
+  },
+  {
+    title: 'Blueprint manifest',
+    detail:
+      'A tracked render.yaml provisions the frontend, API, worker, and PostgreSQL with the right startup commands and env contract.',
+    status: 'done',
+  },
+  {
+    title: 'Credentialed production launch',
+    detail:
+      'Still depends on external platform accounts and secrets such as DATABASE_URL, JWT secrets, cookie secret, and optional OpenAI keys.',
+    status: 'external',
+  },
 ]

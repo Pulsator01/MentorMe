@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { PrismaClient } from '@prisma/client'
 import { createApp } from '../src/app'
+import { HeuristicAiGateway } from '../src/ai/heuristicAiGateway'
 import { createInlineQueuePublisher } from '../src/infra/inlineQueuePublisher'
 import { createStubEmailGateway } from '../src/infra/stubEmailGateway'
 import { createStubStorageService } from '../src/infra/stubStorageService'
@@ -85,6 +86,7 @@ const run = async () => {
     email: createStubEmailGateway(),
     storage: createStubStorageService(),
     queue: createInlineQueuePublisher(),
+    ai: new HeuristicAiGateway(),
     exposeTokens: true,
     jwtIssuer: process.env.JWT_ISSUER || 'mentor-me-local',
     jwtAudience: process.env.JWT_AUDIENCE || 'mentor-me-web',

@@ -1,4 +1,14 @@
-import { endpointChecklist, dbEntities, feedbackLearnings, honestNextSteps, journeyChecklist, productSnapshot } from '../data/midsemReadiness'
+import {
+  aiBenchmarkChecklist,
+  aiBenchmarkSnapshot,
+  dbEntities,
+  deploymentChecklist,
+  endpointChecklist,
+  feedbackLearnings,
+  honestNextSteps,
+  journeyChecklist,
+  productSnapshot,
+} from '../data/midsemReadiness'
 import { Badge, SectionCard, SectionHeading, StatCard, cn } from '../components/ui'
 
 const statusConfig = {
@@ -17,6 +27,11 @@ const statusConfig = {
     badge: 'slate',
     row: 'bg-white',
   },
+  external: {
+    label: 'External setup',
+    badge: 'slate',
+    row: 'bg-slate-50',
+  },
 }
 
 function MidsemReadiness() {
@@ -24,6 +39,8 @@ function MidsemReadiness() {
   const nonAiEndpoints = endpointChecklist.filter((item) => item.category === 'Non-AI')
   const nonAiDone = nonAiEndpoints.filter((item) => item.status === 'done').length
   const plannedCount = endpointChecklist.filter((item) => item.status === 'planned').length
+  const aiEndpoints = endpointChecklist.filter((item) => item.category === 'AI')
+  const aiDone = aiEndpoints.filter((item) => item.status === 'done').length
 
   return (
     <div className="space-y-5 pb-8">
@@ -33,7 +50,7 @@ function MidsemReadiness() {
           Product scope, endpoint progress, and honest delivery status in one place.
         </h1>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
-          This page is the presentation cheat-sheet for what MentorMe is, what has already been built, what the database covers, and what still comes next after the mid-sem checkpoint.
+          This page is the presentation cheat-sheet for what MentorMe is, what has already been built, how the AI endpoints are benchmarked, and what still comes next after the mid-sem checkpoint.
         </p>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           <StatCard
@@ -49,9 +66,9 @@ function MidsemReadiness() {
             accent="amber"
           />
           <StatCard
-            label="Planned AI routes"
-            value={plannedCount}
-            detail="AI features are the next layer, not the blocker for the current workflow."
+            label="AI endpoints live"
+            value={`${aiDone}/${aiEndpoints.length}`}
+            detail={`${aiBenchmarkSnapshot.benchmarkCases} benchmark cases with a ${aiBenchmarkSnapshot.passThreshold} pass threshold are already wired in.`}
             accent="cyan"
           />
         </div>
@@ -142,11 +159,73 @@ function MidsemReadiness() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <SectionCard>
-        <SectionHeading
-          eyebrow="DB design"
-          title="What the schema already models"
-          description="The Prisma schema and runtime now cover the production data model, while a memory fallback still exists for local demo mode."
-        />
+          <SectionHeading
+            eyebrow="AI review"
+            title="AI endpoints and benchmark coverage"
+            description="These are the two AI routes, the sample-case benchmark behind them, and the judge logic that protects quality when models change."
+            action={
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                {aiBenchmarkSnapshot.benchmarkCases} eval cases • {aiBenchmarkSnapshot.passThreshold} pass threshold
+              </div>
+            }
+          />
+          <div className="space-y-3">
+            {aiBenchmarkChecklist.map((item) => (
+              <div key={item.endpoint} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-950">{item.name}</h3>
+                    <p className="mt-1 font-mono text-xs text-slate-500">{item.endpoint}</p>
+                  </div>
+                  <Badge tone={statusConfig[item.status].badge}>{statusConfig[item.status].label}</Badge>
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-700">{item.samples}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.judge}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Generator path</p>
+              <p className="mt-2">{aiBenchmarkSnapshot.defaultProvider}</p>
+            </div>
+            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Judge path</p>
+              <p className="mt-2">{aiBenchmarkSnapshot.judgeMode}</p>
+            </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard>
+          <SectionHeading
+            eyebrow="Deployment readiness"
+            title="What is coded versus what still needs credentials"
+            description="The app is now shaped for deployment, and these cards show which parts are fully in-repo versus which still depend on platform access."
+          />
+          <div className="space-y-3">
+            {deploymentChecklist.map((item) => (
+              <div
+                key={item.title}
+                className={cn('rounded-3xl border border-slate-200 p-4', statusConfig[item.status].row)}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-slate-950">{item.title}</h3>
+                  <Badge tone={statusConfig[item.status].badge}>{statusConfig[item.status].label}</Badge>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.detail}</p>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <SectionCard>
+          <SectionHeading
+            eyebrow="DB design"
+            title="What the schema already models"
+            description="The Prisma schema and runtime now cover the production data model, while a memory fallback still exists for local demo mode."
+          />
           <div className="grid gap-3 md:grid-cols-2">
             {dbEntities.map((entity) => (
               <div key={entity.name} className="rounded-3xl border border-slate-200 bg-slate-50 p-4">

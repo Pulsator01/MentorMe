@@ -1,6 +1,12 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { z } from 'zod'
-import type { EmailGateway, PlatformRepository, QueuePublisher, StorageService } from './interfaces'
+import type {
+  AiGateway,
+  EmailGateway,
+  PlatformRepository,
+  QueuePublisher,
+  StorageService,
+} from './interfaces'
 import { artifactStorageKey, futureIso, nextPrefixedId, nowIso, randomToken, sha256 } from './id'
 import type {
   Artifact,
@@ -60,6 +66,25 @@ const mentorRespondSchema = z.object({
   }
 })
 
+const requestBriefSchema = z.object({
+  ventureName: z.string().min(2),
+  domain: z.string().min(2).optional(),
+  stage: z.string().min(2).optional(),
+  trl: z.number().int().min(1).max(9).optional(),
+  brl: z.number().int().min(1).max(9).optional(),
+  rawNotes: z.string().min(30),
+  desiredOutcomeHint: z.string().min(5).optional(),
+  artifactRefs: z.array(z.string().min(1)).default([]),
+})
+
+const meetingSummarySchema = z.object({
+  ventureName: z.string().min(2),
+  mentorName: z.string().min(2).optional(),
+  requestChallenge: z.string().min(5).optional(),
+  desiredOutcome: z.string().min(5).optional(),
+  meetingNotes: z.string().min(30),
+})
+
 const jwtTextEncoder = new TextEncoder()
 
 type ServiceDeps = {
@@ -67,6 +92,7 @@ type ServiceDeps = {
   email: EmailGateway
   storage: StorageService
   queue: QueuePublisher
+  ai: AiGateway
   jwtIssuer: string
   jwtAudience: string
   jwtSecret: string
@@ -759,6 +785,28 @@ export class PlatformService {
     }
 
     return { accepted: true, duplicate: false }
+  }
+
+  async generateRequestBrief(user: User, input: unknown) {
+    if (!['founder', 'student', 'cfe'].includes(user.role)) {
+      throw new Error('Forbidden')
+    }
+
+    const payload = requestBriefSchema.parse(input)
+    return {
+      suggestion: await this.deps.ai.generateRequestBrief(payload),
+    }
+  }
+
+  async generateMeetingSummary(user: User, input: unknown) {
+    if (!['founder', 'student', 'cfe'].includes(user.role)) {
+      throw new Error('Forbidden')
+    }
+
+    const payload = meetingSummarySchema.parse(input)
+    return {
+      summary: await this.deps.ai.generateMeetingSummary(payload),
+    }
   }
 
   private async signAccessToken(user: User) {

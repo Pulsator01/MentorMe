@@ -424,6 +424,18 @@ export const createApiClient = (baseUrl) => {
         method: 'POST',
       })
     },
+    generateRequestBrief(payload) {
+      return authorizedJson('/ai/request-brief', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    generateMeetingSummary(payload) {
+      return authorizedJson('/ai/meeting-summary', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
     getMentorAction(token) {
       return json(`/mentor-actions/${token}`)
     },
@@ -708,6 +720,20 @@ export function AppStateProvider({ children }) {
       }
 
       return await backendRef.current.client.createMentorOutreach(id)
+    },
+    generateAiRequestBrief: async (payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('The AI assistant requires the API backend to be running.')
+      }
+
+      return await backendRef.current.client.generateRequestBrief(payload)
+    },
+    generateAiMeetingSummary: async (payload) => {
+      if (!backendRef.current.client) {
+        throw new Error('The AI assistant requires the API backend to be running.')
+      }
+
+      return await backendRef.current.client.generateMeetingSummary(payload)
     },
     getMentorAction: async (token) => {
       if (!backendRef.current.client) {

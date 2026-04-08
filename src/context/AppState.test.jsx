@@ -88,6 +88,34 @@ describe('AppState API helpers', () => {
       }),
     )
   })
+
+  it('sends authorized AI brief requests with a JSON body', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'fresh-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce(jsonResponse({ suggestion: { provider: 'heuristic', challenge: 'Sharper ask' } }))
+
+    const client = createApiClient('http://localhost:3001')
+
+    await client.loginForPath('/founders')
+    const response = await client.generateRequestBrief({
+      ventureName: 'EcoDrone Systems',
+      rawNotes: 'Need help tightening fundraising framing and pilot sequencing before the next mentor call.',
+    })
+
+    expect(response).toEqual({ suggestion: { provider: 'heuristic', challenge: 'Sharper ask' } })
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/ai/request-brief',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer fresh-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
 })
 
 const jsonResponse = (body, status = 200) => ({
