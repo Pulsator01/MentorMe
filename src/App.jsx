@@ -2,6 +2,7 @@ import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-d
 import SidebarLayout from './layouts/SidebarLayout'
 import { AppStateProvider } from './context/AppState'
 import RequireAuth from './components/RequireAuth'
+import RequireOnboarded from './components/RequireOnboarded'
 import RoleHome from './pages/RoleHome'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentWorkspace from './pages/StudentWorkspace'
@@ -16,13 +17,21 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import GoogleCallbackPage from './pages/auth/GoogleCallbackPage'
 import MagicLinkVerifyPage from './pages/auth/MagicLinkVerifyPage'
+import FounderOnboardingPage from './pages/onboarding/FounderOnboardingPage'
+import StudentOnboardingPage from './pages/onboarding/StudentOnboardingPage'
 
 function ProtectedShell({ children }) {
   return (
     <RequireAuth>
-      <SidebarLayout>{children}</SidebarLayout>
+      <RequireOnboarded>
+        <SidebarLayout>{children}</SidebarLayout>
+      </RequireOnboarded>
     </RequireAuth>
   )
+}
+
+function OnboardingShell({ children }) {
+  return <RequireAuth>{children}</RequireAuth>
 }
 
 function App() {
@@ -36,6 +45,23 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
           <Route path="/auth/verify" element={<MagicLinkVerifyPage />} />
+
+          <Route
+            path="/onboarding/founder"
+            element={(
+              <OnboardingShell>
+                <FounderOnboardingPage />
+              </OnboardingShell>
+            )}
+          />
+          <Route
+            path="/onboarding/student"
+            element={(
+              <OnboardingShell>
+                <StudentOnboardingPage />
+              </OnboardingShell>
+            )}
+          />
 
           <Route
             path="/"

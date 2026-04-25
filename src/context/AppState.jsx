@@ -469,6 +469,46 @@ export const createApiClient = (baseUrl) => {
     getMe() {
       return authorizedJson('/me')
     },
+    getOnboardingStatus() {
+      return authorizedJson('/me/onboarding')
+    },
+    completeFounderOnboarding(payload) {
+      return authorizedJson('/onboarding/founder', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    completeStudentOnboarding(payload) {
+      return authorizedJson('/onboarding/student', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    getStudentJoinOptions() {
+      return authorizedJson('/onboarding/student/options')
+    },
+    listInvitations() {
+      return authorizedJson('/invitations')
+    },
+    createInvitation(payload) {
+      return authorizedJson('/invitations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    revokeInvitation(invitationId) {
+      return authorizedJson(`/invitations/${invitationId}`, {
+        method: 'DELETE',
+      })
+    },
+    previewInvitation(token) {
+      return json(`/invitations/${encodeURIComponent(token)}`)
+    },
+    acceptInvitation(token) {
+      return authorizedJson(`/invitations/${encodeURIComponent(token)}/accept`, {
+        method: 'POST',
+      })
+    },
     getVentures() {
       return authorizedJson('/ventures')
     },
@@ -845,6 +885,48 @@ export function AppStateProvider({ children }) {
       const session = await client.verifyMagicLink(token)
       await refreshCurrentUser(session.user)
       return session
+    },
+    getOnboardingStatus: async () => {
+      const client = ensureClient()
+      return await client.getOnboardingStatus()
+    },
+    completeFounderOnboarding: async (payload) => {
+      const client = ensureClient()
+      const result = await client.completeFounderOnboarding(payload)
+      await refreshCurrentUser(result.user)
+      return result
+    },
+    completeStudentOnboarding: async (payload) => {
+      const client = ensureClient()
+      const result = await client.completeStudentOnboarding(payload)
+      await refreshCurrentUser(result.user)
+      return result
+    },
+    getStudentJoinOptions: async () => {
+      const client = ensureClient()
+      return await client.getStudentJoinOptions()
+    },
+    listInvitations: async () => {
+      const client = ensureClient()
+      return await client.listInvitations()
+    },
+    createInvitation: async (payload) => {
+      const client = ensureClient()
+      return await client.createInvitation(payload)
+    },
+    revokeInvitation: async (invitationId) => {
+      const client = ensureClient()
+      return await client.revokeInvitation(invitationId)
+    },
+    previewInvitation: async (token) => {
+      const client = ensureClient()
+      return await client.previewInvitation(token)
+    },
+    acceptInvitation: async (token) => {
+      const client = ensureClient()
+      const result = await client.acceptInvitation(token)
+      await refreshCurrentUser(result.user)
+      return result
     },
     submitRequest: async (payload) => {
       if (backendRef.current.ready && backendRef.current.client && state.venture.id) {

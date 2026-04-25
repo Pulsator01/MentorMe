@@ -43,6 +43,43 @@ export function FieldGroup({ children, className }) {
   return <div className={cn('space-y-4', className)}>{children}</div>
 }
 
+export const Textarea = forwardRef(function Textarea(
+  { id, label, hint, error, className, required, rows = 5, ...rest },
+  ref,
+) {
+  const describedBy = hint || error ? `${id}-help` : undefined
+
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      <label htmlFor={id} className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
+      <textarea
+        id={id}
+        ref={ref}
+        rows={rows}
+        required={required}
+        aria-invalid={Boolean(error) || undefined}
+        aria-describedby={describedBy}
+        className={cn(
+          'w-full rounded-2xl border bg-white px-4 py-3 text-sm text-slate-950 placeholder:text-slate-400 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-900',
+          error ? 'border-rose-400' : 'border-slate-200 hover:border-slate-300',
+        )}
+        {...rest}
+      />
+      {hint || error ? (
+        <p
+          id={describedBy}
+          className={cn('text-xs leading-5', error ? 'text-rose-600' : 'text-slate-500')}
+        >
+          {error || hint}
+        </p>
+      ) : null}
+    </div>
+  )
+})
+
 export const Select = forwardRef(function Select(
   { id, label, hint, error, className, options, required, ...rest },
   ref,
