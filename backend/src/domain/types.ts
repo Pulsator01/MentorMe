@@ -1,5 +1,6 @@
-export type UserRole = 'cfe' | 'founder' | 'student'
+export type UserRole = 'cfe' | 'founder' | 'student' | 'mentor' | 'admin'
 export type VentureMembershipRole = 'founder' | 'student'
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
 export type MentorTolerance = 'Low' | 'Medium' | 'High'
 export type MentorVisibility = 'Active' | 'Paused'
 export type RequestStatus =
@@ -36,6 +37,7 @@ export interface User {
   emailVerified?: boolean
   emailVerifiedAt?: string
   lastLoginAt?: string
+  onboardedAt?: string
 }
 
 export type OAuthProvider = 'google'
@@ -57,6 +59,25 @@ export interface PasswordResetTokenRecord {
   tokenHash: string
   expiresAt: string
   consumedAt?: string
+}
+
+export interface Invitation {
+  id: string
+  organizationId: string
+  cohortId?: string
+  ventureId?: string
+  email: string
+  role: UserRole
+  tokenHash: string
+  status: InvitationStatus
+  message?: string
+  expiresAt: string
+  createdById: string
+  acceptedById?: string
+  acceptedAt?: string
+  revokedAt?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Venture {

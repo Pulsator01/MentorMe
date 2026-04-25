@@ -131,6 +131,43 @@ const googleCallbackBodySchema = {
   required: ['code', 'state'],
 }
 
+const founderOnboardingBodySchema = {
+  type: 'object',
+  properties: {
+    ventureName: { type: 'string', minLength: 2, maxLength: 120 },
+    domain: { type: 'string', minLength: 2, maxLength: 80 },
+    stage: { type: 'string', minLength: 2, maxLength: 60 },
+    trl: { type: 'integer', minimum: 1, maximum: 9 },
+    brl: { type: 'integer', minimum: 1, maximum: 9 },
+    location: { type: 'string', minLength: 2, maxLength: 120 },
+    summary: { type: 'string', minLength: 20, maxLength: 2000 },
+    nextMilestone: { type: 'string', minLength: 5, maxLength: 400 },
+    cohortId: { type: 'string', minLength: 1 },
+  },
+  required: ['ventureName', 'domain', 'stage', 'trl', 'brl', 'summary', 'nextMilestone'],
+}
+
+const studentOnboardingBodySchema = {
+  type: 'object',
+  properties: {
+    ventureId: { type: 'string', minLength: 1 },
+    invitationToken: { type: 'string', minLength: 20 },
+  },
+}
+
+const createInvitationBodySchema = {
+  type: 'object',
+  properties: {
+    email: { type: 'string', format: 'email' },
+    role: { type: 'string', enum: ['founder', 'student', 'cfe', 'mentor', 'admin'] },
+    ventureId: { type: 'string', minLength: 1 },
+    cohortId: { type: 'string', minLength: 1 },
+    message: { type: 'string', maxLength: 800 },
+    expiresInDays: { type: 'integer', minimum: 1, maximum: 60 },
+  },
+  required: ['email', 'role'],
+}
+
 const createRequestBodySchema = {
   type: 'object',
   properties: {
@@ -330,6 +367,8 @@ const openApiInfo = {
 const openApiTags = [
   { name: 'Infra', description: 'Operational health and deployment probes' },
   { name: 'Auth', description: 'Magic-link auth and session management' },
+  { name: 'Onboarding', description: 'First-run onboarding wizards for founders and students' },
+  { name: 'Invitations', description: 'CFE-issued invitations to join an organization' },
   { name: 'Ventures', description: 'Venture and mentor-request intake flows' },
   { name: 'Requests', description: 'CFE review, artifacts, outreach, and lifecycle transitions' },
   { name: 'Mentors', description: 'Mentor roster management and secure external actions' },
@@ -536,6 +575,99 @@ const buildOpenApiDocument = () =>
         security: bearerSecurity,
         responses: {
           200: jsonResponse('Authenticated user'),
+        },
+      },
+    },
+    '/me/onboarding': {
+      get: {
+        tags: ['Onboarding'],
+        summary: 'Read the current onboarding status for the signed-in user',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Onboarding status'),
+        },
+      },
+    },
+    '/onboarding/founder': {
+      post: {
+        tags: ['Onboarding'],
+        summary: 'Complete the founder onboarding wizard (creates the venture)',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(founderOnboardingBodySchema),
+        responses: {
+          201: jsonResponse('Onboarded user with new venture'),
+        },
+      },
+    },
+    '/onboarding/student': {
+      post: {
+        tags: ['Onboarding'],
+        summary: 'Complete the student onboarding wizard (joins a venture)',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(studentOnboardingBodySchema),
+        responses: {
+          200: jsonResponse('Onboarded user with venture membership'),
+        },
+      },
+    },
+    '/onboarding/student/options': {
+      get: {
+        tags: ['Onboarding'],
+        summary: 'List ventures the current student can join in their cohort',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Available ventures'),
+        },
+      },
+    },
+    '/invitations': {
+      get: {
+        tags: ['Invitations'],
+        summary: 'List invitations issued by the current organization',
+        security: bearerSecurity,
+        responses: {
+          200: jsonResponse('Invitations for the organization'),
+        },
+      },
+      post: {
+        tags: ['Invitations'],
+        summary: 'Create and email an invitation to join the organization',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(createInvitationBodySchema),
+        responses: {
+          201: jsonResponse('Created invitation'),
+        },
+      },
+    },
+    '/invitations/{token}': {
+      get: {
+        tags: ['Invitations'],
+        summary: 'Public preview of an invitation by its raw token (does not consume it)',
+        parameters: [pathParameter('token', 'Invitation token')],
+        responses: {
+          200: jsonResponse('Invitation preview'),
+        },
+      },
+    },
+    '/invitations/{token}/accept': {
+      post: {
+        tags: ['Invitations'],
+        summary: 'Accept an invitation as the currently signed-in user',
+        security: bearerSecurity,
+        parameters: [pathParameter('token', 'Invitation token')],
+        responses: {
+          200: jsonResponse('Accepted invitation'),
+        },
+      },
+    },
+    '/invitations/{invitationId}': {
+      delete: {
+        tags: ['Invitations'],
+        summary: 'Revoke a pending invitation',
+        security: bearerSecurity,
+        parameters: [pathParameter('invitationId', 'Invitation identifier')],
+        responses: {
+          200: jsonResponse('Revoked invitation'),
         },
       },
     },
@@ -1108,6 +1240,156 @@ export const createApp = (options: AppOptions) => {
   }, async (request) => {
     const user = await readAuthUser(request)
     return service.getMe(user)
+  })
+
+  app.get('/me/onboarding', {
+    schema: {
+      tags: ['Onboarding'],
+      summary: 'Read the current onboarding status for the signed-in user',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.getOnboardingStatus(user)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/onboarding/founder', {
+    schema: {
+      tags: ['Onboarding'],
+      summary: 'Complete the founder onboarding wizard (creates the venture)',
+      security: bearerSecurity,
+      body: founderOnboardingBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const result = await service.completeFounderOnboarding(user, request.body)
+      return reply.code(201).send(result)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/onboarding/student', {
+    schema: {
+      tags: ['Onboarding'],
+      summary: 'Complete the student onboarding wizard (joins a venture)',
+      security: bearerSecurity,
+      body: studentOnboardingBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const result = await service.completeStudentOnboarding(user, request.body)
+      return reply.send(result)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.get('/onboarding/student/options', {
+    schema: {
+      tags: ['Onboarding'],
+      summary: 'List ventures the current student can join in their cohort',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.getStudentJoinOptions(user)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/invitations', {
+    schema: {
+      tags: ['Invitations'],
+      summary: 'Create and email an invitation to join the organization',
+      security: bearerSecurity,
+      body: createInvitationBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const result = await service.createInvitation(user, request.body)
+      return reply.code(201).send({
+        invitation: result.invitation,
+        ...(options.exposeTokens ? { debugToken: result.token } : {}),
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.get('/invitations', {
+    schema: {
+      tags: ['Invitations'],
+      summary: 'List invitations issued by the current organization',
+      security: bearerSecurity,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.listInvitations(user)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.get('/invitations/:token', {
+    schema: {
+      tags: ['Invitations'],
+      summary: 'Public preview of an invitation by its raw token (does not consume it)',
+      params: stringIdParamSchema('token', 'Invitation token'),
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(20) }).parse(request.params)
+      return await service.previewInvitation(params.token)
+    } catch (error) {
+      return reply.notFound((error as Error).message)
+    }
+  })
+
+  app.post('/invitations/:token/accept', {
+    schema: {
+      tags: ['Invitations'],
+      summary: 'Accept an invitation as the currently signed-in user',
+      security: bearerSecurity,
+      params: stringIdParamSchema('token', 'Invitation token'),
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ token: z.string().min(20) }).parse(request.params)
+      const user = await readAuthUser(request)
+      const result = await service.acceptInvitation(user, params.token)
+      return reply.send(result)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.delete('/invitations/:invitationId', {
+    schema: {
+      tags: ['Invitations'],
+      summary: 'Revoke a pending invitation',
+      security: bearerSecurity,
+      params: stringIdParamSchema('invitationId', 'Invitation identifier'),
+    },
+  }, async (request, reply) => {
+    try {
+      const params = z.object({ invitationId: z.string().min(1) }).parse(request.params)
+      const user = await readAuthUser(request)
+      const result = await service.revokeInvitation(user, params.invitationId)
+      return reply.send(result)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
   })
 
   app.get('/ventures', {

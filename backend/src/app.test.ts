@@ -1184,6 +1184,457 @@ describe('MentorMe backend workflow', () => {
 
     expect(callbackRes.statusCode).toBe(400)
   })
+
+  it('reports the seeded founder as having venture access (no further wizard needed)', async () => {
+    const { app } = buildTestApp()
+    const token = await loginAs(app, 'aarav.sharma@mentorme.test')
+
+    const statusRes = await app.inject({
+      method: 'GET',
+      url: '/me/onboarding',
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    expect(statusRes.statusCode).toBe(200)
+    const body = parseJson<{
+      onboarded: boolean
+      role: string
+      ventureCount: number
+      nextStep: string
+    }>(statusRes)
+    expect(body.role).toBe('founder')
+    expect(body.ventureCount).toBeGreaterThan(0)
+    expect(body.nextStep).toBe('completed')
+  })
+
+  it('walks a fresh founder through the onboarding wizard and creates a venture', async () => {
+    const { app, repository } = buildTestApp()
+
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Maya Greenfield',
+        email: 'maya.greenfield@mentorme.test',
+        password: 'GreenStart-9999',
+        role: 'founder',
+      },
+    })
+    expect(registerRes.statusCode).toBe(201)
+    const accessToken = parseJson<{ accessToken: string }>(registerRes).accessToken
+
+    const beforeRes = await app.inject({
+      method: 'GET',
+      url: '/me/onboarding',
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    expect(beforeRes.statusCode).toBe(200)
+    const before = parseJson<{ onboarded: boolean; nextStep: string }>(beforeRes)
+    expect(before.onboarded).toBe(false)
+    expect(before.nextStep).toBe('founder_venture_details')
+
+    const wizardRes = await app.inject({
+      method: 'POST',
+      url: '/onboarding/founder',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        ventureName: 'Greenfield Robotics',
+        domain: 'Robotics',
+        stage: 'TRL 4',
+        trl: 4,
+        brl: 3,
+        location: 'Bengaluru, India',
+        summary: 'Modular robotics platform for small-batch manufacturers in India.',
+        nextMilestone: 'Demonstrate gripper accuracy at first paid pilot site.',
+      },
+    })
+
+    expect(wizardRes.statusCode).toBe(201)
+    const wizard = parseJson<{
+      user: { id: string; onboardedAt: string; cohortId: string }
+      venture: { id: string; name: string; cohortId: string }
+    }>(wizardRes)
+    expect(wizard.user.onboardedAt).toBeTruthy()
+    expect(wizard.user.cohortId).toBeTruthy()
+    expect(wizard.venture.name).toBe('Greenfield Robotics')
+
+    const stored = await repository.findVentureById(wizard.venture.id)
+    expect(stored?.name).toBe('Greenfield Robotics')
+
+    const memberships = await repository.listMemberships()
+    expect(memberships.some((m) => m.userId === wizard.user.id && m.ventureId === wizard.venture.id)).toBe(true)
+
+    const afterRes = await app.inject({
+      method: 'GET',
+      url: '/me/onboarding',
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    const after = parseJson<{ onboarded: boolean; nextStep: string; ventureCount: number }>(afterRes)
+    expect(after.onboarded).toBe(true)
+    expect(after.nextStep).toBe('completed')
+    expect(after.ventureCount).toBe(1)
+  })
+
+  it('rejects founder onboarding when required fields are missing', async () => {
+    const { app } = buildTestApp()
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Patchy Founder',
+        email: 'patchy.founder@mentorme.test',
+        password: 'PatchPass-1234',
+        role: 'founder',
+      },
+    })
+    const token = parseJson<{ accessToken: string }>(registerRes).accessToken
+
+    const wizardRes = await app.inject({
+      method: 'POST',
+      url: '/onboarding/founder',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ventureName: 'Tiny',
+        domain: 'X',
+      },
+    })
+
+    expect([400, 422]).toContain(wizardRes.statusCode)
+  })
+
+  it('refuses founder onboarding for non-founder roles', async () => {
+    const { app } = buildTestApp()
+    const studentToken = await loginAs(app, 'ria.student@mentorme.test')
+
+    const wizardRes = await app.inject({
+      method: 'POST',
+      url: '/onboarding/founder',
+      headers: { authorization: `Bearer ${studentToken}` },
+      payload: {
+        ventureName: 'Wrong Role Co',
+        domain: 'NA',
+        stage: 'TRL 1',
+        trl: 1,
+        brl: 1,
+        summary: 'Should not be allowed because the user is a student, not a founder.',
+        nextMilestone: 'N/A — request should be rejected.',
+      },
+    })
+
+    expect(wizardRes.statusCode).toBe(400)
+    expect(wizardRes.body).toContain('founder')
+  })
+
+  it('lists ventures a fresh student can join in their cohort', async () => {
+    const { app } = buildTestApp((state) => {
+      state.users.push({
+        id: 'user-student-fresh',
+        organizationId: 'org-mentorme',
+        cohortId: 'cohort-2026',
+        email: 'fresh.student@mentorme.test',
+        name: 'Fresh Student',
+        role: 'student',
+      })
+    })
+
+    const token = await loginAs(app, 'fresh.student@mentorme.test')
+
+    const optionsRes = await app.inject({
+      method: 'GET',
+      url: '/onboarding/student/options',
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+    expect(optionsRes.statusCode).toBe(200)
+    const body = parseJson<{ ventures: Array<{ id: string; name: string }> }>(optionsRes)
+    expect(body.ventures.length).toBeGreaterThan(0)
+    expect(body.ventures.some((v) => v.id === 'v-ecodrone')).toBe(true)
+  })
+
+  it('lets a fresh student join a venture and marks them onboarded', async () => {
+    const { app, repository } = buildTestApp((state) => {
+      state.users.push({
+        id: 'user-student-join',
+        organizationId: 'org-mentorme',
+        cohortId: 'cohort-2026',
+        email: 'join.student@mentorme.test',
+        name: 'Join Student',
+        role: 'student',
+      })
+    })
+
+    const token = await loginAs(app, 'join.student@mentorme.test')
+
+    const joinRes = await app.inject({
+      method: 'POST',
+      url: '/onboarding/student',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ventureId: 'v-medimesh' },
+    })
+
+    expect(joinRes.statusCode).toBe(200)
+    const body = parseJson<{
+      user: { id: string; onboardedAt: string }
+      venture: { id: string }
+    }>(joinRes)
+    expect(body.user.onboardedAt).toBeTruthy()
+    expect(body.venture.id).toBe('v-medimesh')
+
+    const memberships = await repository.listMemberships()
+    expect(memberships.some((m) => m.userId === 'user-student-join' && m.ventureId === 'v-medimesh')).toBe(true)
+  })
+
+  it('rejects student onboarding without a venture or invitation token', async () => {
+    const { app } = buildTestApp((state) => {
+      state.users.push({
+        id: 'user-student-empty',
+        organizationId: 'org-mentorme',
+        cohortId: 'cohort-2026',
+        email: 'empty.student@mentorme.test',
+        name: 'Empty Student',
+        role: 'student',
+      })
+    })
+    const token = await loginAs(app, 'empty.student@mentorme.test')
+
+    const joinRes = await app.inject({
+      method: 'POST',
+      url: '/onboarding/student',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    })
+
+    expect(joinRes.statusCode).toBe(400)
+  })
+
+  it('lets CFE create, list, preview, and revoke invitations end to end', async () => {
+    const { app, email } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: {
+        email: 'invitee.founder@mentorme.test',
+        role: 'founder',
+        message: 'Welcome to the cohort — we are excited to have you onboard.',
+      },
+    })
+
+    expect(createRes.statusCode).toBe(201)
+    const createBody = parseJson<{
+      invitation: { id: string; email: string; role: string; status: string }
+      debugToken: string
+    }>(createRes)
+    expect(createBody.invitation.email).toBe('invitee.founder@mentorme.test')
+    expect(createBody.invitation.status).toBe('pending')
+    expect(createBody.debugToken).toBeTruthy()
+
+    const sentInvite = email.sent.find((entry) => entry.type === 'invitation')
+    expect(sentInvite).toMatchObject({
+      email: 'invitee.founder@mentorme.test',
+      role: 'founder',
+      organizationName: 'MentorMe',
+    })
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+    expect(listRes.statusCode).toBe(200)
+    const listBody = parseJson<{ invitations: Array<{ id: string }> }>(listRes)
+    expect(listBody.invitations.some((i) => i.id === createBody.invitation.id)).toBe(true)
+
+    const previewRes = await app.inject({
+      method: 'GET',
+      url: `/invitations/${createBody.debugToken}`,
+    })
+    expect(previewRes.statusCode).toBe(200)
+    const previewBody = parseJson<{
+      invitation: { email: string; role: string; organizationName: string; status: string }
+    }>(previewRes)
+    expect(previewBody.invitation.email).toBe('invitee.founder@mentorme.test')
+    expect(previewBody.invitation.status).toBe('pending')
+
+    const revokeRes = await app.inject({
+      method: 'DELETE',
+      url: `/invitations/${createBody.invitation.id}`,
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+    expect(revokeRes.statusCode).toBe(200)
+    const revokeBody = parseJson<{ invitation: { status: string; revokedAt?: string } }>(revokeRes)
+    expect(revokeBody.invitation.status).toBe('revoked')
+    expect(revokeBody.invitation.revokedAt).toBeTruthy()
+
+    const revokeAgainRes = await app.inject({
+      method: 'DELETE',
+      url: `/invitations/${createBody.invitation.id}`,
+      headers: { authorization: `Bearer ${cfeToken}` },
+    })
+    expect(revokeAgainRes.statusCode).toBe(400)
+  })
+
+  it('forbids non-CFE users from creating or listing invitations', async () => {
+    const { app } = buildTestApp()
+    const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${founderToken}` },
+      payload: {
+        email: 'should.not.invite@mentorme.test',
+        role: 'student',
+      },
+    })
+    expect(createRes.statusCode).toBe(400)
+    expect(createRes.body).toContain('CFE')
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${founderToken}` },
+    })
+    expect(listRes.statusCode).toBe(400)
+  })
+
+  it('refuses to invite an email that already belongs to an existing user', async () => {
+    const { app } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: {
+        email: 'aarav.sharma@mentorme.test',
+        role: 'founder',
+      },
+    })
+
+    expect(createRes.statusCode).toBe(400)
+    expect(createRes.body.toLowerCase()).toContain('exists')
+  })
+
+  it('refuses to issue a duplicate pending invitation for the same email', async () => {
+    const { app } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: { email: 'dup.invite@mentorme.test', role: 'founder' },
+    })
+    expect(first.statusCode).toBe(201)
+
+    const second = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: { email: 'dup.invite@mentorme.test', role: 'founder' },
+    })
+
+    expect(second.statusCode).toBe(400)
+    expect(second.body.toLowerCase()).toContain('pending')
+  })
+
+  it('lets an invited user accept after registering with the same email and role', async () => {
+    const { app, repository } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const inviteRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: {
+        email: 'accept.test@mentorme.test',
+        role: 'student',
+        ventureId: 'v-medimesh',
+      },
+    })
+    const invite = parseJson<{ invitation: { id: string }; debugToken: string }>(inviteRes)
+
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Accept Tester',
+        email: 'accept.test@mentorme.test',
+        password: 'AcceptPass-1234',
+        role: 'student',
+      },
+    })
+    const studentToken = parseJson<{ accessToken: string }>(registerRes).accessToken
+
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: `/invitations/${invite.debugToken}/accept`,
+      headers: { authorization: `Bearer ${studentToken}` },
+    })
+
+    expect(acceptRes.statusCode).toBe(200)
+    const acceptBody = parseJson<{
+      user: { id: string; onboardedAt: string; cohortId: string }
+      venture: { id: string }
+    }>(acceptRes)
+    expect(acceptBody.user.onboardedAt).toBeTruthy()
+    expect(acceptBody.venture.id).toBe('v-medimesh')
+
+    const memberships = await repository.listMemberships()
+    expect(memberships.some((m) => m.userId === acceptBody.user.id && m.ventureId === 'v-medimesh')).toBe(true)
+
+    const stored = await repository.findInvitationById(invite.invitation.id)
+    expect(stored?.status).toBe('accepted')
+    expect(stored?.acceptedById).toBe(acceptBody.user.id)
+  })
+
+  it('rejects accepting an invitation when the role does not match', async () => {
+    const { app } = buildTestApp()
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const inviteRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { authorization: `Bearer ${cfeToken}` },
+      payload: { email: 'mismatch@mentorme.test', role: 'founder' },
+    })
+    const invite = parseJson<{ debugToken: string }>(inviteRes)
+
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Mismatch User',
+        email: 'mismatch@mentorme.test',
+        password: 'MismatchPass-9',
+        role: 'student',
+      },
+    })
+    const userToken = parseJson<{ accessToken: string }>(registerRes).accessToken
+
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: `/invitations/${invite.debugToken}/accept`,
+      headers: { authorization: `Bearer ${userToken}` },
+    })
+
+    expect(acceptRes.statusCode).toBe(400)
+    expect(acceptRes.body.toLowerCase()).toContain('role')
+  })
+
+  it('returns 404 for invitation preview with an unknown token', async () => {
+    const { app } = buildTestApp()
+
+    const previewRes = await app.inject({
+      method: 'GET',
+      url: '/invitations/this-token-does-not-exist-but-is-long-enough-to-pass-validation',
+    })
+
+    expect(previewRes.statusCode).toBe(404)
+  })
 })
 
 async function loginAs(app: ReturnType<typeof createApp>, email: string) {

@@ -17,5 +17,8 @@ export const createStubEmailGateway = (): EmailGateway & { sent: Array<Record<st
     async sendWelcome(input) {
       sent.push({ type: 'welcome', ...input })
     },
+    async sendInvitation(input) {
+      sent.push({ type: 'invitation', ...input })
+    },
   }
 }

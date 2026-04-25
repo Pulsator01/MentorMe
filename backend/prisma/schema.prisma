@@ -11,6 +11,15 @@ enum UserRole {
   cfe
   founder
   student
+  mentor
+  admin
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+  expired
 }
 
 enum VentureMembershipRole {
@@ -117,6 +126,7 @@ model Organization {
   auditEvents    AuditEvent[]
   aiRuns         AiRun[]
   aiRunFeedbacks AiRunFeedback[]
+  invitations    Invitation[]
   createdAt      DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 }
@@ -143,6 +153,7 @@ model User {
   emailVerified       Boolean              @default(false)
   emailVerifiedAt     DateTime?
   lastLoginAt         DateTime?
+  onboardedAt         DateTime?
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   cohort              Cohort?              @relation(fields: [cohortId], references: [id], onDelete: SetNull)
   memberships         VentureMembership[]
@@ -156,6 +167,8 @@ model User {
   auditEvents         AuditEvent[]
   aiRuns              AiRun[]
   aiRunFeedbacks      AiRunFeedback[]
+  invitationsCreated  Invitation[]         @relation("InvitationCreatedBy")
+  invitationsAccepted Invitation[]         @relation("InvitationAcceptedBy")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 }
@@ -184,6 +197,31 @@ model PasswordResetToken {
   consumedAt DateTime?
   createdAt  DateTime  @default(now())
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Invitation {
+  id              String           @id
+  organizationId  String
+  cohortId        String?
+  ventureId       String?
+  email           String
+  role            UserRole
+  tokenHash       String           @unique
+  status          InvitationStatus @default(pending)
+  message         String?
+  expiresAt       DateTime
+  createdById     String
+  acceptedById    String?
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User             @relation("InvitationCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  acceptedBy      User?            @relation("InvitationAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([email])
 }
 
 model Venture {

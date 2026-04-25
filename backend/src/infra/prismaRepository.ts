@@ -6,6 +6,7 @@ import type {
   Artifact,
   AuditEvent,
   ExternalActionToken,
+  Invitation,
   MagicLinkTokenRecord,
   Meeting,
   MeetingFeedback,
@@ -49,6 +50,7 @@ const toUser = (user: {
   emailVerified: boolean
   emailVerifiedAt: Date | null
   lastLoginAt: Date | null
+  onboardedAt: Date | null
 }): User => ({
   id: user.id,
   organizationId: user.organizationId,
@@ -60,6 +62,7 @@ const toUser = (user: {
   emailVerified: user.emailVerified,
   emailVerifiedAt: toIso(user.emailVerifiedAt),
   lastLoginAt: toIso(user.lastLoginAt),
+  onboardedAt: toIso(user.onboardedAt),
 })
 
 const toOAuthAccount = (account: {
@@ -94,6 +97,42 @@ const toPasswordResetToken = (token: {
   tokenHash: token.tokenHash,
   expiresAt: token.expiresAt.toISOString(),
   consumedAt: toIso(token.consumedAt),
+})
+
+const toInvitation = (invitation: {
+  id: string
+  organizationId: string
+  cohortId: string | null
+  ventureId: string | null
+  email: string
+  role: string
+  tokenHash: string
+  status: string
+  message: string | null
+  expiresAt: Date
+  createdById: string
+  acceptedById: string | null
+  acceptedAt: Date | null
+  revokedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}): Invitation => ({
+  id: invitation.id,
+  organizationId: invitation.organizationId,
+  cohortId: invitation.cohortId || undefined,
+  ventureId: invitation.ventureId || undefined,
+  email: invitation.email,
+  role: invitation.role as Invitation['role'],
+  tokenHash: invitation.tokenHash,
+  status: invitation.status as Invitation['status'],
+  message: invitation.message || undefined,
+  expiresAt: invitation.expiresAt.toISOString(),
+  createdById: invitation.createdById,
+  acceptedById: invitation.acceptedById || undefined,
+  acceptedAt: toIso(invitation.acceptedAt),
+  revokedAt: toIso(invitation.revokedAt),
+  createdAt: invitation.createdAt.toISOString(),
+  updatedAt: invitation.updatedAt.toISOString(),
 })
 
 const toVenture = (venture: {
@@ -518,6 +557,7 @@ class PrismaPlatformRepository implements PlatformRepository {
       emailVerified: user.emailVerified ?? false,
       emailVerifiedAt: user.emailVerifiedAt ? new Date(user.emailVerifiedAt) : null,
       lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
+      onboardedAt: user.onboardedAt ? new Date(user.onboardedAt) : null,
     }
     const saved = await this.prisma.user.upsert({
       where: { id: user.id },
@@ -592,8 +632,48 @@ class PrismaPlatformRepository implements PlatformRepository {
     return venture ? toVenture(venture) : undefined
   }
 
+  async saveVenture(venture: Venture) {
+    const { id, ...rest } = venture
+    const data = {
+      organizationId: rest.organizationId,
+      cohortId: rest.cohortId,
+      name: rest.name,
+      founderName: rest.founderName,
+      domain: rest.domain,
+      stage: rest.stage,
+      trl: rest.trl,
+      brl: rest.brl,
+      location: rest.location,
+      summary: rest.summary,
+      nextMilestone: rest.nextMilestone,
+      programNote: rest.programNote,
+    }
+    const saved = await this.prisma.venture.upsert({
+      where: { id },
+      update: data,
+      create: { id, ...data },
+    })
+    return toVenture(saved)
+  }
+
   async listMemberships() {
     return (await this.prisma.ventureMembership.findMany({ orderBy: { id: 'asc' } })).map(toMembership)
+  }
+
+  async saveMembership(membership: VentureMembership) {
+    const { id, ...rest } = membership
+    const data = {
+      organizationId: rest.organizationId,
+      ventureId: rest.ventureId,
+      userId: rest.userId,
+      role: rest.role,
+    }
+    const saved = await this.prisma.ventureMembership.upsert({
+      where: { id },
+      update: data,
+      create: { id, ...data },
+    })
+    return toMembership(saved)
   }
 
   async listMentors() {
@@ -1005,6 +1085,60 @@ class PrismaPlatformRepository implements PlatformRepository {
       },
     })
     return toAiRunFeedback(saved)
+  }
+
+  async saveInvitation(invitation: Invitation) {
+    const { id, ...rest } = invitation
+    const data = {
+      organizationId: rest.organizationId,
+      cohortId: rest.cohortId ?? null,
+      ventureId: rest.ventureId ?? null,
+      email: rest.email,
+      role: rest.role,
+      tokenHash: rest.tokenHash,
+      status: rest.status,
+      message: rest.message ?? null,
+      expiresAt: new Date(rest.expiresAt),
+      createdById: rest.createdById,
+      acceptedById: rest.acceptedById ?? null,
+      acceptedAt: rest.acceptedAt ? new Date(rest.acceptedAt) : null,
+      revokedAt: rest.revokedAt ? new Date(rest.revokedAt) : null,
+    }
+    const saved = await this.prisma.invitation.upsert({
+      where: { id },
+      update: data,
+      create: { id, ...data },
+    })
+    return toInvitation(saved)
+  }
+
+  async findInvitationById(id: string) {
+    const invitation = await this.prisma.invitation.findUnique({ where: { id } })
+    return invitation ? toInvitation(invitation) : undefined
+  }
+
+  async findInvitationByHash(tokenHash: string) {
+    const invitation = await this.prisma.invitation.findUnique({ where: { tokenHash } })
+    return invitation ? toInvitation(invitation) : undefined
+  }
+
+  async listInvitationsByOrganization(organizationId: string) {
+    return (await this.prisma.invitation.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: 'desc' },
+    })).map(toInvitation)
+  }
+
+  async findPendingInvitationByEmail(organizationId: string, email: string) {
+    const invitation = await this.prisma.invitation.findFirst({
+      where: {
+        organizationId,
+        email: { equals: email, mode: 'insensitive' },
+        status: 'pending',
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+    return invitation ? toInvitation(invitation) : undefined
   }
 }
 

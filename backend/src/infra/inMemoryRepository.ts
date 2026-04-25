@@ -6,6 +6,7 @@ import type {
   Artifact,
   AuditEvent,
   ExternalActionToken,
+  Invitation,
   MagicLinkTokenRecord,
   Meeting,
   MeetingFeedback,
@@ -18,6 +19,8 @@ import type {
   PasswordResetTokenRecord,
   SessionRecord,
   User,
+  Venture,
+  VentureMembership,
   WebhookReceipt,
 } from '../domain/types'
 
@@ -32,6 +35,7 @@ type State = ReturnType<typeof createSeedState> & {
   externalActionTokens: ExternalActionToken[]
   webhookReceipts: WebhookReceipt[]
   outboxEvents: OutboxEvent[]
+  invitations: Invitation[]
 }
 
 class InMemoryPlatformRepository implements PlatformRepository {
@@ -88,8 +92,18 @@ class InMemoryPlatformRepository implements PlatformRepository {
     return this.state.ventures.find((venture) => venture.id === id)
   }
 
+  async saveVenture(venture: Venture) {
+    this.state.ventures = upsertById(this.state.ventures, venture)
+    return venture
+  }
+
   async listMemberships() {
     return [...this.state.ventureMemberships]
+  }
+
+  async saveMembership(membership: VentureMembership) {
+    this.state.ventureMemberships = upsertById(this.state.ventureMemberships, membership)
+    return membership
   }
 
   async listMentors() {
@@ -233,6 +247,36 @@ class InMemoryPlatformRepository implements PlatformRepository {
     this.state.aiRunFeedbacks = upsertById(this.state.aiRunFeedbacks, feedback)
     return feedback
   }
+
+  async saveInvitation(invitation: Invitation) {
+    this.state.invitations = upsertById(this.state.invitations, invitation)
+    return invitation
+  }
+
+  async findInvitationById(id: string) {
+    return this.state.invitations.find((invitation) => invitation.id === id)
+  }
+
+  async findInvitationByHash(tokenHash: string) {
+    return this.state.invitations.find((invitation) => invitation.tokenHash === tokenHash)
+  }
+
+  async listInvitationsByOrganization(organizationId: string) {
+    return this.state.invitations
+      .filter((invitation) => invitation.organizationId === organizationId)
+      .map((invitation) => ({ ...invitation }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }
+
+  async findPendingInvitationByEmail(organizationId: string, email: string) {
+    const normalised = email.toLowerCase()
+    return this.state.invitations.find(
+      (invitation) =>
+        invitation.organizationId === organizationId &&
+        invitation.email.toLowerCase() === normalised &&
+        invitation.status === 'pending',
+    )
+  }
 }
 
 const upsertById = <T extends { id: string }>(items: T[], next: T) => {
@@ -259,6 +303,7 @@ export const createSeededInMemoryPlatformRepository = (configure?: (state: State
     externalActionTokens: [],
     webhookReceipts: [],
     outboxEvents: [],
+    invitations: [],
   }
   configure?.(state)
 

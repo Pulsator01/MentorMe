@@ -4,6 +4,7 @@ import type {
   Artifact,
   AuditEvent,
   ExternalActionToken,
+  Invitation,
   MagicLinkTokenRecord,
   Meeting,
   MeetingFeedback,
@@ -16,6 +17,7 @@ import type {
   PasswordResetTokenRecord,
   SessionRecord,
   User,
+  UserRole,
   Venture,
   VentureMembership,
   WebhookReceipt,
@@ -104,7 +106,9 @@ export interface PlatformRepository {
   markPasswordResetTokenConsumed(id: string, consumedAt: string): Promise<void>
   listVentures(): Promise<Venture[]>
   findVentureById(id: string): Promise<Venture | undefined>
+  saveVenture(venture: Venture): Promise<Venture>
   listMemberships(): Promise<VentureMembership[]>
+  saveMembership(membership: VentureMembership): Promise<VentureMembership>
   listMentors(): Promise<MentorProfile[]>
   findMentorById(id: string): Promise<MentorProfile | undefined>
   saveMentor(mentor: MentorProfile): Promise<MentorProfile>
@@ -136,6 +140,11 @@ export interface PlatformRepository {
   saveAiRun(run: AiRun): Promise<AiRun>
   findAiRunById(id: string): Promise<AiRun | undefined>
   saveAiRunFeedback(feedback: AiRunFeedback): Promise<AiRunFeedback>
+  saveInvitation(invitation: Invitation): Promise<Invitation>
+  findInvitationById(id: string): Promise<Invitation | undefined>
+  findInvitationByHash(tokenHash: string): Promise<Invitation | undefined>
+  listInvitationsByOrganization(organizationId: string): Promise<Invitation[]>
+  findPendingInvitationByEmail(organizationId: string, email: string): Promise<Invitation | undefined>
 }
 
 export interface EmailGateway {
@@ -143,6 +152,14 @@ export interface EmailGateway {
   sendMentorOutreach(input: { email: string; mentorName: string; requestId: string; token: string }): Promise<void>
   sendPasswordReset(input: { email: string; name: string; token: string }): Promise<void>
   sendWelcome(input: { email: string; name: string }): Promise<void>
+  sendInvitation(input: {
+    email: string
+    inviterName: string
+    organizationName: string
+    role: UserRole
+    token: string
+    message?: string
+  }): Promise<void>
 }
 
 export interface StorageService {
