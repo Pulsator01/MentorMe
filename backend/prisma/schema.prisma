@@ -66,6 +66,39 @@ enum OutboxStatus {
   processed
 }
 
+enum AiProvider {
+  heuristic
+  openai
+}
+
+enum AiRequestedProvider {
+  auto
+  heuristic
+  openai
+}
+
+enum AiRunTask {
+  request_brief
+  mentor_recommendation
+  meeting_summary
+}
+
+enum AiRunStatus {
+  completed
+  failed
+}
+
+enum AiFeedbackRating {
+  helpful
+  not_helpful
+}
+
+enum AiFeedbackOutcome {
+  accepted
+  edited
+  rejected
+}
+
 model Organization {
   id            String             @id
   name          String
@@ -80,9 +113,11 @@ model Organization {
   meetings      Meeting[]
   feedback      MeetingFeedback[]
   notifications Notification[]
-  nudges        ScheduledNudge[]
-  auditEvents   AuditEvent[]
-  createdAt     DateTime           @default(now())
+  nudges         ScheduledNudge[]
+  auditEvents    AuditEvent[]
+  aiRuns         AiRun[]
+  aiRunFeedbacks AiRunFeedback[]
+  createdAt      DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 }
 
@@ -113,6 +148,8 @@ model User {
   artifacts      Artifact[]
   notifications  Notification[]
   auditEvents    AuditEvent[]
+  aiRuns         AiRun[]
+  aiRunFeedbacks AiRunFeedback[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 }
@@ -382,4 +419,50 @@ model OutboxEvent {
   payload       Json
   status        OutboxStatus
   createdAt     DateTime
+}
+
+model AiRun {
+  id                String              @id
+  organizationId    String
+  userId            String
+  task              AiRunTask
+  provider          AiProvider
+  requestedProvider AiRequestedProvider
+  model             String
+  promptVersion     String
+  inputPayload      Json
+  outputPayload     Json?
+  confidence        Double
+  shouldAbstain     Boolean
+  caveats           String[]
+  latencyMs         Int
+  attemptCount      Int
+  fallbackUsed      Boolean
+  usageInputTokens  Int
+  usageOutputTokens Int
+  usageTotalTokens  Int
+  finishReason      String
+  status            AiRunStatus
+  errorMessage      String?
+  createdAt         DateTime
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedback          AiRunFeedback[]
+}
+
+model AiRunFeedback {
+  id             String            @id
+  aiRunId        String
+  organizationId String
+  userId         String
+  rating         AiFeedbackRating
+  outcome        AiFeedbackOutcome
+  notes          String?
+  editedOutput   Json?
+  createdAt      DateTime
+  aiRun          AiRun             @relation(fields: [aiRunId], references: [id], onDelete: Cascade)
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([aiRunId, userId])
 }

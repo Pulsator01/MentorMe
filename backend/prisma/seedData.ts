@@ -3,6 +3,8 @@ import { initialPlatformData } from '../../src/data/platformData.js'
 
 export const resetAndSeedDatabase = async (prisma: PrismaClient) => {
   await prisma.$transaction([
+    prisma.aiRunFeedback.deleteMany(),
+    prisma.aiRun.deleteMany(),
     prisma.auditEvent.deleteMany(),
     prisma.scheduledNudge.deleteMany(),
     prisma.notification.deleteMany(),

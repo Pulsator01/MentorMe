@@ -1,6 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client'
 import type { PlatformRepository } from '../domain/interfaces'
 import type {
+  AiRun,
+  AiRunFeedback,
   Artifact,
   AuditEvent,
   ExternalActionToken,
@@ -21,6 +23,9 @@ import type {
 const toIso = (value?: Date | null) => value?.toISOString()
 
 const toInputJsonValue = (value: Record<string, unknown>) => value as Prisma.InputJsonValue
+
+const toNullableInputJsonValue = (value?: Record<string, unknown>) =>
+  value ? toInputJsonValue(value) : Prisma.JsonNull
 
 const toRecord = (value: Prisma.JsonValue | null): Record<string, unknown> => {
   if (!value || Array.isArray(value) || typeof value !== 'object') {
@@ -358,6 +363,78 @@ const toOutboxEvent = (event: {
   payload: toRecord(event.payload),
   status: event.status as OutboxEvent['status'],
   createdAt: event.createdAt.toISOString(),
+})
+
+const toAiRun = (run: {
+  id: string
+  organizationId: string
+  userId: string
+  task: string
+  provider: string
+  requestedProvider: string
+  model: string
+  promptVersion: string
+  inputPayload: Prisma.JsonValue
+  outputPayload: Prisma.JsonValue | null
+  confidence: number
+  shouldAbstain: boolean
+  caveats: string[]
+  latencyMs: number
+  attemptCount: number
+  fallbackUsed: boolean
+  usageInputTokens: number
+  usageOutputTokens: number
+  usageTotalTokens: number
+  finishReason: string
+  status: string
+  errorMessage: string | null
+  createdAt: Date
+}): AiRun => ({
+  id: run.id,
+  organizationId: run.organizationId,
+  userId: run.userId,
+  task: run.task as AiRun['task'],
+  provider: run.provider as AiRun['provider'],
+  requestedProvider: run.requestedProvider as AiRun['requestedProvider'],
+  model: run.model,
+  promptVersion: run.promptVersion,
+  inputPayload: toRecord(run.inputPayload),
+  outputPayload: run.outputPayload ? toRecord(run.outputPayload) : undefined,
+  confidence: run.confidence,
+  shouldAbstain: run.shouldAbstain,
+  caveats: run.caveats,
+  latencyMs: run.latencyMs,
+  attemptCount: run.attemptCount,
+  fallbackUsed: run.fallbackUsed,
+  usageInputTokens: run.usageInputTokens,
+  usageOutputTokens: run.usageOutputTokens,
+  usageTotalTokens: run.usageTotalTokens,
+  finishReason: run.finishReason,
+  status: run.status as AiRun['status'],
+  errorMessage: run.errorMessage || undefined,
+  createdAt: run.createdAt.toISOString(),
+})
+
+const toAiRunFeedback = (feedback: {
+  id: string
+  aiRunId: string
+  organizationId: string
+  userId: string
+  rating: string
+  outcome: string
+  notes: string | null
+  editedOutput: Prisma.JsonValue | null
+  createdAt: Date
+}): AiRunFeedback => ({
+  id: feedback.id,
+  aiRunId: feedback.aiRunId,
+  organizationId: feedback.organizationId,
+  userId: feedback.userId,
+  rating: feedback.rating as AiRunFeedback['rating'],
+  outcome: feedback.outcome as AiRunFeedback['outcome'],
+  notes: feedback.notes || undefined,
+  editedOutput: feedback.editedOutput ? toRecord(feedback.editedOutput) : undefined,
+  createdAt: feedback.createdAt.toISOString(),
 })
 
 class PrismaPlatformRepository implements PlatformRepository {
@@ -733,6 +810,73 @@ class PrismaPlatformRepository implements PlatformRepository {
     return (await this.prisma.outboxEvent.findMany({
       orderBy: { createdAt: 'asc' },
     })).map(toOutboxEvent)
+  }
+
+  async saveAiRun(run: AiRun) {
+    const { id, ...rest } = run
+    const data = {
+      organizationId: rest.organizationId,
+      userId: rest.userId,
+      task: rest.task,
+      provider: rest.provider,
+      requestedProvider: rest.requestedProvider,
+      model: rest.model,
+      promptVersion: rest.promptVersion,
+      inputPayload: toInputJsonValue(rest.inputPayload),
+      outputPayload: toNullableInputJsonValue(rest.outputPayload),
+      confidence: rest.confidence,
+      shouldAbstain: rest.shouldAbstain,
+      caveats: rest.caveats,
+      latencyMs: rest.latencyMs,
+      attemptCount: rest.attemptCount,
+      fallbackUsed: rest.fallbackUsed,
+      usageInputTokens: rest.usageInputTokens,
+      usageOutputTokens: rest.usageOutputTokens,
+      usageTotalTokens: rest.usageTotalTokens,
+      finishReason: rest.finishReason,
+      status: rest.status,
+      errorMessage: rest.errorMessage ?? null,
+      createdAt: new Date(rest.createdAt),
+    }
+    const saved = await this.prisma.aiRun.upsert({
+      where: { id },
+      update: data,
+      create: { id, ...data },
+    })
+    return toAiRun(saved)
+  }
+
+  async findAiRunById(id: string) {
+    const run = await this.prisma.aiRun.findUnique({ where: { id } })
+    return run ? toAiRun(run) : undefined
+  }
+
+  async saveAiRunFeedback(feedback: AiRunFeedback) {
+    const { id, ...rest } = feedback
+    const data = {
+      organizationId: rest.organizationId,
+      userId: rest.userId,
+      rating: rest.rating,
+      outcome: rest.outcome,
+      notes: rest.notes ?? null,
+      editedOutput: toNullableInputJsonValue(rest.editedOutput),
+      createdAt: new Date(rest.createdAt),
+    }
+    const saved = await this.prisma.aiRunFeedback.upsert({
+      where: {
+        aiRunId_userId: {
+          aiRunId: rest.aiRunId,
+          userId: rest.userId,
+        },
+      },
+      update: data,
+      create: {
+        id,
+        aiRunId: rest.aiRunId,
+        ...data,
+      },
+    })
+    return toAiRunFeedback(saved)
   }
 }
 

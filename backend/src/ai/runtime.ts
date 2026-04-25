@@ -16,6 +16,9 @@ type JudgeLike = {
 export const createAiGateway = (): { gateway: AiGateway & Partial<JudgeLike>; mode: AiRuntimeMode } => {
   const provider = process.env.AI_PROVIDER || 'auto'
   const apiKey = process.env.OPENAI_API_KEY
+  const heuristicFallback = new HeuristicAiGateway()
+  const timeoutMs = Number(process.env.OPENAI_TIMEOUT_MS || 15000)
+  const maxAttempts = Number(process.env.OPENAI_MAX_ATTEMPTS || 2)
 
   if (provider === 'openai') {
     if (!apiKey) {
@@ -27,8 +30,12 @@ export const createAiGateway = (): { gateway: AiGateway & Partial<JudgeLike>; mo
       gateway: new OpenAiGateway({
         apiKey,
         baseUrl: process.env.OPENAI_BASE_URL,
-        model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+        fallbackGateway: heuristicFallback,
         judgeModel: process.env.OPENAI_JUDGE_MODEL || 'gpt-5',
+        maxAttempts,
+        model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+        requestedProvider: 'openai',
+        timeoutMs,
       }),
     }
   }
@@ -39,14 +46,18 @@ export const createAiGateway = (): { gateway: AiGateway & Partial<JudgeLike>; mo
       gateway: new OpenAiGateway({
         apiKey,
         baseUrl: process.env.OPENAI_BASE_URL,
-        model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+        fallbackGateway: heuristicFallback,
         judgeModel: process.env.OPENAI_JUDGE_MODEL || 'gpt-5',
+        maxAttempts,
+        model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+        requestedProvider: 'auto',
+        timeoutMs,
       }),
     }
   }
 
   return {
     mode: 'heuristic',
-    gateway: new HeuristicAiGateway(),
+    gateway: heuristicFallback,
   }
 }

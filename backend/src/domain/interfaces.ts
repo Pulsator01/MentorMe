@@ -1,4 +1,6 @@
 import type {
+  AiRun,
+  AiRunFeedback,
   Artifact,
   AuditEvent,
   ExternalActionToken,
@@ -121,6 +123,9 @@ export interface PlatformRepository {
   saveWebhookReceipt(receipt: WebhookReceipt): Promise<WebhookReceipt>
   saveOutboxEvent(event: OutboxEvent): Promise<OutboxEvent>
   listOutboxEvents(): Promise<OutboxEvent[]>
+  saveAiRun(run: AiRun): Promise<AiRun>
+  findAiRunById(id: string): Promise<AiRun | undefined>
+  saveAiRunFeedback(feedback: AiRunFeedback): Promise<AiRunFeedback>
 }
 
 export interface EmailGateway {

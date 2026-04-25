@@ -225,3 +225,47 @@ export interface RequestView {
   meetingAt?: string
   calendlyLink?: string
 }
+
+
+export type AiTask = 'request_brief' | 'mentor_recommendation' | 'meeting_summary'
+export type AiRunStatus = 'completed' | 'failed'
+export type AiFeedbackRating = 'helpful' | 'not_helpful'
+export type AiFeedbackOutcome = 'accepted' | 'edited' | 'rejected'
+
+export interface AiRun {
+  id: string
+  organizationId: string
+  userId: string
+  task: AiTask
+  provider: 'heuristic' | 'openai'
+  requestedProvider: 'auto' | 'heuristic' | 'openai'
+  model: string
+  promptVersion: string
+  inputPayload: Record<string, unknown>
+  outputPayload?: Record<string, unknown>
+  confidence: number
+  shouldAbstain: boolean
+  caveats: string[]
+  latencyMs: number
+  attemptCount: number
+  fallbackUsed: boolean
+  usageInputTokens: number
+  usageOutputTokens: number
+  usageTotalTokens: number
+  finishReason: string
+  status: AiRunStatus
+  errorMessage?: string
+  createdAt: string
+}
+
+export interface AiRunFeedback {
+  id: string
+  aiRunId: string
+  organizationId: string
+  userId: string
+  rating: AiFeedbackRating
+  outcome: AiFeedbackOutcome
+  notes?: string
+  editedOutput?: Record<string, unknown>
+  createdAt: string
+}

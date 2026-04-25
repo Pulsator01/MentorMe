@@ -1,6 +1,8 @@
 import { createSeedState } from '../domain/seed'
 import type { PlatformRepository } from '../domain/interfaces'
 import type {
+  AiRun,
+  AiRunFeedback,
   Artifact,
   AuditEvent,
   ExternalActionToken,
@@ -19,6 +21,8 @@ import type {
 } from '../domain/types'
 
 type State = ReturnType<typeof createSeedState> & {
+  aiRunFeedbacks: AiRunFeedback[]
+  aiRuns: AiRun[]
   feedbacks: MeetingFeedback[]
   magicLinks: MagicLinkTokenRecord[]
   sessions: SessionRecord[]
@@ -174,6 +178,20 @@ class InMemoryPlatformRepository implements PlatformRepository {
   async listOutboxEvents() {
     return [...this.state.outboxEvents]
   }
+
+  async saveAiRun(run: AiRun) {
+    this.state.aiRuns = upsertById(this.state.aiRuns, run)
+    return run
+  }
+
+  async findAiRunById(id: string) {
+    return this.state.aiRuns.find((run) => run.id === id)
+  }
+
+  async saveAiRunFeedback(feedback: AiRunFeedback) {
+    this.state.aiRunFeedbacks = upsertById(this.state.aiRunFeedbacks, feedback)
+    return feedback
+  }
 }
 
 const upsertById = <T extends { id: string }>(items: T[], next: T) => {
@@ -190,6 +208,8 @@ export const createSeededInMemoryPlatformRepository = (configure?: (state: State
   const seed = createSeedState()
   const state = {
     ...seed,
+    aiRunFeedbacks: [],
+    aiRuns: [],
     feedbacks: [],
     magicLinks: [],
     sessions: [],

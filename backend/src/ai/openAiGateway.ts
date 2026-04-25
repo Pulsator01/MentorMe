@@ -1,12 +1,14 @@
 import type {
+  AiGateway,
   MeetingSummaryInput,
   MeetingSummaryOutput,
-  MentorRecommendationInput,
   MentorRecommendationCandidate,
+  MentorRecommendationInput,
   MentorRecommendationOutput,
   RequestBriefInput,
   RequestBriefOutput,
 } from '../domain/interfaces'
+import { assessAiOutput, attachAiMeta, estimateTokens, getAiMeta, promptVersionByTask, withAdjustedMeta } from './meta'
 
 type JsonSchemaDefinition = {
   description?: string
@@ -17,8 +19,12 @@ type JsonSchemaDefinition = {
 type OpenAiGatewayOptions = {
   apiKey: string
   baseUrl?: string
+  fallbackGateway?: Pick<AiGateway, 'generateMeetingSummary' | 'generateRequestBrief' | 'recommendMentors'>
   judgeModel?: string
+  maxAttempts?: number
   model: string
+  requestedProvider?: 'auto' | 'heuristic' | 'openai'
+  timeoutMs?: number
 }
 
 export type JudgeCriterionResult = {
@@ -32,6 +38,16 @@ export type JudgeResult = {
   overallScore: number
   pass: boolean
   summary: string
+}
+
+type StructuredResponse<T> = {
+  finishReason: string
+  output: T
+  usage: {
+    inputTokens: number
+    outputTokens: number
+    totalTokens: number
+  }
 }
 
 const requestBriefSchema: JsonSchemaDefinition = {
@@ -135,7 +151,6 @@ const mentorRecommendationSchema: JsonSchemaDefinition = {
       },
       shortlist: {
         type: 'array',
-        minItems: 1,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -217,6 +232,15 @@ const pickStructuredText = (payload: any): string => {
   throw new Error('OpenAI did not return structured text output')
 }
 
+const toUsage = (body: any, input: unknown, output: unknown) => ({
+  inputTokens: Number(body?.usage?.input_tokens || estimateTokens(input)),
+  outputTokens: Number(body?.usage?.output_tokens || estimateTokens(output)),
+  totalTokens: Number(body?.usage?.total_tokens || estimateTokens(input) + estimateTokens(output)),
+})
+
+const requestedProvider = (value?: string): 'auto' | 'heuristic' | 'openai' =>
+  value === 'openai' || value === 'auto' || value === 'heuristic' ? value : 'openai'
+
 class OpenAiStructuredClient {
   constructor(private readonly options: OpenAiGatewayOptions) {}
 
@@ -225,45 +249,69 @@ class OpenAiStructuredClient {
     return `${baseUrl}/responses`
   }
 
-  async generateStructured<T>(model: string, instructions: string, payload: Record<string, unknown>, schema: JsonSchemaDefinition): Promise<T> {
-    const response = await fetch(this.endpoint(), {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.options.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        ...responseInput(instructions, payload),
-        text: {
-          format: {
-            type: 'json_schema',
-            name: schema.name,
-            description: schema.description,
-            strict: true,
-            schema: schema.schema,
-          },
+  async generateStructured<T>(
+    model: string,
+    instructions: string,
+    payload: Record<string, unknown>,
+    schema: JsonSchemaDefinition,
+  ): Promise<StructuredResponse<T>> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs || 15000)
+
+    try {
+      const response = await fetch(this.endpoint(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.options.apiKey}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    })
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          ...responseInput(instructions, payload),
+          text: {
+            format: {
+              type: 'json_schema',
+              name: schema.name,
+              description: schema.description,
+              strict: true,
+              schema: schema.schema,
+            },
+          },
+        }),
+      })
 
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(text || `OpenAI request failed with ${response.status}`)
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `OpenAI request failed with ${response.status}`)
+      }
+
+      const body = await response.json()
+      const output = JSON.parse(pickStructuredText(body)) as T
+      return {
+        output,
+        finishReason: String(body?.status || body?.finish_reason || 'completed'),
+        usage: toUsage(body, payload, output),
+      }
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        throw new Error('OpenAI request timed out')
+      }
+      throw error
+    } finally {
+      clearTimeout(timeout)
     }
-
-    const body = await response.json()
-    return JSON.parse(pickStructuredText(body)) as T
   }
 
   async judge(payload: Record<string, unknown>): Promise<JudgeResult> {
     const model = this.options.judgeModel || this.options.model
-    return await this.generateStructured<JudgeResult>(
+    const result = await this.generateStructured<JudgeResult>(
       model,
       'You are an exacting LLM-as-a-judge for MentorMe. Score the actual output against the reference output on relevance, structure, actionability, and faithfulness to the input. Use a 0 to 5 scale, where 5 is excellent. Mark pass true only when the output would be safe to ship to users.',
       payload,
       judgeSchema,
     )
+    return result.output
   }
 }
 
@@ -274,39 +322,92 @@ export class OpenAiGateway {
     this.client = new OpenAiStructuredClient(options)
   }
 
+  private async generateTask<T extends Record<string, unknown>>(
+    task: 'request_brief' | 'mentor_recommendation' | 'meeting_summary',
+    input: Record<string, unknown>,
+    instructions: string,
+    schema: JsonSchemaDefinition,
+    fallback: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = Date.now()
+    const maxAttempts = Math.max(1, this.options.maxAttempts || 2)
+    let lastError: Error | undefined
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        const result = await this.client.generateStructured<T>(this.options.model, instructions, {
+          task,
+          input,
+        }, schema)
+        const assessment = assessAiOutput(task, input as never, result.output as never)
+        return attachAiMeta(result.output, {
+          ...assessment,
+          attemptCount: attempt,
+          fallbackUsed: false,
+          finishReason: result.finishReason,
+          latencyMs: Date.now() - startedAt,
+          model: this.options.model,
+          promptVersion: promptVersionByTask[task],
+          requestedProvider: requestedProvider(this.options.requestedProvider),
+          usageInputTokens: result.usage.inputTokens,
+          usageOutputTokens: result.usage.outputTokens,
+          usageTotalTokens: result.usage.totalTokens,
+        })
+      } catch (error) {
+        lastError = error as Error
+      }
+    }
+
+    if (this.options.fallbackGateway) {
+      const fallbackOutput = await fallback()
+      const currentMeta = getAiMeta(fallbackOutput)
+      const errorMessage = lastError?.message || 'Primary OpenAI generation failed'
+      return withAdjustedMeta(fallbackOutput, {
+        attemptCount: Math.max(1, this.options.maxAttempts || 2),
+        fallbackUsed: true,
+        finishReason: 'fallback',
+        latencyMs: (currentMeta?.latencyMs || 0) + (Date.now() - startedAt),
+        requestedProvider: requestedProvider(this.options.requestedProvider),
+        caveats: [
+          `OpenAI fallback used: ${errorMessage}`,
+          ...(currentMeta?.caveats || []),
+        ].slice(0, 4),
+      })
+    }
+
+    throw lastError || new Error('OpenAI generation failed')
+  }
+
   async generateRequestBrief(input: RequestBriefInput): Promise<RequestBriefOutput> {
-    return await this.client.generateStructured<RequestBriefOutput>(
-      this.options.model,
+    return await this.generateTask(
+      'request_brief',
+      input,
       'You are the MentorMe founder brief assistant. Turn raw founder notes into a concise, mentor-ready request brief for CFE routing. Preserve the founder intent, keep the language concrete, avoid hype, and highlight what is still missing.',
-      {
-        task: 'request_brief',
-        input,
-      },
       requestBriefSchema,
+      async () =>
+        await (this.options.fallbackGateway?.generateRequestBrief(input) || Promise.reject(new Error('No fallback configured'))),
     )
   }
 
   async generateMeetingSummary(input: MeetingSummaryInput): Promise<MeetingSummaryOutput> {
-    return await this.client.generateStructured<MeetingSummaryOutput>(
-      this.options.model,
+    return await this.generateTask(
+      'meeting_summary',
+      input,
       'You are the MentorMe meeting summary assistant. Turn messy mentor meeting notes into an actionable follow-through summary for founders, students, and CFE. Only include action items that are grounded in the notes.',
-      {
-        task: 'meeting_summary',
-        input,
-      },
       meetingSummarySchema,
+      async () =>
+        await (this.options.fallbackGateway?.generateMeetingSummary(input) || Promise.reject(new Error('No fallback configured'))),
     )
   }
 
   async recommendMentors(input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }): Promise<MentorRecommendationOutput> {
-    return await this.client.generateStructured<MentorRecommendationOutput>(
-      this.options.model,
+    return await this.generateTask(
+      'mentor_recommendation',
+      input,
       'You are the MentorMe mentor ranking assistant. You must rank mentors strictly from the supplied candidate list only. Do not invent mentor IDs or names. Pick the strongest shortlist for the founder request by weighing domain fit, stage fit, functional focus, mentor tolerance, and likely usefulness for CFE routing. Keep reasons concise and concrete.',
-      {
-        task: 'mentor_recommendations',
-        input,
-      },
       mentorRecommendationSchema,
+      async () =>
+        await (this.options.fallbackGateway?.recommendMentors(input) || Promise.reject(new Error('No fallback configured'))),
     )
   }
 

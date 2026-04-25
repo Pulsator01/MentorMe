@@ -8,6 +8,7 @@ import type {
   RequestBriefOutput,
 } from '../domain/interfaces'
 import type { JudgeCriterionResult, JudgeResult } from './openAiGateway'
+import { assessMeetingSummary, assessMentorRecommendation, assessRequestBrief, attachAiMeta, estimateTokens, promptVersionByTask } from './meta'
 
 const cleanText = (value: string) => value.replace(/\s+/g, ' ').trim()
 
@@ -66,6 +67,12 @@ const extractActionItems = (notes: string, fallback: string[]) => {
   )
 
   return candidates.length > 0 ? unique(candidates).slice(0, 4) : fallback
+}
+
+
+const requestedProvider = (): 'auto' | 'heuristic' | 'openai' => {
+  const provider = process.env.AI_PROVIDER
+  return provider === 'openai' || provider === 'auto' || provider === 'heuristic' ? provider : 'heuristic'
 }
 
 const buildSearchTags = (input: MentorRecommendationInput) =>
@@ -145,7 +152,7 @@ export class HeuristicAiGateway {
       !input.domain ? 'Name the market or domain so mentor fit is easier to assess.' : '',
     ])
 
-    return {
+    const output: RequestBriefOutput = {
       provider: 'heuristic',
       briefSummary: summary,
       challenge: sentences[0] || summary,
@@ -159,6 +166,20 @@ export class HeuristicAiGateway {
         ? 'The request is directionally clear, but CFE should check whether the missing context is resolved before outreach.'
         : 'The request is structured enough for CFE to review and route if mentor fit is strong.',
     }
+    const assessment = assessRequestBrief(input, output)
+    return attachAiMeta(output, {
+      ...assessment,
+      attemptCount: 1,
+      fallbackUsed: false,
+      finishReason: 'completed',
+      latencyMs: 0,
+      model: 'heuristic-local',
+      promptVersion: promptVersionByTask.request_brief,
+      requestedProvider: requestedProvider(),
+      usageInputTokens: estimateTokens(input),
+      usageOutputTokens: estimateTokens(output),
+      usageTotalTokens: estimateTokens(input) + estimateTokens(output),
+    })
   }
 
   async generateMeetingSummary(input: MeetingSummaryInput): Promise<MeetingSummaryOutput> {
@@ -185,7 +206,7 @@ export class HeuristicAiGateway {
         : '',
     ])
 
-    return {
+    const output: MeetingSummaryOutput = {
       provider: 'heuristic',
       executiveSummary,
       keyTakeaways,
@@ -195,6 +216,20 @@ export class HeuristicAiGateway {
       followUpQuestions,
       secondSessionRecommended: /follow[- ]?up|second session|next call|come back/i.test(input.meetingNotes),
     }
+    const assessment = assessMeetingSummary(input, output)
+    return attachAiMeta(output, {
+      ...assessment,
+      attemptCount: 1,
+      fallbackUsed: false,
+      finishReason: 'completed',
+      latencyMs: 0,
+      model: 'heuristic-local',
+      promptVersion: promptVersionByTask.meeting_summary,
+      requestedProvider: requestedProvider(),
+      usageInputTokens: estimateTokens(input),
+      usageOutputTokens: estimateTokens(output),
+      usageTotalTokens: estimateTokens(input) + estimateTokens(output),
+    })
   }
 
   async recommendMentors(
@@ -207,7 +242,7 @@ export class HeuristicAiGateway {
       .sort((left, right) => right.score - left.score || left.mentorName.localeCompare(right.mentorName))
       .slice(0, limit)
 
-    return {
+    const output: MentorRecommendationOutput = {
       provider: 'heuristic',
       searchTags: searchTags.length > 0 ? searchTags : ['general strategy'],
       routingNote:
@@ -216,6 +251,20 @@ export class HeuristicAiGateway {
           : 'No active mentors matched strongly enough. Expand the mentor roster or tighten the founder brief before routing.',
       shortlist,
     }
+    const assessment = assessMentorRecommendation(input, output)
+    return attachAiMeta(output, {
+      ...assessment,
+      attemptCount: 1,
+      fallbackUsed: false,
+      finishReason: 'completed',
+      latencyMs: 0,
+      model: 'heuristic-local',
+      promptVersion: promptVersionByTask.mentor_recommendation,
+      requestedProvider: requestedProvider(),
+      usageInputTokens: estimateTokens(input),
+      usageOutputTokens: estimateTokens(output),
+      usageTotalTokens: estimateTokens(input) + estimateTokens(output),
+    })
   }
 
   async judgeCase(payload: {
