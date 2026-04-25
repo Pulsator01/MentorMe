@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { BookOpenText, ClipboardList, Home, LayoutDashboard, Menu, Sparkles, Users, X } from 'lucide-react'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { BookOpenText, ClipboardList, Home, LayoutDashboard, LogOut, Menu, Sparkles, Users, X } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { cn } from '../components/ui'
 
@@ -17,7 +17,22 @@ const navItems = [
 
 function SidebarLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { currentUser, mode } = useAppState()
+  const [signingOut, setSigningOut] = useState(false)
+  const { currentUser, mode, logout } = useAppState()
+  const navigate = useNavigate()
+
+  const handleLogout = async () => {
+    if (mode !== 'api') {
+      return
+    }
+    setSigningOut(true)
+    try {
+      await logout()
+      navigate('/login', { replace: true })
+    } finally {
+      setSigningOut(false)
+    }
+  }
 
   const nav = (
     <div className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -69,6 +84,21 @@ function SidebarLayout({ children }) {
                 <p className="mt-3 text-xs uppercase tracking-[0.22em] text-slate-500">
                   {currentUser.role} • {mode === 'api' ? 'live api' : 'local demo'}
                 </p>
+                {mode === 'api' ? (
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={signingOut}
+                    aria-label="Sign out of MentorMe"
+                    className={cn(
+                      'mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-700 transition',
+                      signingOut ? 'cursor-not-allowed opacity-60' : 'hover:border-slate-300 hover:text-slate-950',
+                    )}
+                  >
+                    <LogOut size={14} />
+                    {signingOut ? 'Signing out…' : 'Sign out'}
+                  </button>
+                ) : null}
               </>
             ) : (
               <>
