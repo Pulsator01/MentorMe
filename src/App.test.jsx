@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
@@ -10,9 +10,11 @@ const renderAtRoute = (route = '/') => {
 describe('MentorMe role-based frontend', () => {
   afterEach(() => {
     cleanup()
+    vi.unstubAllEnvs()
   })
 
   beforeEach(() => {
+    vi.stubEnv('VITE_API_BASE_URL', '')
     window.history.pushState({}, 'Reset', '/')
   })
 
