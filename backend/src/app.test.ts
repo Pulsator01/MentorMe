@@ -7,17 +7,61 @@ import { createSeededInMemoryPlatformRepository } from './infra/inMemoryReposito
 import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
+import type { GoogleOAuthGateway, GoogleOAuthProfile, GoogleOAuthTokens } from './domain/interfaces'
+import type { PasswordHasher } from './infra/passwordHasher'
 
 type SeedConfigurator = Parameters<typeof createSeededInMemoryPlatformRepository>[0]
 
+interface StubGoogleOAuthOptions {
+  redirectUri?: string
+  exchange?: (code: string) => Promise<GoogleOAuthTokens>
+  fetchProfile?: (accessToken: string) => Promise<GoogleOAuthProfile>
+}
+
+const createStubPasswordHasher = (): PasswordHasher => ({
+  async hash(plain: string) {
+    return `hashed:${plain}`
+  },
+  async verify(hash: string, plain: string) {
+    return hash === `hashed:${plain}`
+  },
+})
+
+const createStubGoogleOAuth = (options: StubGoogleOAuthOptions = {}): GoogleOAuthGateway => ({
+  redirectUri: options.redirectUri || 'http://localhost:5173/auth/google/callback',
+  buildAuthorizeUrl(state: string) {
+    return `https://accounts.google.test/o/oauth2/v2/auth?state=${encodeURIComponent(state)}`
+  },
+  exchangeCode:
+    options.exchange ||
+    (async (code: string) => ({ accessToken: `google-access-${code}`, expiresInSeconds: 3600 })),
+  fetchProfile:
+    options.fetchProfile ||
+    (async () => ({
+      providerAccountId: 'google-acct-1',
+      email: 'new.founder@mentorme.test',
+      emailVerified: true,
+      name: 'New Founder',
+    })),
+})
+
 const parseJson = <T>(response: { body: string }) => JSON.parse(response.body) as T
 
-const buildTestApp = (configureRepository?: SeedConfigurator) => {
-  const repository = createSeededInMemoryPlatformRepository(configureRepository)
+interface BuildTestAppOptions {
+  configureRepository?: SeedConfigurator
+  googleOAuth?: GoogleOAuthGateway
+}
+
+const buildTestApp = (input: SeedConfigurator | BuildTestAppOptions = {}) => {
+  const opts: BuildTestAppOptions =
+    typeof input === 'function' ? { configureRepository: input } : input
+
+  const repository = createSeededInMemoryPlatformRepository(opts.configureRepository)
   const email = createStubEmailGateway()
   const storage = createStubStorageService()
   const queue = createInlineQueuePublisher()
   const ai = new HeuristicAiGateway()
+  const passwordHasher = createStubPasswordHasher()
   const generateRequestBrief = vi.spyOn(ai, 'generateRequestBrief')
   const generateMeetingSummary = vi.spyOn(ai, 'generateMeetingSummary')
 
@@ -27,14 +71,28 @@ const buildTestApp = (configureRepository?: SeedConfigurator) => {
     storage,
     queue,
     ai,
+    passwordHasher,
+    googleOAuth: opts.googleOAuth,
     exposeTokens: true,
     jwtIssuer: 'mentor-me-test',
     jwtAudience: 'mentor-me-web',
     jwtSecret: 'test-secret',
     cookieSecret: 'cookie-secret',
+    defaultOrganizationId: 'org-mentorme',
+    appBaseUrl: 'http://localhost:5173',
   })
 
-  return { app, repository, email, storage, queue, ai, generateRequestBrief, generateMeetingSummary }
+  return {
+    app,
+    repository,
+    email,
+    storage,
+    queue,
+    ai,
+    passwordHasher,
+    generateRequestBrief,
+    generateMeetingSummary,
+  }
 }
 
 describe('MentorMe backend workflow', () => {
@@ -687,6 +745,444 @@ describe('MentorMe backend workflow', () => {
 
     expect(notificationsRes.statusCode).toBe(400)
     expect(notificationsRes.body).toContain('Unauthorized')
+  })
+
+  it('registers a new founder, sends a welcome email, and issues a session', async () => {
+    const { app, email, repository } = buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: '  Priya Founder  ',
+        email: 'Priya.Founder@MentorMe.test',
+        password: 'SuperSecret-123',
+        role: 'founder',
+      },
+    })
+
+    expect(response.statusCode).toBe(201)
+    const body = parseJson<{ accessToken: string; user: { email: string; role: string; name: string } }>(response)
+    expect(body.user.email).toBe('priya.founder@mentorme.test')
+    expect(body.user.name).toBe('Priya Founder')
+    expect(body.user.role).toBe('founder')
+    expect(body.accessToken).toBeTruthy()
+    expect(response.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')?.value).toBeTruthy()
+
+    const stored = await repository.findUserByEmail('priya.founder@mentorme.test')
+    expect(stored?.passwordHash).toBeTruthy()
+    expect(stored?.passwordHash).not.toBe('SuperSecret-123')
+
+    const welcome = email.sent.find((entry) => entry.type === 'welcome')
+    expect(welcome).toMatchObject({ email: 'priya.founder@mentorme.test', name: 'Priya Founder' })
+  })
+
+  it('rejects registration when the email is already in use', async () => {
+    const { app } = buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Aarav Sharma',
+        email: 'aarav.sharma@mentorme.test',
+        password: 'AnotherPassword-1',
+      },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.body).toContain('email')
+  })
+
+  it('lets a registered user log in with email + password', async () => {
+    const { app } = buildTestApp()
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Login Tester',
+        email: 'login.tester@mentorme.test',
+        password: 'CorrectHorse-Battery-Staple',
+        role: 'student',
+      },
+    })
+
+    const loginRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: {
+        email: 'LOGIN.tester@mentorme.test',
+        password: 'CorrectHorse-Battery-Staple',
+      },
+    })
+
+    expect(loginRes.statusCode).toBe(200)
+    const body = parseJson<{ accessToken: string; user: { email: string; role: string } }>(loginRes)
+    expect(body.user.email).toBe('login.tester@mentorme.test')
+    expect(body.user.role).toBe('student')
+    expect(body.accessToken).toBeTruthy()
+
+    const meRes = await app.inject({
+      method: 'GET',
+      url: '/me',
+      headers: { authorization: `Bearer ${body.accessToken}` },
+    })
+    expect(meRes.statusCode).toBe(200)
+    expect(parseJson<{ user: { email: string } }>(meRes).user.email).toBe('login.tester@mentorme.test')
+  })
+
+  it('rejects logins with unknown email or wrong password', async () => {
+    const { app } = buildTestApp()
+
+    const unknownRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'nope@mentorme.test', password: 'whatever-1234' },
+    })
+    expect(unknownRes.statusCode).toBe(401)
+    expect(unknownRes.body).toContain('Invalid email or password')
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Wrong Pass',
+        email: 'wrong.pass@mentorme.test',
+        password: 'RightPass-9999',
+      },
+    })
+
+    const wrongPassRes = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'wrong.pass@mentorme.test', password: 'WrongPass-0000' },
+    })
+    expect(wrongPassRes.statusCode).toBe(401)
+    expect(wrongPassRes.body).toContain('Invalid email or password')
+  })
+
+  it('rejects login for magic-link-only accounts (no password set)', async () => {
+    const { app } = buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'aarav.sharma@mentorme.test', password: 'anything-12345' },
+    })
+
+    expect(response.statusCode).toBe(401)
+    expect(response.body).toContain('Invalid email or password')
+  })
+
+  it('completes a forgot/reset password flow and revokes prior sessions', async () => {
+    const { app, email, repository } = buildTestApp()
+
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Reset User',
+        email: 'reset.user@mentorme.test',
+        password: 'OldPassword-1234',
+      },
+    })
+
+    const initialLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'reset.user@mentorme.test', password: 'OldPassword-1234' },
+    })
+    expect(initialLogin.statusCode).toBe(200)
+    const initialRefreshCookie = initialLogin.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')
+    expect(initialRefreshCookie?.value).toBeTruthy()
+    const oldRefreshToken = initialRefreshCookie!.value
+
+    const forgotRes = await app.inject({
+      method: 'POST',
+      url: '/auth/forgot-password',
+      payload: { email: 'reset.user@mentorme.test' },
+    })
+    expect(forgotRes.statusCode).toBe(202)
+    const forgotBody = parseJson<{ accepted: boolean; debugToken?: string }>(forgotRes)
+    expect(forgotBody.accepted).toBe(true)
+    expect(forgotBody.debugToken).toBeTruthy()
+
+    const resetEmail = email.sent.find((entry) => entry.type === 'password_reset')
+    expect(resetEmail).toMatchObject({ email: 'reset.user@mentorme.test', name: 'Reset User' })
+
+    const resetRes = await app.inject({
+      method: 'POST',
+      url: '/auth/reset-password',
+      payload: { token: forgotBody.debugToken, password: 'BrandNew-Password-1!' },
+    })
+    expect(resetRes.statusCode).toBe(200)
+    expect(parseJson<{ user: { email: string } }>(resetRes).user.email).toBe('reset.user@mentorme.test')
+
+    const replayRes = await app.inject({
+      method: 'POST',
+      url: '/auth/reset-password',
+      payload: { token: forgotBody.debugToken, password: 'AnotherNew-Password-9!' },
+    })
+    expect(replayRes.statusCode).toBe(400)
+    expect(replayRes.body).toContain('Invalid or expired')
+
+    const oldLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'reset.user@mentorme.test', password: 'OldPassword-1234' },
+    })
+    expect(oldLogin.statusCode).toBe(401)
+
+    const newLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'reset.user@mentorme.test', password: 'BrandNew-Password-1!' },
+    })
+    expect(newLogin.statusCode).toBe(200)
+
+    const refreshOldSession = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      cookies: { mentor_me_refresh: oldRefreshToken },
+    })
+    expect(refreshOldSession.statusCode).toBe(400)
+
+    expect(await repository.findUserByEmail('reset.user@mentorme.test')).toBeTruthy()
+  })
+
+  it('returns 202 from forgot-password for unknown emails without leaking existence', async () => {
+    const { app, email } = buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/forgot-password',
+      payload: { email: 'nobody@mentorme.test' },
+    })
+
+    expect(response.statusCode).toBe(202)
+    const body = parseJson<{ accepted: boolean; debugToken?: string }>(response)
+    expect(body.accepted).toBe(true)
+    expect(body.debugToken).toBeUndefined()
+    expect(email.sent.find((entry) => entry.type === 'password_reset')).toBeUndefined()
+  })
+
+  it('lets a logged-in user change their password and rotates sessions', async () => {
+    const { app } = buildTestApp()
+
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Change Pass',
+        email: 'change.pass@mentorme.test',
+        password: 'OriginalPass-2024',
+      },
+    })
+    const accessToken = parseJson<{ accessToken: string }>(registerRes).accessToken
+    const oldRefreshToken = registerRes.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')!.value
+
+    const wrongCurrentRes = await app.inject({
+      method: 'POST',
+      url: '/auth/change-password',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { currentPassword: 'WrongCurrent-1234', newPassword: 'BrandNew-Password-1!' },
+    })
+    expect(wrongCurrentRes.statusCode).toBe(400)
+
+    const samePasswordRes = await app.inject({
+      method: 'POST',
+      url: '/auth/change-password',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { currentPassword: 'OriginalPass-2024', newPassword: 'OriginalPass-2024' },
+    })
+    expect(samePasswordRes.statusCode).toBe(400)
+    expect(samePasswordRes.body).toContain('differ')
+
+    const changeRes = await app.inject({
+      method: 'POST',
+      url: '/auth/change-password',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { currentPassword: 'OriginalPass-2024', newPassword: 'TotallyNew-Password-1!' },
+    })
+    expect(changeRes.statusCode).toBe(200)
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      cookies: { mentor_me_refresh: oldRefreshToken },
+    })
+    expect(refreshRes.statusCode).toBe(400)
+
+    const oldPwdLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'change.pass@mentorme.test', password: 'OriginalPass-2024' },
+    })
+    expect(oldPwdLogin.statusCode).toBe(401)
+
+    const newPwdLogin = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'change.pass@mentorme.test', password: 'TotallyNew-Password-1!' },
+    })
+    expect(newPwdLogin.statusCode).toBe(200)
+  })
+
+  it('returns 501 for Google OAuth endpoints when the gateway is not configured', async () => {
+    const { app } = buildTestApp()
+
+    const authorizeRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/authorize-url',
+      payload: {},
+    })
+    expect(authorizeRes.statusCode).toBe(501)
+    expect(authorizeRes.body).toContain('not configured')
+
+    const callbackRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/callback',
+      payload: { code: 'a'.repeat(20), state: 'b'.repeat(20) },
+    })
+    expect(callbackRes.statusCode).toBe(501)
+    expect(callbackRes.body).toContain('not configured')
+  })
+
+  it('signs Google OAuth state, exchanges codes, and signs up new founders', async () => {
+    const googleOAuth = createStubGoogleOAuth({
+      fetchProfile: async () => ({
+        providerAccountId: 'google-acct-new-1',
+        email: 'oauth.new@mentorme.test',
+        emailVerified: true,
+        name: 'OAuth Newcomer',
+      }),
+    })
+    const { app, email, repository } = buildTestApp({ googleOAuth })
+
+    const authorizeRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/authorize-url',
+      payload: { redirectAfter: '/founder' },
+    })
+    expect(authorizeRes.statusCode).toBe(200)
+    const authorizeBody = parseJson<{ authorizeUrl: string; state: string }>(authorizeRes)
+    expect(authorizeBody.state).toBeTruthy()
+    expect(authorizeBody.authorizeUrl).toContain('accounts.google.test')
+    expect(authorizeBody.authorizeUrl).toContain(encodeURIComponent(authorizeBody.state))
+
+    const callbackRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/callback',
+      payload: { code: 'google-code-1234567890', state: authorizeBody.state },
+    })
+    expect(callbackRes.statusCode).toBe(200)
+    const body = parseJson<{
+      accessToken: string
+      user: { email: string; emailVerified?: boolean }
+      isNewUser: boolean
+      redirectAfter?: string
+    }>(callbackRes)
+    expect(body.user.email).toBe('oauth.new@mentorme.test')
+    expect(body.user.emailVerified).toBe(true)
+    expect(body.isNewUser).toBe(true)
+    expect(body.redirectAfter).toBe('/founder')
+    expect(body.accessToken).toBeTruthy()
+    expect(callbackRes.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')?.value).toBeTruthy()
+
+    const stored = await repository.findUserByEmail('oauth.new@mentorme.test')
+    expect(stored?.role).toBe('founder')
+    expect(stored?.emailVerified).toBe(true)
+    expect(stored?.passwordHash).toBeUndefined()
+    expect(email.sent.find((entry) => entry.type === 'welcome')).toMatchObject({
+      email: 'oauth.new@mentorme.test',
+    })
+  })
+
+  it('links a Google account to an existing email-based user without creating a duplicate', async () => {
+    const googleOAuth = createStubGoogleOAuth({
+      fetchProfile: async () => ({
+        providerAccountId: 'google-acct-link-1',
+        email: 'link.user@mentorme.test',
+        emailVerified: true,
+        name: 'Link User',
+      }),
+    })
+    const { app, repository } = buildTestApp({ googleOAuth })
+
+    const registerRes = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Link User',
+        email: 'link.user@mentorme.test',
+        password: 'PreExisting-Pass-1',
+      },
+    })
+    expect(registerRes.statusCode).toBe(201)
+    const originalUser = await repository.findUserByEmail('link.user@mentorme.test')
+    expect(originalUser).toBeTruthy()
+
+    const authorizeRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/authorize-url',
+      payload: {},
+    })
+    const state = parseJson<{ state: string }>(authorizeRes).state
+
+    const callbackRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/callback',
+      payload: { code: 'google-code-link-12345', state },
+    })
+    expect(callbackRes.statusCode).toBe(200)
+    const body = parseJson<{ user: { email: string }; isNewUser: boolean }>(callbackRes)
+    expect(body.user.email).toBe('link.user@mentorme.test')
+    expect(body.isNewUser).toBe(false)
+
+    const linkedAccount = await repository.findOAuthAccount('google', 'google-acct-link-1')
+    expect(linkedAccount?.userId).toBe(originalUser?.id)
+  })
+
+  it('rejects Google OAuth when the email is not verified', async () => {
+    const googleOAuth = createStubGoogleOAuth({
+      fetchProfile: async () => ({
+        providerAccountId: 'google-acct-unverified',
+        email: 'unverified@mentorme.test',
+        emailVerified: false,
+        name: 'Unverified',
+      }),
+    })
+    const { app } = buildTestApp({ googleOAuth })
+
+    const authorizeRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/authorize-url',
+      payload: {},
+    })
+    const state = parseJson<{ state: string }>(authorizeRes).state
+
+    const callbackRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/callback',
+      payload: { code: 'google-code-unverified-1', state },
+    })
+
+    expect(callbackRes.statusCode).toBe(400)
+    expect(callbackRes.body).toContain('not verified')
+  })
+
+  it('rejects Google OAuth callbacks with an invalid or forged state', async () => {
+    const googleOAuth = createStubGoogleOAuth()
+    const { app } = buildTestApp({ googleOAuth })
+
+    const callbackRes = await app.inject({
+      method: 'POST',
+      url: '/auth/google/callback',
+      payload: { code: 'a-real-google-code-12345', state: 'not-a-signed-state-token' },
+    })
+
+    expect(callbackRes.statusCode).toBe(400)
   })
 })
 

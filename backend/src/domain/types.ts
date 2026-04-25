@@ -32,6 +32,31 @@ export interface User {
   email: string
   name: string
   role: UserRole
+  passwordHash?: string
+  emailVerified?: boolean
+  emailVerifiedAt?: string
+  lastLoginAt?: string
+}
+
+export type OAuthProvider = 'google'
+
+export interface OAuthAccount {
+  id: string
+  userId: string
+  provider: OAuthProvider
+  providerAccountId: string
+  email?: string
+  accessToken?: string
+  refreshToken?: string
+  expiresAt?: string
+}
+
+export interface PasswordResetTokenRecord {
+  id: string
+  userId: string
+  tokenHash: string
+  expiresAt: string
+  consumedAt?: string
 }
 
 export interface Venture {

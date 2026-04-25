@@ -12,7 +12,10 @@ import type {
   MentorProfile,
   MentorRequest,
   MentorRequestShortlist,
+  OAuthAccount,
+  OAuthProvider,
   OutboxEvent,
+  PasswordResetTokenRecord,
   SessionRecord,
   User,
   Venture,
@@ -42,6 +45,10 @@ const toUser = (user: {
   email: string
   name: string
   role: string
+  passwordHash: string | null
+  emailVerified: boolean
+  emailVerifiedAt: Date | null
+  lastLoginAt: Date | null
 }): User => ({
   id: user.id,
   organizationId: user.organizationId,
@@ -49,6 +56,44 @@ const toUser = (user: {
   email: user.email,
   name: user.name,
   role: user.role as User['role'],
+  passwordHash: user.passwordHash || undefined,
+  emailVerified: user.emailVerified,
+  emailVerifiedAt: toIso(user.emailVerifiedAt),
+  lastLoginAt: toIso(user.lastLoginAt),
+})
+
+const toOAuthAccount = (account: {
+  id: string
+  userId: string
+  provider: string
+  providerAccountId: string
+  email: string | null
+  accessToken: string | null
+  refreshToken: string | null
+  expiresAt: Date | null
+}): OAuthAccount => ({
+  id: account.id,
+  userId: account.userId,
+  provider: account.provider as OAuthProvider,
+  providerAccountId: account.providerAccountId,
+  email: account.email || undefined,
+  accessToken: account.accessToken || undefined,
+  refreshToken: account.refreshToken || undefined,
+  expiresAt: toIso(account.expiresAt),
+})
+
+const toPasswordResetToken = (token: {
+  id: string
+  userId: string
+  tokenHash: string
+  expiresAt: Date
+  consumedAt: Date | null
+}): PasswordResetTokenRecord => ({
+  id: token.id,
+  userId: token.userId,
+  tokenHash: token.tokenHash,
+  expiresAt: token.expiresAt.toISOString(),
+  consumedAt: toIso(token.consumedAt),
 })
 
 const toVenture = (venture: {
@@ -462,6 +507,82 @@ class PrismaPlatformRepository implements PlatformRepository {
     return user ? toUser(user) : undefined
   }
 
+  async saveUser(user: User) {
+    const data = {
+      organizationId: user.organizationId,
+      cohortId: user.cohortId ?? null,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      passwordHash: user.passwordHash ?? null,
+      emailVerified: user.emailVerified ?? false,
+      emailVerifiedAt: user.emailVerifiedAt ? new Date(user.emailVerifiedAt) : null,
+      lastLoginAt: user.lastLoginAt ? new Date(user.lastLoginAt) : null,
+    }
+    const saved = await this.prisma.user.upsert({
+      where: { id: user.id },
+      update: data,
+      create: { id: user.id, ...data },
+    })
+    return toUser(saved)
+  }
+
+  async findOAuthAccount(provider: OAuthProvider, providerAccountId: string) {
+    const account = await this.prisma.oAuthAccount.findUnique({
+      where: {
+        provider_providerAccountId: { provider, providerAccountId },
+      },
+    })
+    return account ? toOAuthAccount(account) : undefined
+  }
+
+  async saveOAuthAccount(account: OAuthAccount) {
+    const data = {
+      userId: account.userId,
+      provider: account.provider,
+      providerAccountId: account.providerAccountId,
+      email: account.email ?? null,
+      accessToken: account.accessToken ?? null,
+      refreshToken: account.refreshToken ?? null,
+      expiresAt: account.expiresAt ? new Date(account.expiresAt) : null,
+    }
+    const saved = await this.prisma.oAuthAccount.upsert({
+      where: { id: account.id },
+      update: data,
+      create: { id: account.id, ...data },
+    })
+    return toOAuthAccount(saved)
+  }
+
+  async savePasswordResetToken(token: PasswordResetTokenRecord) {
+    const data = {
+      userId: token.userId,
+      tokenHash: token.tokenHash,
+      expiresAt: new Date(token.expiresAt),
+      consumedAt: token.consumedAt ? new Date(token.consumedAt) : null,
+    }
+    const saved = await this.prisma.passwordResetToken.upsert({
+      where: { id: token.id },
+      update: data,
+      create: { id: token.id, ...data },
+    })
+    return toPasswordResetToken(saved)
+  }
+
+  async findPasswordResetTokenByHash(tokenHash: string) {
+    const token = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    })
+    return token ? toPasswordResetToken(token) : undefined
+  }
+
+  async markPasswordResetTokenConsumed(id: string, consumedAt: string) {
+    await this.prisma.passwordResetToken.update({
+      where: { id },
+      data: { consumedAt: new Date(consumedAt) },
+    })
+  }
+
   async listVentures() {
     return (await this.prisma.venture.findMany({ orderBy: { name: 'asc' } })).map(toVenture)
   }
@@ -683,6 +804,13 @@ class PrismaPlatformRepository implements PlatformRepository {
   async revokeSession(sessionId: string) {
     await this.prisma.session.updateMany({
       where: { id: sessionId },
+      data: { revokedAt: new Date() },
+    })
+  }
+
+  async revokeAllSessionsForUser(userId: string) {
+    await this.prisma.session.updateMany({
+      where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     })
   }

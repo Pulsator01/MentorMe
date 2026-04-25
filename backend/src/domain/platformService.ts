@@ -3,16 +3,20 @@ import { z } from 'zod'
 import type {
   AiGateway,
   EmailGateway,
+  GoogleOAuthGateway,
   PlatformRepository,
   QueuePublisher,
   StorageService,
 } from './interfaces'
+import type { PasswordHasher } from '../infra/passwordHasher'
 import { artifactStorageKey, futureIso, nextPrefixedId, nowIso, randomToken, sha256 } from './id'
 import type {
   Artifact,
   AuditEvent,
   MentorProfile,
   MentorRequest,
+  OAuthAccount,
+  PasswordResetTokenRecord,
   RequestView,
   User,
   UserRole,
@@ -96,7 +100,60 @@ const mentorRecommendationSchema = z.object({
   maxResults: z.number().int().min(1).max(5).optional(),
 })
 
+const lowercaseEmail = z
+  .string()
+  .min(3)
+  .max(254)
+  .email()
+  .transform((value) => value.trim().toLowerCase())
+
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(256, 'Password must be at most 256 characters')
+
+const registerSchema = z.object({
+  name: z.string().min(2).max(120),
+  email: lowercaseEmail,
+  password: passwordSchema,
+  role: z.enum(['founder', 'student']).default('founder'),
+  organizationId: z.string().min(1).optional(),
+  cohortId: z.string().min(1).optional(),
+})
+
+const loginSchema = z.object({
+  email: lowercaseEmail,
+  password: z.string().min(1).max(256),
+})
+
+const forgotPasswordSchema = z.object({
+  email: lowercaseEmail,
+})
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(20),
+  password: passwordSchema,
+})
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: passwordSchema,
+})
+
+const googleAuthorizeSchema = z.object({
+  redirectAfter: z.string().min(1).max(512).optional(),
+})
+
+const googleCallbackSchema = z.object({
+  code: z.string().min(10).max(2048),
+  state: z.string().min(10).max(2048),
+})
+
 const jwtTextEncoder = new TextEncoder()
+const PASSWORD_RESET_TTL_HOURS = 1
+const SESSION_TTL_HOURS = 24 * 30
+const OAUTH_STATE_TTL_SECONDS = 600
+const OAUTH_STATE_AUDIENCE = 'mentor-me-oauth-state'
 
 type ServiceDeps = {
   repository: PlatformRepository
@@ -104,16 +161,21 @@ type ServiceDeps = {
   storage: StorageService
   queue: QueuePublisher
   ai: AiGateway
+  passwordHasher: PasswordHasher
+  googleOAuth?: GoogleOAuthGateway
   jwtIssuer: string
   jwtAudience: string
   jwtSecret: string
+  defaultOrganizationId: string
+  appBaseUrl: string
 }
 
 export class PlatformService {
   constructor(private readonly deps: ServiceDeps) {}
 
   async requestMagicLink(email: string) {
-    const user = await this.deps.repository.findUserByEmail(email)
+    const normalized = email.trim().toLowerCase()
+    const user = await this.deps.repository.findUserByEmail(normalized)
 
     if (!user) {
       return { accepted: true }
@@ -147,27 +209,262 @@ export class PlatformService {
 
     const user = await this.requireUser(record.userId)
     await this.deps.repository.saveMagicLink({ ...record, consumedAt: nowIso() })
+    return await this.issueSessionForUser(user, 'auth.magic_link_verified')
+  }
 
-    const refreshToken = randomToken()
-    const session = await this.deps.repository.saveSession({
-      id: `sess-${randomToken().slice(0, 10)}`,
-      userId: user.id,
-      refreshTokenHash: sha256(refreshToken),
-      expiresAt: futureIso(24 * 30),
+  async register(input: unknown) {
+    const payload = registerSchema.parse(input)
+    const existing = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (existing) {
+      throw new Error('An account with that email already exists')
+    }
+
+    const passwordHash = await this.deps.passwordHasher.hash(payload.password)
+    const userId = await this.allocateUserId(payload.role)
+    const organizationId = payload.organizationId || (await this.resolveDefaultOrganizationId())
+
+    const user: User = {
+      id: userId,
+      organizationId,
+      cohortId: payload.cohortId,
+      email: payload.email,
+      name: payload.name.trim(),
+      role: payload.role,
+      passwordHash,
+      emailVerified: false,
+      lastLoginAt: nowIso(),
+    }
+
+    await this.deps.repository.saveUser(user)
+
+    await this.deps.email.sendWelcome({
+      email: user.email,
+      name: user.name,
     })
 
-    const accessToken = await this.signAccessToken(user)
+    await this.recordOutbox('auth.user_registered', 'auth', user.id, {
+      email: user.email,
+      role: user.role,
+    })
+
+    return await this.issueSessionForUser(user, 'auth.password_register', {
+      role: user.role,
+    })
+  }
+
+  async login(input: unknown) {
+    const payload = loginSchema.parse(input)
+    const user = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (!user || !user.passwordHash) {
+      throw new Error('Invalid email or password')
+    }
+
+    const valid = await this.deps.passwordHasher.verify(user.passwordHash, payload.password)
+
+    if (!valid) {
+      throw new Error('Invalid email or password')
+    }
+
+    const refreshed: User = { ...user, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(refreshed)
+    return await this.issueSessionForUser(refreshed, 'auth.password_login')
+  }
+
+  async requestPasswordReset(input: unknown) {
+    const payload = forgotPasswordSchema.parse(input)
+    const user = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (!user) {
+      return { accepted: true as const }
+    }
+
+    const token = randomToken()
+    const record: PasswordResetTokenRecord = {
+      id: `prt-${randomToken().slice(0, 10)}`,
+      userId: user.id,
+      tokenHash: sha256(token),
+      expiresAt: futureIso(PASSWORD_RESET_TTL_HOURS),
+    }
+    await this.deps.repository.savePasswordResetToken(record)
+
+    await this.deps.email.sendPasswordReset({
+      email: user.email,
+      name: user.name,
+      token,
+    })
+
+    await this.recordOutbox('auth.password_reset_requested', 'auth', user.id, { email: user.email })
+
+    return { accepted: true as const, token }
+  }
+
+  async resetPassword(input: unknown) {
+    const payload = resetPasswordSchema.parse(input)
+    const record = await this.deps.repository.findPasswordResetTokenByHash(sha256(payload.token))
+
+    if (!record || record.consumedAt || new Date(record.expiresAt).getTime() < Date.now()) {
+      throw new Error('Invalid or expired password reset link')
+    }
+
+    const user = await this.requireUser(record.userId)
+    const passwordHash = await this.deps.passwordHasher.hash(payload.password)
+    const updated: User = { ...user, passwordHash, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(updated)
+    await this.deps.repository.markPasswordResetTokenConsumed(record.id, nowIso())
+    await this.deps.repository.revokeAllSessionsForUser(user.id)
 
     await this.recordAudit({
       entityType: 'auth',
-      entityId: session.id,
+      entityId: user.id,
       actorType: 'user',
       actorUserId: user.id,
-      action: 'auth.magic_link_verified',
+      action: 'auth.password_reset_completed',
       payload: {},
     })
 
-    return { accessToken, refreshToken, user }
+    return await this.issueSessionForUser(updated, 'auth.password_reset_completed')
+  }
+
+  async changePassword(user: User, input: unknown) {
+    const payload = changePasswordSchema.parse(input)
+    const stored = await this.requireUser(user.id)
+
+    if (!stored.passwordHash) {
+      throw new Error('This account does not have a password set. Use the password-reset flow to set one.')
+    }
+
+    const valid = await this.deps.passwordHasher.verify(stored.passwordHash, payload.currentPassword)
+
+    if (!valid) {
+      throw new Error('Current password is incorrect')
+    }
+
+    if (payload.currentPassword === payload.newPassword) {
+      throw new Error('New password must differ from the current password')
+    }
+
+    const passwordHash = await this.deps.passwordHasher.hash(payload.newPassword)
+    const updated: User = { ...stored, passwordHash }
+    await this.deps.repository.saveUser(updated)
+    await this.deps.repository.revokeAllSessionsForUser(user.id)
+
+    await this.recordAudit({
+      entityType: 'auth',
+      entityId: user.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'auth.password_changed',
+      payload: {},
+    })
+
+    return await this.issueSessionForUser(updated, 'auth.password_changed')
+  }
+
+  async googleAuthorizeUrl(input: unknown) {
+    const oauth = this.requireGoogleOAuth()
+    const payload = googleAuthorizeSchema.parse(input ?? {})
+    const state = await this.signOAuthState(payload.redirectAfter)
+    return {
+      authorizeUrl: oauth.buildAuthorizeUrl(state),
+      state,
+    }
+  }
+
+  async googleOAuthCallback(input: unknown) {
+    const oauth = this.requireGoogleOAuth()
+    const payload = googleCallbackSchema.parse(input)
+    const stateClaims = await this.verifyOAuthState(payload.state)
+
+    const tokens = await oauth.exchangeCode(payload.code)
+    const profile = await oauth.fetchProfile(tokens.accessToken)
+
+    if (!profile.emailVerified) {
+      throw new Error('Google account email is not verified')
+    }
+
+    const linkedAccount = await this.deps.repository.findOAuthAccount('google', profile.providerAccountId)
+    let user: User | undefined
+    let isNewUser = false
+    let isNewLink = false
+
+    if (linkedAccount) {
+      user = await this.requireUser(linkedAccount.userId)
+    } else {
+      const existingByEmail = await this.deps.repository.findUserByEmail(profile.email.toLowerCase())
+
+      if (existingByEmail) {
+        user = existingByEmail
+        isNewLink = true
+      } else {
+        const organizationId = await this.resolveDefaultOrganizationId()
+        const userId = await this.allocateUserId('founder')
+        user = {
+          id: userId,
+          organizationId,
+          email: profile.email.toLowerCase(),
+          name: profile.name,
+          role: 'founder',
+          emailVerified: true,
+          emailVerifiedAt: nowIso(),
+          lastLoginAt: nowIso(),
+        }
+        isNewUser = true
+        isNewLink = true
+        await this.deps.repository.saveUser(user)
+        await this.deps.email.sendWelcome({ email: user.email, name: user.name })
+      }
+    }
+
+    if (!user) {
+      throw new Error('Failed to resolve Google user')
+    }
+
+    if (isNewLink) {
+      const account: OAuthAccount = {
+        id: `oauth-${randomToken().slice(0, 10)}`,
+        userId: user.id,
+        provider: 'google',
+        providerAccountId: profile.providerAccountId,
+        email: profile.email,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.expiresInSeconds
+          ? new Date(Date.now() + tokens.expiresInSeconds * 1000).toISOString()
+          : undefined,
+      }
+      await this.deps.repository.saveOAuthAccount(account)
+    }
+
+    if (!user.emailVerified) {
+      const verified: User = { ...user, emailVerified: true, emailVerifiedAt: nowIso() }
+      await this.deps.repository.saveUser(verified)
+      user = verified
+    }
+
+    const refreshed: User = { ...user, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(refreshed)
+
+    if (isNewUser) {
+      await this.recordOutbox('auth.user_registered', 'auth', refreshed.id, {
+        email: refreshed.email,
+        role: refreshed.role,
+        provider: 'google',
+      })
+    }
+
+    const session = await this.issueSessionForUser(
+      refreshed,
+      isNewUser ? 'auth.google_signup' : 'auth.google_login',
+      { provider: 'google' },
+    )
+
+    return {
+      ...session,
+      isNewUser,
+      redirectAfter: stateClaims.redirectAfter,
+    }
   }
 
   async refreshSession(refreshToken: string) {
@@ -869,6 +1166,80 @@ export class PlatformService {
       .setAudience(this.deps.jwtAudience)
       .setExpirationTime('15m')
       .sign(jwtTextEncoder.encode(this.deps.jwtSecret))
+  }
+
+  private async issueSessionForUser(user: User, action: string, payload: Record<string, unknown> = {}) {
+    const refreshToken = randomToken()
+    const session = await this.deps.repository.saveSession({
+      id: `sess-${randomToken().slice(0, 10)}`,
+      userId: user.id,
+      refreshTokenHash: sha256(refreshToken),
+      expiresAt: futureIso(SESSION_TTL_HOURS),
+    })
+    const accessToken = await this.signAccessToken(user)
+
+    await this.recordAudit({
+      entityType: 'auth',
+      entityId: session.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action,
+      payload,
+    })
+
+    return { accessToken, refreshToken, user }
+  }
+
+  private async signOAuthState(redirectAfter?: string) {
+    const nonce = randomToken().slice(0, 16)
+    return await new SignJWT({ nonce, redirectAfter: redirectAfter || '' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(this.deps.jwtIssuer)
+      .setAudience(OAUTH_STATE_AUDIENCE)
+      .setExpirationTime(`${OAUTH_STATE_TTL_SECONDS}s`)
+      .sign(jwtTextEncoder.encode(this.deps.jwtSecret))
+  }
+
+  private async verifyOAuthState(state: string): Promise<{ nonce: string; redirectAfter?: string }> {
+    try {
+      const verified = await jwtVerify(state, jwtTextEncoder.encode(this.deps.jwtSecret), {
+        issuer: this.deps.jwtIssuer,
+        audience: OAUTH_STATE_AUDIENCE,
+      })
+      const nonce = String(verified.payload.nonce || '')
+      const redirectAfter = verified.payload.redirectAfter ? String(verified.payload.redirectAfter) : undefined
+
+      if (!nonce) {
+        throw new Error('OAuth state missing nonce')
+      }
+
+      return { nonce, redirectAfter: redirectAfter || undefined }
+    } catch {
+      throw new Error('OAuth state is invalid or has expired')
+    }
+  }
+
+  private requireGoogleOAuth() {
+    if (!this.deps.googleOAuth) {
+      throw new Error('Google sign-in is not configured on this server')
+    }
+    return this.deps.googleOAuth
+  }
+
+  private async resolveDefaultOrganizationId(): Promise<string> {
+    const users = await this.deps.repository.listUsers()
+    return users[0]?.organizationId || this.deps.defaultOrganizationId
+  }
+
+  private async allocateUserId(role: UserRole) {
+    const users = await this.deps.repository.listUsers()
+    const prefix = `user-${role}-`
+    const taken = new Set(users.map((existing) => existing.id))
+    let suffix = randomToken().slice(0, 8)
+    while (taken.has(`${prefix}${suffix}`)) {
+      suffix = randomToken().slice(0, 8)
+    }
+    return `${prefix}${suffix}`
   }
 
   private assertRole(user: User, role: UserRole) {

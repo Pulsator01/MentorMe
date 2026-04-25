@@ -10,10 +10,12 @@ import { PlatformService } from './domain/platformService'
 import type {
   AiGateway,
   EmailGateway,
+  GoogleOAuthGateway,
   PlatformRepository,
   QueuePublisher,
   StorageService,
 } from './domain/interfaces'
+import type { PasswordHasher } from './infra/passwordHasher'
 
 type AppOptions = {
   repository: PlatformRepository
@@ -21,11 +23,17 @@ type AppOptions = {
   storage: StorageService
   queue: QueuePublisher
   ai: AiGateway
+  passwordHasher: PasswordHasher
+  googleOAuth?: GoogleOAuthGateway
   exposeTokens?: boolean
   jwtIssuer: string
   jwtAudience: string
   jwtSecret: string
   cookieSecret: string
+  cookieDomain?: string
+  cookieSecure?: boolean
+  defaultOrganizationId: string
+  appBaseUrl: string
 }
 
 const artifactCompleteSchema = z.object({
@@ -57,6 +65,70 @@ const magicLinkVerifyBodySchema = {
     token: { type: 'string' },
   },
   required: ['token'],
+}
+
+const registerBodySchema = {
+  type: 'object',
+  properties: {
+    name: { type: 'string', minLength: 2, maxLength: 120 },
+    email: { type: 'string', format: 'email' },
+    password: { type: 'string', minLength: 8, maxLength: 256 },
+    role: { type: 'string', enum: ['founder', 'student'] },
+    organizationId: { type: 'string' },
+    cohortId: { type: 'string' },
+  },
+  required: ['name', 'email', 'password'],
+}
+
+const loginBodySchema = {
+  type: 'object',
+  properties: {
+    email: { type: 'string', format: 'email' },
+    password: { type: 'string', minLength: 1, maxLength: 256 },
+  },
+  required: ['email', 'password'],
+}
+
+const forgotPasswordBodySchema = {
+  type: 'object',
+  properties: {
+    email: { type: 'string', format: 'email' },
+  },
+  required: ['email'],
+}
+
+const resetPasswordBodySchema = {
+  type: 'object',
+  properties: {
+    token: { type: 'string', minLength: 20 },
+    password: { type: 'string', minLength: 8, maxLength: 256 },
+  },
+  required: ['token', 'password'],
+}
+
+const changePasswordBodySchema = {
+  type: 'object',
+  properties: {
+    currentPassword: { type: 'string', minLength: 1, maxLength: 256 },
+    newPassword: { type: 'string', minLength: 8, maxLength: 256 },
+  },
+  required: ['currentPassword', 'newPassword'],
+}
+
+const googleAuthorizeBodySchema = {
+  type: 'object',
+  properties: {
+    redirectAfter: { type: 'string', maxLength: 512 },
+  },
+}
+
+const googleCallbackBodySchema = {
+  type: 'object',
+  properties: {
+    code: { type: 'string', minLength: 10, maxLength: 2048 },
+    state: { type: 'string', minLength: 10, maxLength: 2048 },
+  },
+  required: ['code', 'state'],
 }
 
 const createRequestBodySchema = {
@@ -361,6 +433,79 @@ const buildOpenApiDocument = () =>
         requestBody: jsonRequestBody(magicLinkVerifyBodySchema),
         responses: {
           200: jsonResponse('Verified session'),
+        },
+      },
+    },
+    '/auth/register': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Register a new founder or student account with email and password',
+        requestBody: jsonRequestBody(registerBodySchema),
+        responses: {
+          201: jsonResponse('Registered user with session'),
+        },
+      },
+    },
+    '/auth/login': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Sign in with email and password',
+        requestBody: jsonRequestBody(loginBodySchema),
+        responses: {
+          200: jsonResponse('Authenticated session'),
+        },
+      },
+    },
+    '/auth/forgot-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Request a password-reset email (always returns 202)',
+        requestBody: jsonRequestBody(forgotPasswordBodySchema),
+        responses: {
+          202: jsonResponse('Accepted'),
+        },
+      },
+    },
+    '/auth/reset-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Consume a password-reset token and set a new password',
+        requestBody: jsonRequestBody(resetPasswordBodySchema),
+        responses: {
+          200: jsonResponse('Password reset and new session issued'),
+        },
+      },
+    },
+    '/auth/change-password': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Change the current user password (requires authentication)',
+        security: bearerSecurity,
+        requestBody: jsonRequestBody(changePasswordBodySchema),
+        responses: {
+          200: jsonResponse('Password changed and new session issued'),
+        },
+      },
+    },
+    '/auth/google/authorize-url': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Build a Google OAuth authorize URL with signed CSRF state',
+        requestBody: jsonRequestBody(googleAuthorizeBodySchema),
+        responses: {
+          200: jsonResponse('Google OAuth authorize URL'),
+          501: jsonResponse('Google sign-in is not configured on this server'),
+        },
+      },
+    },
+    '/auth/google/callback': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Exchange a Google OAuth authorization code for a MentorMe session',
+        requestBody: jsonRequestBody(googleCallbackBodySchema),
+        responses: {
+          200: jsonResponse('Google sign-in session'),
+          501: jsonResponse('Google sign-in is not configured on this server'),
         },
       },
     },
@@ -676,10 +821,22 @@ export const createApp = (options: AppOptions) => {
     storage: options.storage,
     queue: options.queue,
     ai: options.ai,
+    passwordHasher: options.passwordHasher,
+    googleOAuth: options.googleOAuth,
     jwtIssuer: options.jwtIssuer,
     jwtAudience: options.jwtAudience,
     jwtSecret: options.jwtSecret,
+    defaultOrganizationId: options.defaultOrganizationId,
+    appBaseUrl: options.appBaseUrl,
   })
+
+  const refreshCookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    path: '/',
+    ...(options.cookieDomain ? { domain: options.cookieDomain } : {}),
+    ...(options.cookieSecure ? { secure: true } : {}),
+  }
 
   app.register(cors, {
     origin: true,
@@ -755,17 +912,153 @@ export const createApp = (options: AppOptions) => {
     try {
       const payload = z.object({ token: z.string().min(10) }).parse(request.body)
       const result = await service.verifyMagicLink(payload.token)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-      })
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
       return reply.send({
         accessToken: result.accessToken,
         user: result.user,
       })
     } catch (error) {
       return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/auth/register', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Register a new founder or student account with email and password',
+      body: registerBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.register(request.body)
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
+      return reply.code(201).send({
+        accessToken: result.accessToken,
+        user: result.user,
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/auth/login', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Sign in with email and password',
+      body: loginBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.login(request.body)
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
+      return reply.send({
+        accessToken: result.accessToken,
+        user: result.user,
+      })
+    } catch (error) {
+      return reply.unauthorized((error as Error).message)
+    }
+  })
+
+  app.post('/auth/forgot-password', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Request a password-reset email (always returns 202)',
+      body: forgotPasswordBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.requestPasswordReset(request.body)
+      return reply.code(202).send({
+        accepted: true,
+        ...(options.exposeTokens && result.token ? { debugToken: result.token } : {}),
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/auth/reset-password', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Consume a password-reset token and set a new password',
+      body: resetPasswordBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.resetPassword(request.body)
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
+      return reply.send({
+        accessToken: result.accessToken,
+        user: result.user,
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/auth/change-password', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Change the current user password (requires authentication)',
+      security: bearerSecurity,
+      body: changePasswordBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const result = await service.changePassword(user, request.body)
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
+      return reply.send({
+        accessToken: result.accessToken,
+        user: result.user,
+      })
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/auth/google/authorize-url', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Build a Google OAuth authorize URL with signed CSRF state',
+      body: googleAuthorizeBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.googleAuthorizeUrl(request.body)
+      return reply.send(result)
+    } catch (error) {
+      const message = (error as Error).message
+      if (message.includes('not configured')) {
+        return reply.code(501).send({ error: message })
+      }
+      return reply.badRequest(message)
+    }
+  })
+
+  app.post('/auth/google/callback', {
+    schema: {
+      tags: ['Auth'],
+      summary: 'Exchange a Google OAuth authorization code for a MentorMe session',
+      body: googleCallbackBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const result = await service.googleOAuthCallback(request.body)
+      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
+      return reply.send({
+        accessToken: result.accessToken,
+        user: result.user,
+        isNewUser: result.isNewUser,
+        redirectAfter: result.redirectAfter,
+      })
+    } catch (error) {
+      const message = (error as Error).message
+      if (message.includes('not configured')) {
+        return reply.code(501).send({ error: message })
+      }
+      return reply.badRequest(message)
     }
   })
 
@@ -799,7 +1092,10 @@ export const createApp = (options: AppOptions) => {
     if (refreshToken) {
       await service.logout(refreshToken)
     }
-    reply.clearCookie('mentor_me_refresh', { path: '/' })
+    reply.clearCookie('mentor_me_refresh', {
+      path: '/',
+      ...(options.cookieDomain ? { domain: options.cookieDomain } : {}),
+    })
     return reply.code(204).send()
   })
 

@@ -11,5 +11,11 @@ export const createStubEmailGateway = (): EmailGateway & { sent: Array<Record<st
     async sendMentorOutreach(input) {
       sent.push({ type: 'mentor_outreach', ...input })
     },
+    async sendPasswordReset(input) {
+      sent.push({ type: 'password_reset', ...input })
+    },
+    async sendWelcome(input) {
+      sent.push({ type: 'welcome', ...input })
+    },
   }
 }

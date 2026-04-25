@@ -10,7 +10,10 @@ import type {
   MentorProfile,
   MentorRequest,
   MentorRequestShortlist,
+  OAuthAccount,
+  OAuthProvider,
   OutboxEvent,
+  PasswordResetTokenRecord,
   SessionRecord,
   User,
   Venture,
@@ -93,6 +96,12 @@ export interface PlatformRepository {
   listUsers(): Promise<User[]>
   findUserByEmail(email: string): Promise<User | undefined>
   findUserById(id: string): Promise<User | undefined>
+  saveUser(user: User): Promise<User>
+  findOAuthAccount(provider: OAuthProvider, providerAccountId: string): Promise<OAuthAccount | undefined>
+  saveOAuthAccount(account: OAuthAccount): Promise<OAuthAccount>
+  savePasswordResetToken(token: PasswordResetTokenRecord): Promise<PasswordResetTokenRecord>
+  findPasswordResetTokenByHash(tokenHash: string): Promise<PasswordResetTokenRecord | undefined>
+  markPasswordResetTokenConsumed(id: string, consumedAt: string): Promise<void>
   listVentures(): Promise<Venture[]>
   findVentureById(id: string): Promise<Venture | undefined>
   listMemberships(): Promise<VentureMembership[]>
@@ -115,6 +124,7 @@ export interface PlatformRepository {
   saveSession(session: SessionRecord): Promise<SessionRecord>
   findSessionByHash(refreshTokenHash: string): Promise<SessionRecord | undefined>
   revokeSession(sessionId: string): Promise<void>
+  revokeAllSessionsForUser(userId: string): Promise<void>
   saveExternalActionToken(token: ExternalActionToken): Promise<ExternalActionToken>
   findExternalActionTokenByHash(tokenHash: string): Promise<ExternalActionToken | undefined>
   saveAuditEvent(event: AuditEvent): Promise<AuditEvent>
@@ -131,6 +141,8 @@ export interface PlatformRepository {
 export interface EmailGateway {
   sendMagicLink(input: { email: string; token: string; name: string }): Promise<void>
   sendMentorOutreach(input: { email: string; mentorName: string; requestId: string; token: string }): Promise<void>
+  sendPasswordReset(input: { email: string; name: string; token: string }): Promise<void>
+  sendWelcome(input: { email: string; name: string }): Promise<void>
 }
 
 export interface StorageService {
@@ -151,4 +163,26 @@ export interface AiGateway {
   generateMeetingSummary(input: MeetingSummaryInput): Promise<MeetingSummaryOutput>
   generateRequestBrief(input: RequestBriefInput): Promise<RequestBriefOutput>
   recommendMentors(input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }): Promise<MentorRecommendationOutput>
+}
+
+export interface GoogleOAuthTokens {
+  accessToken: string
+  refreshToken?: string
+  idToken?: string
+  expiresInSeconds?: number
+  scope?: string
+}
+
+export interface GoogleOAuthProfile {
+  providerAccountId: string
+  email: string
+  emailVerified: boolean
+  name: string
+}
+
+export interface GoogleOAuthGateway {
+  redirectUri: string
+  buildAuthorizeUrl(state: string): string
+  exchangeCode(code: string): Promise<GoogleOAuthTokens>
+  fetchProfile(accessToken: string): Promise<GoogleOAuthProfile>
 }

@@ -133,25 +133,57 @@ model Cohort {
 }
 
 model User {
-  id             String              @id
-  organizationId String
-  cohortId       String?
-  email          String              @unique
-  name           String
-  role           UserRole
-  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  cohort         Cohort?             @relation(fields: [cohortId], references: [id], onDelete: SetNull)
-  memberships    VentureMembership[]
-  requests       MentorRequest[]     @relation("FounderRequests")
-  sessions       Session[]
-  magicLinks     MagicLinkToken[]
-  artifacts      Artifact[]
-  notifications  Notification[]
-  auditEvents    AuditEvent[]
-  aiRuns         AiRun[]
-  aiRunFeedbacks AiRunFeedback[]
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  id                  String               @id
+  organizationId      String
+  cohortId            String?
+  email               String               @unique
+  name                String
+  role                UserRole
+  passwordHash        String?
+  emailVerified       Boolean              @default(false)
+  emailVerifiedAt     DateTime?
+  lastLoginAt         DateTime?
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cohort              Cohort?              @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  memberships         VentureMembership[]
+  requests            MentorRequest[]      @relation("FounderRequests")
+  sessions            Session[]
+  magicLinks          MagicLinkToken[]
+  oauthAccounts       OAuthAccount[]
+  passwordResetTokens PasswordResetToken[]
+  artifacts           Artifact[]
+  notifications       Notification[]
+  auditEvents         AuditEvent[]
+  aiRuns              AiRun[]
+  aiRunFeedbacks      AiRunFeedback[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+model OAuthAccount {
+  id                String   @id
+  userId            String
+  provider          String
+  providerAccountId String
+  email             String?
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model PasswordResetToken {
+  id         String    @id
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Venture {
@@ -432,7 +464,7 @@ model AiRun {
   promptVersion     String
   inputPayload      Json
   outputPayload     Json?
-  confidence        Double
+  confidence        Float
   shouldAbstain     Boolean
   caveats           String[]
   latencyMs         Int

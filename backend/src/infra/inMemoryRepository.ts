@@ -12,11 +12,12 @@ import type {
   MentorProfile,
   MentorRequest,
   MentorRequestShortlist,
+  OAuthAccount,
+  OAuthProvider,
   OutboxEvent,
+  PasswordResetTokenRecord,
   SessionRecord,
   User,
-  Venture,
-  VentureMembership,
   WebhookReceipt,
 } from '../domain/types'
 
@@ -25,6 +26,8 @@ type State = ReturnType<typeof createSeedState> & {
   aiRuns: AiRun[]
   feedbacks: MeetingFeedback[]
   magicLinks: MagicLinkTokenRecord[]
+  oauthAccounts: OAuthAccount[]
+  passwordResetTokens: PasswordResetTokenRecord[]
   sessions: SessionRecord[]
   externalActionTokens: ExternalActionToken[]
   webhookReceipts: WebhookReceipt[]
@@ -44,6 +47,37 @@ class InMemoryPlatformRepository implements PlatformRepository {
 
   async findUserById(id: string) {
     return this.state.users.find((user) => user.id === id)
+  }
+
+  async saveUser(user: User) {
+    this.state.users = upsertById(this.state.users, user)
+    return user
+  }
+
+  async findOAuthAccount(provider: OAuthProvider, providerAccountId: string) {
+    return this.state.oauthAccounts.find(
+      (account) => account.provider === provider && account.providerAccountId === providerAccountId,
+    )
+  }
+
+  async saveOAuthAccount(account: OAuthAccount) {
+    this.state.oauthAccounts = upsertById(this.state.oauthAccounts, account)
+    return account
+  }
+
+  async savePasswordResetToken(token: PasswordResetTokenRecord) {
+    this.state.passwordResetTokens = upsertById(this.state.passwordResetTokens, token)
+    return token
+  }
+
+  async findPasswordResetTokenByHash(tokenHash: string) {
+    return this.state.passwordResetTokens.find((token) => token.tokenHash === tokenHash)
+  }
+
+  async markPasswordResetTokenConsumed(id: string, consumedAt: string) {
+    this.state.passwordResetTokens = this.state.passwordResetTokens.map((token) =>
+      token.id === id ? { ...token, consumedAt } : token,
+    )
   }
 
   async listVentures() {
@@ -143,6 +177,13 @@ class InMemoryPlatformRepository implements PlatformRepository {
     )
   }
 
+  async revokeAllSessionsForUser(userId: string) {
+    const now = new Date().toISOString()
+    this.state.sessions = this.state.sessions.map((session) =>
+      session.userId === userId && !session.revokedAt ? { ...session, revokedAt: now } : session,
+    )
+  }
+
   async saveExternalActionToken(token: ExternalActionToken) {
     this.state.externalActionTokens = upsertById(this.state.externalActionTokens, token)
     return token
@@ -206,12 +247,14 @@ const upsertById = <T extends { id: string }>(items: T[], next: T) => {
 
 export const createSeededInMemoryPlatformRepository = (configure?: (state: State) => void) => {
   const seed = createSeedState()
-  const state = {
+  const state: State = {
     ...seed,
     aiRunFeedbacks: [],
     aiRuns: [],
     feedbacks: [],
     magicLinks: [],
+    oauthAccounts: [],
+    passwordResetTokens: [],
     sessions: [],
     externalActionTokens: [],
     webhookReceipts: [],
