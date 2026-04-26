@@ -28,6 +28,7 @@ import MagicLinkVerifyPage from './pages/auth/MagicLinkVerifyPage'
 import FounderOnboardingPage from './pages/onboarding/FounderOnboardingPage'
 import StudentOnboardingPage from './pages/onboarding/StudentOnboardingPage'
 import InvitationAcceptPage from './pages/invitations/InvitationAcceptPage'
+import MarketingPage from './pages/MarketingPage'
 
 function ProtectedShell({ children }) {
   return (
@@ -48,6 +49,7 @@ function App() {
     <Router>
       <AppStateProvider>
         <Routes>
+          <Route path="/welcome" element={<MarketingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
