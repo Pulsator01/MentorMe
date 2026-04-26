@@ -618,7 +618,8 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('generates a structured founder brief through the AI endpoint', async () => {
-    const { app, generateRequestBrief } = await buildTestApp()
+    const { app, generateRequestBrief, repository } = await buildTestApp()
+    const saveAiRun = vi.spyOn(repository, 'saveAiRun')
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const response = await app.inject({
@@ -643,10 +644,15 @@ describe('MentorMe backend workflow', () => {
     expect(body.suggestion.provider).toBe('heuristic')
     expect(body.suggestion.mentorFitTags.length).toBeGreaterThan(0)
     expect(generateRequestBrief).toHaveBeenCalledTimes(1)
+    expect(saveAiRun).toHaveBeenCalledTimes(1)
+    const persisted = saveAiRun.mock.calls[0][0]
+    expect(persisted.task).toBe('request_brief')
+    expect(persisted.userId).toBeTruthy()
   })
 
   it('generates a structured meeting summary through the AI endpoint', async () => {
-    const { app, generateMeetingSummary } = await buildTestApp()
+    const { app, generateMeetingSummary, repository } = await buildTestApp()
+    const saveAiRun = vi.spyOn(repository, 'saveAiRun')
     const studentToken = await loginAs(app, 'ria.student@mentorme.test')
 
     const response = await app.inject({
@@ -668,10 +674,12 @@ describe('MentorMe backend workflow', () => {
     expect(body.summary.provider).toBe('heuristic')
     expect(body.summary.founderActionItems.length).toBeGreaterThan(0)
     expect(generateMeetingSummary).toHaveBeenCalledTimes(1)
+    expect(saveAiRun).toHaveBeenCalledTimes(1)
+    expect(saveAiRun.mock.calls[0][0].task).toBe('meeting_summary')
   })
 
   it('returns AI-ranked mentor recommendations from active mentor profiles only', async () => {
-    const { app } = await buildTestApp((state) => {
+    const { app, repository } = await buildTestApp((state) => {
       state.mentors.push({
         id: 'm-paused-growth',
         organizationId: state.organization.id,
@@ -690,6 +698,7 @@ describe('MentorMe backend workflow', () => {
         bio: 'Strong fit, but intentionally paused.',
       })
     })
+    const saveAiRun = vi.spyOn(repository, 'saveAiRun')
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const response = await app.inject({
@@ -720,6 +729,8 @@ describe('MentorMe backend workflow', () => {
     expect(body.recommendations.shortlist.every((item) => item.mentorId !== 'm-paused-growth')).toBe(true)
     expect(body.recommendations.shortlist[0].reasons.length).toBeGreaterThan(0)
     expect(body.recommendations.routingNote.length).toBeGreaterThan(0)
+    expect(saveAiRun).toHaveBeenCalledTimes(1)
+    expect(saveAiRun.mock.calls[0][0].task).toBe('mentor_recommendation')
   })
 
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {

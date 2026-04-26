@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { PrismaClient } from '@prisma/client'
+import { applyRepoRootEnv } from './loadLocalEnv'
 import { createApp } from '../src/app'
 import { HeuristicAiGateway } from '../src/ai/heuristicAiGateway'
 import { createInlineQueuePublisher } from '../src/infra/inlineQueuePublisher'
@@ -73,6 +74,7 @@ const authorizedJson = async <T>(baseUrl: string, token: string, path: string, i
   })
 
 const run = async () => {
+  applyRepoRootEnv()
   expectEnv('DATABASE_URL')
 
   const seedPrisma = new PrismaClient()

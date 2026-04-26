@@ -15,6 +15,7 @@ test('founder request moves into the CFE approval queue through the UI', async (
   await gotoAndHydrate(page, '/founders')
   await expect(page.getByRole('heading', { name: 'Build the right mentor ask before CFE routes it.' })).toBeVisible()
 
+  await gotoAndHydrate(page, '/founders/new-request', { skipMagicLinkVerify: true })
   await page.getByLabel('What do you need help with').fill(uniqueChallenge)
   await page.getByLabel('Desired outcome').fill(uniqueOutcome)
   await page.getByPlaceholder('Add asset').fill(uniqueArtifact)
@@ -32,11 +33,17 @@ test('founder request moves into the CFE approval queue through the UI', async (
 
   await expect(page.getByText('Request sent to CFE review')).toBeVisible()
 
-  const founderCard = page
-    .getByText(uniqueChallenge, { exact: true })
-    .locator('xpath=ancestor::div[contains(@class,"rounded-3xl") and contains(@class,"border")][1]')
+  await gotoAndHydrate(page, '/founders', { skipMagicLinkVerify: true })
+
+  const overviewCard = page.getByTestId(`overview-request-${requestId.toLowerCase()}`)
+  await expect(overviewCard).toBeVisible()
+  await expect(overviewCard).toContainText(uniqueChallenge)
+  await expect(overviewCard).toContainText('CFE review')
+
+  await gotoAndHydrate(page, '/founders/pipeline', { skipMagicLinkVerify: true })
+  const founderCard = page.getByTestId(`founder-request-${requestId.toLowerCase()}`)
   await expect(founderCard).toBeVisible()
-  await expect(founderCard).toContainText('cfe review')
+  await expect(founderCard).toContainText('CFE review')
   await expect(founderCard).toContainText('3 attached items')
   const presignResponsePromise = page.waitForResponse(
     (response) =>
@@ -60,15 +67,18 @@ test('founder request moves into the CFE approval queue through the UI', async (
   await expect(founderCard).toContainText('4 attached items')
   await expect(founderCard).toContainText('browser-followup-note.txt')
 
-  const cfePage = await page.context().newPage()
-  await gotoAndHydrate(cfePage, '/cfe')
-  const queuedCard = cfePage
-    .getByText(uniqueChallenge, { exact: true })
-    .locator('xpath=ancestor::div[contains(@class,"rounded-3xl") and contains(@class,"border")][1]')
+  const browser = page.context().browser()
+  if (!browser) {
+    throw new Error('Playwright browser instance is unavailable')
+  }
+  const cfeContext = await browser.newContext()
+  const cfePage = await cfeContext.newPage()
+  await gotoAndHydrate(cfePage, '/cfe/pipeline')
+  const queuedCard = cfePage.getByTestId(`request-card-${requestId.toLowerCase()}`)
   await expect(queuedCard).toBeVisible()
-  await expect(queuedCard).toContainText(requestId)
+  await expect(queuedCard).toContainText(uniqueChallenge)
   await queuedCard.getByRole('button', { name: 'Approve' }).click()
 
-  await expect(founderCard).toContainText('awaiting mentor')
-  await cfePage.close()
+  await expect(founderCard).toContainText('Awaiting mentor')
+  await cfeContext.close()
 })

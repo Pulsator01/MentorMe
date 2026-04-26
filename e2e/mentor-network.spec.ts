@@ -43,7 +43,7 @@ test('cfe can add and pause a mentor from the mentor network UI', async ({ page 
 })
 
 test('mentor can complete a secure outreach flow and CFE sees the updates live', async ({ browser, page }) => {
-  await gotoAndHydrate(page, '/cfe')
+  await gotoAndHydrate(page, '/cfe/pipeline')
 
   const awaitingCard = page.getByTestId('request-card-req-003')
   await expect(awaitingCard).toBeVisible()

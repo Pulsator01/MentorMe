@@ -73,6 +73,7 @@ export default defineConfig({
       env: {
         ...sharedEnv,
         VITE_API_BASE_URL: 'http://127.0.0.1:3301',
+        VITE_PLAYWRIGHT_AUTO_AUTH: 'true',
       },
       stdout: 'pipe',
       stderr: 'pipe',

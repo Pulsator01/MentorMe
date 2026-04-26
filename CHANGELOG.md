@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-04-26
+
+### Added
+
+- Prisma migration for auth/onboarding-related schema and `AiRun` / `AiRunFeedback` tables.
+- `backend/scripts/loadLocalEnv.ts` so `prisma-e2e` loads repo-root `.env` consistently.
+- Playwright `e2e/welcome-auth.spec.ts` and optional `VITE_PLAYWRIGHT_AUTO_AUTH` boot path for stable E2E against protected routes.
+
+### Changed
+
+- `platformService` persists `AiRun` rows after AI calls that supply `getAiMeta` (with regression coverage in `app.test.ts`).
+- Render `preDeployCommand` runs `prisma migrate deploy` for API and worker services.
+- E2E helpers and specs updated for multi-page routes (`/cfe/pipeline`, founder pipeline), mentor seed user `radhika@mentorme.test`, and isolated CFE browser context.
+- README and `docs/infra-setup.md` updated for migrations, E2E env, and Playwright auto-auth.
+
 ## [0.1.1] - 2026-04-26
 
 ### Security
