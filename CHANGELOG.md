@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-26
+
+### Security
+
+- Require non-placeholder `JWT_SECRET` and `COOKIE_SECRET` when `NODE_ENV=production` (API exits at startup if missing).
+- Validate self-service `organizationId` / `cohortId` on `POST /auth/register` against known organizations and cohort membership.
+- Verify Calendly webhooks with `Calendly-Webhook-Signature` when `CALENDLY_WEBHOOK_SIGNING_SECRET` is set; reject webhooks in production if the secret is unset.
+- Sanitize Google OAuth `redirectAfter` and auth `next` query parameters to block open redirects.
+- Enforce `RequireRole` on founder, student, CFE, and mentor workspace routes (API mode; local demo mode unchanged).
+- Fail closed in `RequireOnboarded` when onboarding status cannot be fetched (error UI with retry instead of treating failure as completed).
+
+### Fixed
+
+- Track `src/pages/founders/founderHelpers.js` in version control so production builds and CI resolve shared founder/student helpers.
+- Invitation accept: do not create a student venture membership when the invitation role is not `founder` or `student`.
+
 ## [0.1.0] - 2026-04-26
 
 ### Added

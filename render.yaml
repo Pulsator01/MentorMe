@@ -21,6 +21,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.1
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: mentorme-db
@@ -91,6 +93,9 @@ services:
         value: production
       - key: SENTRY_TRACES_SAMPLE_RATE
         value: "0"
+      # --- Calendly — paste signing key from Calendly webhook settings ---
+      - key: CALENDLY_WEBHOOK_SIGNING_SECRET
+        sync: false
 
   - type: worker
     name: mentorme-worker
@@ -101,6 +106,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.18.1
+      - key: NODE_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: mentorme-db

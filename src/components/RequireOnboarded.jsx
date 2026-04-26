@@ -21,7 +21,7 @@ function RequireOnboarded({ children }) {
   }, [mode, currentUser, location.pathname])
 
   const [status, setStatus] = useState(() =>
-    shouldFetch ? { phase: 'loading', nextStep: null } : { phase: 'ready', nextStep: 'completed' },
+    shouldFetch ? { phase: 'loading', nextStep: null, error: null } : { phase: 'ready', nextStep: 'completed', error: null },
   )
 
   useEffect(() => {
@@ -30,15 +30,19 @@ function RequireOnboarded({ children }) {
     }
 
     let cancelled = false
+    // Reset to loading whenever we enter the "must verify onboarding" branch (e.g. after finishing onboarding routes).
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional transition; avoids flashing stale "ready" state.
+    setStatus({ phase: 'loading', nextStep: null, error: null })
 
     getOnboardingStatus()
       .then((response) => {
         if (cancelled) return
-        setStatus({ phase: 'ready', nextStep: response?.nextStep || 'completed' })
+        setStatus({ phase: 'ready', nextStep: response?.nextStep || 'completed', error: null })
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return
-        setStatus({ phase: 'ready', nextStep: 'completed' })
+        const message = err?.message || 'We could not verify your onboarding status.'
+        setStatus({ phase: 'error', nextStep: null, error: message })
       })
 
     return () => {
@@ -52,6 +56,31 @@ function RequireOnboarded({ children }) {
 
   if (status.phase === 'loading') {
     return <FullPageLoader message="Preparing your workspace" />
+  }
+
+  if (status.phase === 'error') {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="max-w-md text-sm leading-6 text-slate-600">{status.error}</p>
+        <button
+          type="button"
+          className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          onClick={() => {
+            setStatus({ phase: 'loading', nextStep: null, error: null })
+            void getOnboardingStatus()
+              .then((response) => {
+                setStatus({ phase: 'ready', nextStep: response?.nextStep || 'completed', error: null })
+              })
+              .catch((err) => {
+                const message = err?.message || 'We could not verify your onboarding status.'
+                setStatus({ phase: 'error', nextStep: null, error: message })
+              })
+          }}
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   const redirect = PATH_FOR_NEXT_STEP[status.nextStep]

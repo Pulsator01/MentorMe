@@ -18,6 +18,8 @@ backend/**/*.js
 src/**/*.js
 !src/data/**/*.js
 !src/test/**/*.js
+!src/auth/sanitizeNextPath.js
+!src/pages/founders/founderHelpers.js
 !vite.config.js
 !eslint.config.js
 !postcss.config.js

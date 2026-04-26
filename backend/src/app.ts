@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest } from 'fastify'
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import helmet from '@fastify/helmet'
@@ -18,6 +18,14 @@ import type {
   StorageService,
 } from './domain/interfaces'
 import type { PasswordHasher } from './infra/passwordHasher'
+import { verifyCalendlyWebhookSignature } from './infra/calendlyWebhookSignature'
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Raw JSON body string for Calendly HMAC verification (when route uses a string JSON parser). */
+    calendlyRawBody?: string
+  }
+}
 
 export type HttpSecurityOptions = {
   /** When true, skips @fastify/helmet (tests only). */
@@ -56,6 +64,11 @@ type AppOptions = {
   /** Set true behind Render / other reverse proxies so rate limits use X-Forwarded-For. */
   trustProxy?: boolean
   httpSecurity?: HttpSecurityOptions
+  /**
+   * Calendly webhook signing key (UTF-8). When set, `Calendly-Webhook-Signature` must validate.
+   * In `NODE_ENV=production`, webhooks are rejected (503) if this is unset.
+   */
+  calendlyWebhookSigningSecret?: string
 }
 
 const artifactCompleteSchema = z.object({
@@ -331,6 +344,7 @@ const calendlyWebhookHeadersSchema = {
   type: 'object',
   properties: {
     'x-calendly-event-id': { type: 'string' },
+    'calendly-webhook-signature': { type: 'string' },
   },
   required: ['x-calendly-event-id'],
 }
@@ -904,7 +918,10 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Integrations'],
         summary: 'Receive Calendly scheduling webhooks',
-        parameters: [headerParameter('x-calendly-event-id', 'Calendly provider event identifier')],
+        parameters: [
+          headerParameter('x-calendly-event-id', 'Calendly provider event identifier'),
+          headerParameter('calendly-webhook-signature', 'Calendly HMAC signature (required when signing secret is configured)'),
+        ],
         requestBody: jsonRequestBody({ type: 'object', additionalProperties: true }),
         responses: {
           202: jsonResponse('Accepted webhook'),
@@ -1918,23 +1935,58 @@ export const createApp = async (options: AppOptions) => {
     }
   })
 
-  app.post('/webhooks/calendly', {
-    schema: {
-      tags: ['Integrations'],
-      summary: 'Receive Calendly scheduling webhooks',
-      headers: calendlyWebhookHeadersSchema,
-      body: {
-        type: 'object',
-        additionalProperties: true,
-      },
-    },
-  }, async (request, reply) => {
+  const handleCalendlyWebhook = async (request: FastifyRequest, reply: FastifyReply) => {
+    const nodeEnv = process.env.NODE_ENV || 'development'
+    const signingSecret = (options.calendlyWebhookSigningSecret || '').trim()
+    const rawBody = request.calendlyRawBody ?? JSON.stringify(request.body ?? {})
+
+    if (nodeEnv === 'production' && !signingSecret) {
+      return reply.code(503).send({ error: 'Calendly webhooks are not configured (missing CALENDLY_WEBHOOK_SIGNING_SECRET).' })
+    }
+
+    if (signingSecret) {
+      const sigHeader =
+        request.headers['calendly-webhook-signature'] || request.headers['Calendly-Webhook-Signature']
+      const sigValue = Array.isArray(sigHeader) ? sigHeader[0] : sigHeader
+      if (!verifyCalendlyWebhookSignature(signingSecret, rawBody, sigValue)) {
+        return reply.code(401).send({ error: 'Invalid Calendly webhook signature' })
+      }
+    }
+
     const eventId = String(request.headers['x-calendly-event-id'] || '')
     if (!eventId) {
       return reply.badRequest('Missing x-calendly-event-id header')
     }
     return reply.code(202).send(await service.calendlyWebhook(eventId, request.body as Record<string, unknown>))
-  })
+  }
+
+  await app.register(
+    async (scoped) => {
+      scoped.removeContentTypeParser('application/json')
+      scoped.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+        try {
+          const raw = typeof body === 'string' ? body : String(body)
+          req.calendlyRawBody = raw
+          done(null, JSON.parse(raw))
+        } catch (err) {
+          done(err as Error, undefined)
+        }
+      })
+
+      scoped.post('/calendly', {
+        schema: {
+          tags: ['Integrations'],
+          summary: 'Receive Calendly scheduling webhooks',
+          headers: calendlyWebhookHeadersSchema,
+          body: {
+            type: 'object',
+            additionalProperties: true,
+          },
+        },
+      }, handleCalendlyWebhook)
+    },
+    { prefix: '/webhooks' },
+  )
 
   app.get('/notifications/stream', {
     schema: {

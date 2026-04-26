@@ -46,7 +46,32 @@ const buildHttpSecurityFromEnv = (): HttpSecurityOptions | undefined => {
   }
 }
 
+const DEV_JWT_PLACEHOLDER = 'development-secret'
+const DEV_COOKIE_PLACEHOLDER = 'development-cookie-secret'
+
+const resolveAuthSecrets = () => {
+  const nodeEnv = process.env.NODE_ENV || 'development'
+  const isProduction = nodeEnv === 'production'
+
+  const jwtSecret = (process.env.JWT_SECRET || '').trim() || (!isProduction ? DEV_JWT_PLACEHOLDER : '')
+  const cookieSecret = (process.env.COOKIE_SECRET || '').trim() || (!isProduction ? DEV_COOKIE_PLACEHOLDER : '')
+
+  if (isProduction) {
+    if (!process.env.JWT_SECRET?.trim() || !process.env.COOKIE_SECRET?.trim()) {
+      console.error('FATAL: JWT_SECRET and COOKIE_SECRET must be set to non-empty values when NODE_ENV=production')
+      process.exit(1)
+    }
+    if (process.env.JWT_SECRET === DEV_JWT_PLACEHOLDER || process.env.COOKIE_SECRET === DEV_COOKIE_PLACEHOLDER) {
+      console.error('FATAL: Do not use development placeholder secrets in production')
+      process.exit(1)
+    }
+  }
+
+  return { jwtSecret, cookieSecret }
+}
+
 const bootstrap = async () => {
+  const { jwtSecret, cookieSecret } = resolveAuthSecrets()
   const port = Number(process.env.PORT || process.env.API_PORT || 3001)
   const runtime = createRuntimeRepository()
   const ai = createAiGateway()
@@ -94,8 +119,9 @@ const bootstrap = async () => {
     googleOAuth,
     jwtIssuer: process.env.JWT_ISSUER || 'mentor-me-local',
     jwtAudience: process.env.JWT_AUDIENCE || 'mentor-me-web',
-    jwtSecret: process.env.JWT_SECRET || 'development-secret',
-    cookieSecret: process.env.COOKIE_SECRET || 'development-cookie-secret',
+    jwtSecret,
+    cookieSecret,
+    calendlyWebhookSigningSecret: process.env.CALENDLY_WEBHOOK_SIGNING_SECRET,
     cookieDomain: process.env.COOKIE_DOMAIN,
     cookieSecure: process.env.COOKIE_SECURE === 'true',
     exposeTokens: process.env.EXPOSE_DEBUG_TOKENS === 'true',

@@ -12,6 +12,7 @@ import {
   Select,
 } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
+import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
 
 const roleOptions = [
   { value: 'founder', label: 'Founder — leading a venture or product' },
@@ -22,7 +23,7 @@ function SignupPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const params = new URLSearchParams(location.search)
-  const nextPath = params.get('next') || '/'
+  const nextPath = sanitizeNextPath(params.get('next'))
 
   const { register, startGoogleOAuth } = useAppState()
 

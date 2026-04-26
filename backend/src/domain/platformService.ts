@@ -9,6 +9,7 @@ import type {
   StorageService,
 } from './interfaces'
 import type { PasswordHasher } from '../infra/passwordHasher'
+import { safeAppRedirectPath } from '../util/safeRedirectPath'
 import { artifactStorageKey, futureIso, nextPrefixedId, nowIso, randomToken, sha256 } from './id'
 import type {
   Artifact,
@@ -264,12 +265,19 @@ export class PlatformService {
 
     const passwordHash = await this.deps.passwordHasher.hash(payload.password)
     const userId = await this.allocateUserId(payload.role)
-    const organizationId = payload.organizationId || (await this.resolveDefaultOrganizationId())
+    const organizationId = payload.organizationId
+      ? await this.resolveCommittedOrganizationId(payload.organizationId)
+      : await this.resolveDefaultOrganizationId()
+
+    let cohortId = payload.cohortId
+    if (cohortId) {
+      await this.requireCohortInOrganization(cohortId, organizationId)
+    }
 
     const user: User = {
       id: userId,
       organizationId,
-      cohortId: payload.cohortId,
+      cohortId,
       email: payload.email,
       name: payload.name.trim(),
       role: payload.role,
@@ -407,7 +415,8 @@ export class PlatformService {
   async googleAuthorizeUrl(input: unknown) {
     const oauth = this.requireGoogleOAuth()
     const payload = googleAuthorizeSchema.parse(input ?? {})
-    const state = await this.signOAuthState(payload.redirectAfter)
+    const safeRedirect = payload.redirectAfter ? safeAppRedirectPath(payload.redirectAfter) : undefined
+    const state = await this.signOAuthState(safeRedirect && safeRedirect !== '/' ? safeRedirect : undefined)
     return {
       authorizeUrl: oauth.buildAuthorizeUrl(state),
       state,
@@ -502,10 +511,14 @@ export class PlatformService {
       { provider: 'google' },
     )
 
+    const redirectAfter = stateClaims.redirectAfter
+      ? safeAppRedirectPath(stateClaims.redirectAfter)
+      : undefined
+
     return {
       ...session,
       isNewUser,
-      redirectAfter: stateClaims.redirectAfter,
+      redirectAfter: redirectAfter && redirectAfter !== '/' ? redirectAfter : undefined,
     }
   }
 
@@ -905,6 +918,9 @@ export class PlatformService {
       const has = memberships.some((membership) => membership.userId === user.id && membership.ventureId === venture!.id)
 
       if (!has) {
+        if (invitation.role !== 'founder' && invitation.role !== 'student') {
+          throw new Error('This invitation cannot attach venture membership for this role')
+        }
         const membership: VentureMembership = {
           id: `mem-${randomToken().slice(0, 8)}`,
           organizationId: user.organizationId,
@@ -1703,7 +1719,8 @@ export class PlatformService {
         throw new Error('OAuth state missing nonce')
       }
 
-      return { nonce, redirectAfter: redirectAfter || undefined }
+      const safeRedirect = redirectAfter ? safeAppRedirectPath(redirectAfter) : undefined
+      return { nonce, redirectAfter: safeRedirect && safeRedirect !== '/' ? safeRedirect : undefined }
     } catch {
       throw new Error('OAuth state is invalid or has expired')
     }
@@ -1714,6 +1731,27 @@ export class PlatformService {
       throw new Error('Google sign-in is not configured on this server')
     }
     return this.deps.googleOAuth
+  }
+
+  private async listKnownOrganizationIds(): Promise<Set<string>> {
+    const ids = new Set<string>()
+    ids.add(this.deps.defaultOrganizationId)
+
+    const users = await this.deps.repository.listUsers()
+    users.forEach((u) => ids.add(u.organizationId))
+
+    const ventures = await this.deps.repository.listVentures()
+    ventures.forEach((v) => ids.add(v.organizationId))
+
+    return ids
+  }
+
+  private async resolveCommittedOrganizationId(requestedOrganizationId: string): Promise<string> {
+    const known = await this.listKnownOrganizationIds()
+    if (!known.has(requestedOrganizationId)) {
+      throw new Error('Unknown organization')
+    }
+    return requestedOrganizationId
   }
 
   private async resolveDefaultOrganizationId(): Promise<string> {

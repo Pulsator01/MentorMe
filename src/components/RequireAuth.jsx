@@ -1,9 +1,11 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAppState } from '../context/AppState'
 import { SectionCard } from './ui'
+import { sanitizeNextPath } from '../auth/sanitizeNextPath'
 
 const buildRedirect = (location) => {
-  const next = `${location.pathname}${location.search || ''}`
+  const rawNext = `${location.pathname}${location.search || ''}`
+  const next = sanitizeNextPath(rawNext)
   return `/login?next=${encodeURIComponent(next)}`
 }
 

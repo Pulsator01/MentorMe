@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../../layouts/AuthLayout'
 import { FormError } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
+import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
 
 const parseMagicLinkParams = (search) => {
   const params = new URLSearchParams(search)
   const token = params.get('token')
-  const next = params.get('next') || '/'
+  const next = sanitizeNextPath(params.get('next'))
 
   if (!token) {
     return { token: null, next, error: 'No magic-link token was provided.' }

@@ -87,7 +87,9 @@ function App() {
             path="/founders"
             element={(
               <ProtectedShell>
-                <FounderOverviewPage />
+                <RequireRole allowedRoles={['founder', 'admin']}>
+                  <FounderOverviewPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -95,7 +97,9 @@ function App() {
             path="/founders/new-request"
             element={(
               <ProtectedShell>
-                <NewRequestPage />
+                <RequireRole allowedRoles={['founder', 'admin']}>
+                  <NewRequestPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -103,7 +107,9 @@ function App() {
             path="/founders/pipeline"
             element={(
               <ProtectedShell>
-                <FounderPipelinePage />
+                <RequireRole allowedRoles={['founder', 'admin']}>
+                  <FounderPipelinePage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -111,7 +117,9 @@ function App() {
             path="/students"
             element={(
               <ProtectedShell>
-                <StudentOverviewPage />
+                <RequireRole allowedRoles={['student', 'admin']}>
+                  <StudentOverviewPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -119,7 +127,9 @@ function App() {
             path="/students/follow-up"
             element={(
               <ProtectedShell>
-                <StudentFollowUpPage />
+                <RequireRole allowedRoles={['student', 'admin']}>
+                  <StudentFollowUpPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -127,7 +137,9 @@ function App() {
             path="/cfe"
             element={(
               <ProtectedShell>
-                <CfeOverviewPage />
+                <RequireRole allowedRoles={['cfe', 'admin']}>
+                  <CfeOverviewPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -135,7 +147,9 @@ function App() {
             path="/cfe/pipeline"
             element={(
               <ProtectedShell>
-                <CfePipelinePage />
+                <RequireRole allowedRoles={['cfe', 'admin']}>
+                  <CfePipelinePage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -143,7 +157,9 @@ function App() {
             path="/cfe/network"
             element={(
               <ProtectedShell>
-                <MentorPortfolio />
+                <RequireRole allowedRoles={['cfe', 'admin']}>
+                  <MentorPortfolio />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
@@ -161,7 +177,9 @@ function App() {
             path="/mentors/desk"
             element={(
               <ProtectedShell>
-                <MentorDashboard />
+                <RequireRole allowedRoles={['mentor', 'admin']}>
+                  <MentorDashboard />
+                </RequireRole>
               </ProtectedShell>
             )}
           />

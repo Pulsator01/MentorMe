@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import AuthLayout from '../../layouts/AuthLayout'
 import { FormError } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
+import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
 
 const parseGoogleCallbackParams = (search) => {
   const params = new URLSearchParams(search)
@@ -43,7 +44,7 @@ function GoogleCallbackPage() {
         if (!active) {
           return
         }
-        navigate(session?.redirectAfter || '/', { replace: true })
+        navigate(sanitizeNextPath(session?.redirectAfter || '/'), { replace: true })
       } catch (caught) {
         if (!active) {
           return

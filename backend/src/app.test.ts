@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import type { FastifyInstance } from 'fastify'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app'
 import { HeuristicAiGateway } from './ai/heuristicAiGateway'
@@ -9,6 +10,28 @@ import { createStubStorageService } from './infra/stubStorageService'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
 import type { GoogleOAuthGateway, GoogleOAuthProfile, GoogleOAuthTokens } from './domain/interfaces'
 import type { PasswordHasher } from './infra/passwordHasher'
+import { buildCalendlyWebhookSignature } from './infra/calendlyWebhookSignature'
+
+const CALENDLY_TEST_SECRET = 'vitest-calendly-webhook-secret'
+
+const injectSignedCalendlyWebhook = async (
+  app: FastifyInstance,
+  eventId: string,
+  payload: Record<string, unknown>,
+) => {
+  const raw = JSON.stringify(payload)
+  const signature = buildCalendlyWebhookSignature(CALENDLY_TEST_SECRET, raw, Math.floor(Date.now() / 1000))
+  return app.inject({
+    method: 'POST',
+    url: '/webhooks/calendly',
+    headers: {
+      'content-type': 'application/json',
+      'x-calendly-event-id': eventId,
+      'calendly-webhook-signature': signature,
+    },
+    payload: raw,
+  })
+}
 
 type SeedConfigurator = Parameters<typeof createSeededInMemoryPlatformRepository>[0]
 
@@ -83,6 +106,7 @@ const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) 
     httpSecurity: {
       disableRateLimit: true,
     },
+    calendlyWebhookSigningSecret: CALENDLY_TEST_SECRET,
   })
 
   return {
@@ -712,22 +736,8 @@ describe('MentorMe backend workflow', () => {
       },
     }
 
-    const firstRes = await app.inject({
-      method: 'POST',
-      url: '/webhooks/calendly',
-      headers: {
-        'x-calendly-event-id': 'evt_123',
-      },
-      payload,
-    })
-    const secondRes = await app.inject({
-      method: 'POST',
-      url: '/webhooks/calendly',
-      headers: {
-        'x-calendly-event-id': 'evt_123',
-      },
-      payload,
-    })
+    const firstRes = await injectSignedCalendlyWebhook(app, 'evt_123', payload)
+    const secondRes = await injectSignedCalendlyWebhook(app, 'evt_123', payload)
 
     expect(firstRes.statusCode).toBe(202)
     expect(secondRes.statusCode).toBe(202)
@@ -736,6 +746,82 @@ describe('MentorMe backend workflow', () => {
       'https://api.calendly.com/scheduled_events/evt_123',
     )
     expect((await repository.findRequestById('REQ-003'))?.calendlyLink).toBe('https://api.calendly.com/scheduled_events/evt_123')
+  })
+
+  it('rejects Calendly webhooks when the HMAC signature does not match the body', async () => {
+    const { app } = await buildTestApp()
+    const payload = { event: 'invitee.created', payload: {} }
+    const raw = JSON.stringify(payload)
+    const badSignature = buildCalendlyWebhookSignature(CALENDLY_TEST_SECRET, `${raw}x`, Math.floor(Date.now() / 1000))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/webhooks/calendly',
+      headers: {
+        'content-type': 'application/json',
+        'x-calendly-event-id': 'evt-bad-sig',
+        'calendly-webhook-signature': badSignature,
+      },
+      payload: raw,
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('returns 503 for Calendly webhooks in production when signing secret is unset', async () => {
+    const prev = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    const app = await createApp({
+      repository: createSeededInMemoryPlatformRepository(),
+      email: createStubEmailGateway(),
+      storage: createStubStorageService(),
+      queue: createInlineQueuePublisher(),
+      ai: new HeuristicAiGateway(),
+      passwordHasher: createStubPasswordHasher(),
+      exposeTokens: true,
+      jwtIssuer: 'mentor-me-test',
+      jwtAudience: 'mentor-me-web',
+      jwtSecret: 'test-secret',
+      cookieSecret: 'cookie-secret',
+      defaultOrganizationId: 'org-mentorme',
+      appBaseUrl: 'http://localhost:5173',
+      httpSecurity: {
+        disableRateLimit: true,
+      },
+    })
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/webhooks/calendly',
+      headers: {
+        'content-type': 'application/json',
+        'x-calendly-event-id': 'evt-no-secret',
+      },
+      payload: JSON.stringify({ event: 'noop' }),
+    })
+
+    expect(res.statusCode).toBe(503)
+    await app.close()
+    process.env.NODE_ENV = prev
+  })
+
+  it('rejects registration with an unknown organizationId', async () => {
+    const { app } = await buildTestApp()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        name: 'Org Hijack',
+        email: 'org.hijack@mentorme.test',
+        password: 'SuperSecret-123',
+        role: 'founder',
+        organizationId: 'org-absolutely-unknown',
+      },
+    })
+
+    expect(response.statusCode).toBe(400)
+    expect(response.body.toLowerCase()).toContain('unknown organization')
   })
 
   it('rejects unauthenticated notification stream requests', async () => {

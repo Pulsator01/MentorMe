@@ -137,10 +137,10 @@ For a real deployment, set at least:
 - `VITE_API_BASE_URL`
 - `DATABASE_URL`
 - `REDIS_URL` (for BullMQ outbox workers; Render blueprint provisions Redis)
-- `JWT_SECRET`
+- `JWT_SECRET` and `COOKIE_SECRET` (required, non-placeholder values when `NODE_ENV=production`; the API exits at startup otherwise)
 - `JWT_ISSUER`
 - `JWT_AUDIENCE`
-- `COOKIE_SECRET`
+- `CALENDLY_WEBHOOK_SIGNING_SECRET` when using Calendly webhooks (HMAC verification; in production the webhook endpoint returns 503 if unset)
 - `ALLOWED_ORIGINS` (comma-separated SPA origins for credentialed CORS in production)
 - `TRUST_PROXY` or rely on `RENDER=true` so rate limits see real client IPs
 - `AI_PROVIDER`
