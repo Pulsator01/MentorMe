@@ -8,7 +8,8 @@ import RoleHome from './pages/RoleHome'
 import FounderOverviewPage from './pages/founders/FounderOverviewPage'
 import NewRequestPage from './pages/founders/NewRequestPage'
 import FounderPipelinePage from './pages/founders/FounderPipelinePage'
-import StudentWorkspace from './pages/StudentWorkspace'
+import StudentOverviewPage from './pages/students/StudentOverviewPage'
+import StudentFollowUpPage from './pages/students/StudentFollowUpPage'
 import AdminDashboard from './pages/AdminDashboard'
 import MentorDashboard from './pages/MentorDashboard'
 import MentorPortfolio from './pages/MentorPortfolio'
@@ -105,7 +106,15 @@ function App() {
             path="/students"
             element={(
               <ProtectedShell>
-                <StudentWorkspace />
+                <StudentOverviewPage />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/students/follow-up"
+            element={(
+              <ProtectedShell>
+                <StudentFollowUpPage />
               </ProtectedShell>
             )}
           />
