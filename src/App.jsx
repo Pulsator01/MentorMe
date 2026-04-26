@@ -10,7 +10,8 @@ import NewRequestPage from './pages/founders/NewRequestPage'
 import FounderPipelinePage from './pages/founders/FounderPipelinePage'
 import StudentOverviewPage from './pages/students/StudentOverviewPage'
 import StudentFollowUpPage from './pages/students/StudentFollowUpPage'
-import AdminDashboard from './pages/AdminDashboard'
+import CfeOverviewPage from './pages/cfe/CfeOverviewPage'
+import CfePipelinePage from './pages/cfe/CfePipelinePage'
 import MentorDashboard from './pages/MentorDashboard'
 import MentorPortfolio from './pages/MentorPortfolio'
 import InvitationsPage from './pages/InvitationsPage'
@@ -122,7 +123,15 @@ function App() {
             path="/cfe"
             element={(
               <ProtectedShell>
-                <AdminDashboard />
+                <CfeOverviewPage />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/cfe/pipeline"
+            element={(
+              <ProtectedShell>
+                <CfePipelinePage />
               </ProtectedShell>
             )}
           />

@@ -61,7 +61,9 @@ describe('MentorMe role-based frontend', () => {
 
     expect(await screen.findByRole('button', { name: /naval shah/i })).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('link', { name: /mentor network/i })[0])
+    fireEvent.click(screen.getAllByRole('link', { name: /cfe team/i })[0])
+    const cfeSubNav = await screen.findByRole('navigation', { name: /cfe workspace sections/i })
+    fireEvent.click(within(cfeSubNav).getByRole('link', { name: /mentor network/i }))
     fireEvent.click(screen.getAllByRole('button', { name: /pause visibility/i })[0])
 
     fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
@@ -77,12 +79,13 @@ describe('MentorMe role-based frontend', () => {
   })
 
   it('keeps returned requests visible so founders can revise them after CFE review', async () => {
-    renderAtRoute('/cfe')
+    renderAtRoute('/cfe/pipeline')
 
     const reviewCard = await screen.findByTestId('request-card-req-002')
     fireEvent.click(within(reviewCard).getByRole('button', { name: /return/i }))
 
-    expect(await screen.findByText(/requests that were returned for better context or better material/i)).toBeInTheDocument()
+    const needsWorkColumn = await screen.findByTestId('kanban-column-needs_work')
+    expect(within(needsWorkColumn).getByTestId('request-card-req-002')).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
 
@@ -117,7 +120,7 @@ describe('MentorMe role-based frontend', () => {
   })
 
   it('lets CFE close a follow-up request after the session is complete', async () => {
-    renderAtRoute('/cfe')
+    renderAtRoute('/cfe/pipeline')
 
     const followUpCard = await screen.findByTestId('request-card-req-005')
     fireEvent.click(within(followUpCard).getByRole('button', { name: /close request/i }))

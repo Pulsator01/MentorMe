@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { BookOpenText, ClipboardList, Home, LayoutDashboard, LogOut, Mail, Menu, Sparkles, Users, X } from 'lucide-react'
+import { BookOpenText, ClipboardList, Home, LayoutDashboard, LogOut, Menu, Sparkles, Users, X } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { cn } from '../components/ui'
 
@@ -9,9 +9,7 @@ const navItems = [
   { label: 'Founders', path: '/founders', icon: Sparkles, note: 'Request mentors and track venture progress.' },
   { label: 'Students', path: '/students', icon: Users, note: 'Prepare materials, meetings, and follow-ups.' },
   { label: 'Mentor Desk', path: '/mentors/desk', icon: Users, note: 'Accept requests, schedule sessions, and leave mentor notes.' },
-  { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard, note: 'Approve, route, and manage the pipeline.' },
-  { label: 'Mentor Network', path: '/cfe/network', icon: Users, note: 'Maintain mentor visibility and capacity.' },
-  { label: 'Invitations', path: '/cfe/invitations', icon: Mail, note: 'Issue, track, and revoke seat invitations.' },
+  { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard, note: 'Pipeline, mentor network, and invitations all live here.' },
   { label: 'Mid-sem Readiness', path: '/midsem', icon: ClipboardList, note: 'Show product scope, API progress, and DB coverage.' },
   { label: 'Readiness Playbook', path: '/playbook', icon: BookOpenText, note: 'Use TRL and BRL signals consistently.' },
 ]
@@ -51,7 +49,7 @@ function SidebarLayout({ children }) {
             <NavLink
               key={item.path}
               to={item.path}
-              end={item.path === '/' || item.path === '/cfe'}
+              end={item.path === '/'}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
