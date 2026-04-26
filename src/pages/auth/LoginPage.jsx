@@ -85,14 +85,21 @@ function LoginPage() {
       eyebrow="Welcome back"
       title="Sign in to MentorMe"
       description="Use your email and password, continue with Google, or request a magic link."
-      footer={
-        <span>
-          New here?{' '}
-          <Link to="/signup" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
-            Create an account
-          </Link>
+      footer={(
+        <span className="block space-y-2 text-center leading-6">
+          <span className="block">
+            New here?{' '}
+            <Link to="/signup" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+              Create an account
+            </Link>
+          </span>
+          <span className="block text-slate-600">
+            <Link to="/welcome" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+              What is MentorMe?
+            </Link>
+          </span>
         </span>
-      }
+      )}
     >
       <FormError>{error}</FormError>
       <FormNotice tone="info">{info}</FormNotice>

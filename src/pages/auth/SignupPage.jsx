@@ -78,14 +78,21 @@ function SignupPage() {
       description="Founders and students can self-register. Mentors and CFE staff are added by invitation."
       brandHeadline="Bring your venture into the mentor pipeline."
       brandSubheadline="Create an account, request expert mentorship, and keep every session in one auditable place."
-      footer={
-        <span>
-          Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
-            Sign in
-          </Link>
+      footer={(
+        <span className="block space-y-2 text-center leading-6">
+          <span className="block">
+            Already have an account?{' '}
+            <Link to="/login" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+              Sign in
+            </Link>
+          </span>
+          <span className="block text-slate-600">
+            <Link to="/welcome" className="font-semibold text-slate-900 underline-offset-4 hover:underline">
+              Product overview
+            </Link>
+          </span>
         </span>
-      }
+      )}
     >
       <FormError>{error}</FormError>
 
