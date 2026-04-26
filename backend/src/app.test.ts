@@ -52,7 +52,7 @@ interface BuildTestAppOptions {
   googleOAuth?: GoogleOAuthGateway
 }
 
-const buildTestApp = (input: SeedConfigurator | BuildTestAppOptions = {}) => {
+const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) => {
   const opts: BuildTestAppOptions =
     typeof input === 'function' ? { configureRepository: input } : input
 
@@ -65,7 +65,7 @@ const buildTestApp = (input: SeedConfigurator | BuildTestAppOptions = {}) => {
   const generateRequestBrief = vi.spyOn(ai, 'generateRequestBrief')
   const generateMeetingSummary = vi.spyOn(ai, 'generateMeetingSummary')
 
-  const app = createApp({
+  const app = await createApp({
     repository,
     email,
     storage,
@@ -80,6 +80,9 @@ const buildTestApp = (input: SeedConfigurator | BuildTestAppOptions = {}) => {
     cookieSecret: 'cookie-secret',
     defaultOrganizationId: 'org-mentorme',
     appBaseUrl: 'http://localhost:5173',
+    httpSecurity: {
+      disableRateLimit: true,
+    },
   })
 
   return {
@@ -101,7 +104,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('exposes a deployment health check endpoint', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const response = await app.inject({
       method: 'GET',
@@ -113,7 +116,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('issues a magic link, verifies it, and returns the authenticated user context', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const requestRes = await app.inject({
       method: 'POST',
@@ -149,7 +152,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('scopes venture data to the authenticated founder and creates a new request in cfe_review', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const venturesRes = await app.inject({
@@ -194,7 +197,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('keeps request listings scoped by venture id even when ventures share the same display name', async () => {
-    const { app } = buildTestApp((state) => {
+    const { app } = await buildTestApp((state) => {
       state.users.push({
         id: 'user-founder-isha',
         organizationId: state.organization.id,
@@ -257,7 +260,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets CFE return and approve requests while preserving the audit trail', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const returnRes = await app.inject({
@@ -290,7 +293,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets founders resubmit a returned request back into CFE review', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
@@ -320,7 +323,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets CFE update mentor visibility and exposes PATCH in CORS preflight responses', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const updateRes = await app.inject({
@@ -353,7 +356,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('reserves and completes artifact uploads through the presign flow', async () => {
-    const { app, storage } = buildTestApp()
+    const { app, storage } = await buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const presignRes = await app.inject({
@@ -386,7 +389,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('persists artifact refs from founder request creation into subsequent request reads', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const createRes = await app.inject({
@@ -420,7 +423,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('uses mentor action tokens to schedule a meeting and submit feedback', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const outreachRes = await app.inject({
@@ -459,7 +462,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('records mentor accept and decline responses through secure action links', async () => {
-    const { app, repository } = buildTestApp((state) => {
+    const { app, repository } = await buildTestApp((state) => {
       state.requests.push({
         id: 'REQ-901',
         organizationId: state.organization.id,
@@ -529,7 +532,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('loads secure mentor action details for a generated outreach link', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const outreachRes = await app.inject({
@@ -561,7 +564,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('serves Swagger UI and a usable OpenAPI document for endpoint testing', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const jsonRes = await app.inject({
       method: 'GET',
@@ -591,7 +594,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('generates a structured founder brief through the AI endpoint', async () => {
-    const { app, generateRequestBrief } = buildTestApp()
+    const { app, generateRequestBrief } = await buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const response = await app.inject({
@@ -619,7 +622,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('generates a structured meeting summary through the AI endpoint', async () => {
-    const { app, generateMeetingSummary } = buildTestApp()
+    const { app, generateMeetingSummary } = await buildTestApp()
     const studentToken = await loginAs(app, 'ria.student@mentorme.test')
 
     const response = await app.inject({
@@ -644,7 +647,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('returns AI-ranked mentor recommendations from active mentor profiles only', async () => {
-    const { app } = buildTestApp((state) => {
+    const { app } = await buildTestApp((state) => {
       state.mentors.push({
         id: 'm-paused-growth',
         organizationId: state.organization.id,
@@ -696,7 +699,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('handles Calendly webhooks idempotently by provider event id and stores the scheduled event link', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
 
     const payload = {
       event: 'invitee.created',
@@ -736,7 +739,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects unauthenticated notification stream requests', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const notificationsRes = await app.inject({
       method: 'GET',
@@ -748,7 +751,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('registers a new founder, sends a welcome email, and issues a session', async () => {
-    const { app, email, repository } = buildTestApp()
+    const { app, email, repository } = await buildTestApp()
 
     const response = await app.inject({
       method: 'POST',
@@ -778,7 +781,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects registration when the email is already in use', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const response = await app.inject({
       method: 'POST',
@@ -795,7 +798,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets a registered user log in with email + password', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     await app.inject({
       method: 'POST',
@@ -833,7 +836,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects logins with unknown email or wrong password', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const unknownRes = await app.inject({
       method: 'POST',
@@ -863,7 +866,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects login for magic-link-only accounts (no password set)', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const response = await app.inject({
       method: 'POST',
@@ -876,7 +879,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('completes a forgot/reset password flow and revokes prior sessions', async () => {
-    const { app, email, repository } = buildTestApp()
+    const { app, email, repository } = await buildTestApp()
 
     await app.inject({
       method: 'POST',
@@ -952,7 +955,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('returns 202 from forgot-password for unknown emails without leaking existence', async () => {
-    const { app, email } = buildTestApp()
+    const { app, email } = await buildTestApp()
 
     const response = await app.inject({
       method: 'POST',
@@ -968,7 +971,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets a logged-in user change their password and rotates sessions', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const registerRes = await app.inject({
       method: 'POST',
@@ -1030,7 +1033,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('returns 501 for Google OAuth endpoints when the gateway is not configured', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const authorizeRes = await app.inject({
       method: 'POST',
@@ -1058,7 +1061,7 @@ describe('MentorMe backend workflow', () => {
         name: 'OAuth Newcomer',
       }),
     })
-    const { app, email, repository } = buildTestApp({ googleOAuth })
+    const { app, email, repository } = await buildTestApp({ googleOAuth })
 
     const authorizeRes = await app.inject({
       method: 'POST',
@@ -1108,7 +1111,7 @@ describe('MentorMe backend workflow', () => {
         name: 'Link User',
       }),
     })
-    const { app, repository } = buildTestApp({ googleOAuth })
+    const { app, repository } = await buildTestApp({ googleOAuth })
 
     const registerRes = await app.inject({
       method: 'POST',
@@ -1153,7 +1156,7 @@ describe('MentorMe backend workflow', () => {
         name: 'Unverified',
       }),
     })
-    const { app } = buildTestApp({ googleOAuth })
+    const { app } = await buildTestApp({ googleOAuth })
 
     const authorizeRes = await app.inject({
       method: 'POST',
@@ -1174,7 +1177,7 @@ describe('MentorMe backend workflow', () => {
 
   it('rejects Google OAuth callbacks with an invalid or forged state', async () => {
     const googleOAuth = createStubGoogleOAuth()
-    const { app } = buildTestApp({ googleOAuth })
+    const { app } = await buildTestApp({ googleOAuth })
 
     const callbackRes = await app.inject({
       method: 'POST',
@@ -1186,7 +1189,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('reports the seeded founder as having venture access (no further wizard needed)', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const token = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const statusRes = await app.inject({
@@ -1208,7 +1211,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('walks a fresh founder through the onboarding wizard and creates a venture', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
 
     const registerRes = await app.inject({
       method: 'POST',
@@ -1276,7 +1279,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects founder onboarding when required fields are missing', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const registerRes = await app.inject({
       method: 'POST',
       url: '/auth/register',
@@ -1303,7 +1306,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('refuses founder onboarding for non-founder roles', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const studentToken = await loginAs(app, 'ria.student@mentorme.test')
 
     const wizardRes = await app.inject({
@@ -1326,7 +1329,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lists ventures a fresh student can join in their cohort', async () => {
-    const { app } = buildTestApp((state) => {
+    const { app } = await buildTestApp((state) => {
       state.users.push({
         id: 'user-student-fresh',
         organizationId: 'org-mentorme',
@@ -1352,7 +1355,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets a fresh student join a venture and marks them onboarded', async () => {
-    const { app, repository } = buildTestApp((state) => {
+    const { app, repository } = await buildTestApp((state) => {
       state.users.push({
         id: 'user-student-join',
         organizationId: 'org-mentorme',
@@ -1385,7 +1388,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects student onboarding without a venture or invitation token', async () => {
-    const { app } = buildTestApp((state) => {
+    const { app } = await buildTestApp((state) => {
       state.users.push({
         id: 'user-student-empty',
         organizationId: 'org-mentorme',
@@ -1408,7 +1411,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets CFE create, list, preview, and revoke invitations end to end', async () => {
-    const { app, email } = buildTestApp()
+    const { app, email } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const createRes = await app.inject({
@@ -1477,7 +1480,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('forbids non-CFE users from creating or listing invitations', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const founderToken = await loginAs(app, 'aarav.sharma@mentorme.test')
 
     const createRes = await app.inject({
@@ -1501,7 +1504,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('refuses to invite an email that already belongs to an existing user', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const createRes = await app.inject({
@@ -1519,7 +1522,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('refuses to issue a duplicate pending invitation for the same email', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const first = await app.inject({
@@ -1542,7 +1545,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('lets an invited user accept after registering with the same email and role', async () => {
-    const { app, repository } = buildTestApp()
+    const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const inviteRes = await app.inject({
@@ -1592,7 +1595,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects accepting an invitation when the role does not match', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const inviteRes = await app.inject({
@@ -1626,7 +1629,7 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('returns 404 for invitation preview with an unknown token', async () => {
-    const { app } = buildTestApp()
+    const { app } = await buildTestApp()
 
     const previewRes = await app.inject({
       method: 'GET',
@@ -1637,7 +1640,7 @@ describe('MentorMe backend workflow', () => {
   })
 })
 
-async function loginAs(app: ReturnType<typeof createApp>, email: string) {
+async function loginAs(app: Awaited<ReturnType<typeof createApp>>, email: string) {
   const requestRes = await app.inject({
     method: 'POST',
     url: '/auth/magic-link/request',

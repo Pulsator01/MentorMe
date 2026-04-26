@@ -44,6 +44,10 @@ services:
         value: mentorme-web
       - key: APP_BASE_URL
         value: https://mentorme-web.onrender.com
+      - key: ALLOWED_ORIGINS
+        value: https://mentorme-web.onrender.com
+      - key: TRUST_PROXY
+        value: "true"
       - key: AI_PROVIDER
         value: auto
       - key: AI_JUDGE_PROVIDER
@@ -81,6 +85,12 @@ services:
         sync: false
       - key: S3_PRESIGN_TTL_SECONDS
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0"
 
   - type: worker
     name: mentorme-worker
@@ -148,6 +158,12 @@ services:
         sync: false
       - key: S3_PUBLIC_BASE_URL
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0"
 
   - type: web
     name: mentorme-web

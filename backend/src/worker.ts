@@ -1,6 +1,16 @@
+import * as Sentry from '@sentry/node'
 import { createInfraRuntime } from './infra/runtime'
 import { startOutboxWorkers, type RunningOutboxWorker } from './infra/outboxWorker'
 import { createRuntimeRepository } from './runtime'
+
+const sentryDsn = process.env.SENTRY_DSN
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+    tracesSampleRate: 0,
+  })
+}
 
 const consoleLogger = {
   info: (msg: string, meta?: Record<string, unknown>) => {
@@ -31,7 +41,13 @@ const shutdown = async (signal: string) => {
     }
   } catch (error) {
     consoleLogger.error('worker.shutdown.error', { error: error instanceof Error ? error.message : String(error) })
+    if (sentryDsn) {
+      Sentry.captureException(error)
+    }
   } finally {
+    if (sentryDsn) {
+      await Sentry.flush(2000).catch(() => {})
+    }
     process.exit(0)
   }
 }
@@ -74,6 +90,9 @@ void (async () => {
     consoleLogger.error('worker.boot.error', {
       error: error instanceof Error ? error.message : String(error),
     })
+    if (sentryDsn) {
+      Sentry.captureException(error)
+    }
     process.exit(1)
   }
 })()

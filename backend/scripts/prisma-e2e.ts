@@ -82,7 +82,7 @@ const run = async () => {
   const runtime = createRuntimeRepository()
   assert.equal(runtime.mode, 'prisma', 'The live E2E must run with Prisma persistence')
 
-  const app = createApp({
+  const app = await createApp({
     repository: runtime.repository,
     email: createStubEmailGateway(),
     storage: createStubStorageService(),

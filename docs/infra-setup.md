@@ -242,3 +242,26 @@ export S3_ACCESS_KEY_ID=...
 export S3_SECRET_ACCESS_KEY=...
 npm run start:api
 ```
+
+---
+
+## 6. Security headers, CORS, rate limits, and Sentry
+
+The Fastify stack wires **`@fastify/helmet`** (baseline headers + CSP tuned for
+Swagger UI), **`@fastify/rate-limit`** (global IP bucket with `/healthz`
+excluded, plus a tighter per-route bucket on `POST /auth/*` endpoints), and
+**`@fastify/cors`** (reflective origins in dev, strict allow-list in prod).
+
+| Variable | Purpose |
+| --- | --- |
+| `ALLOWED_ORIGINS` | Comma-separated list of browser origins that may call the API with cookies. Empty = reflect `Origin` (local only). |
+| `TRUST_PROXY` | Set `true` (or rely on `RENDER=true`) so `X-Forwarded-For` is honoured for rate limiting. |
+| `RATE_LIMIT_GLOBAL_MAX` / `RATE_LIMIT_GLOBAL_WINDOW_MS` | Global request ceiling per IP per window. |
+| `RATE_LIMIT_AUTH_MAX` / `RATE_LIMIT_AUTH_WINDOW_MS` | Burst limiter for authentication routes. |
+| `SENTRY_DSN` | When set, the API initialises `@sentry/node` with `fastifyIntegration` (HTTP 5xx captured) and the worker reports boot/shutdown failures. |
+| `SENTRY_ENVIRONMENT` / `SENTRY_TRACES_SAMPLE_RATE` | Optional Sentry metadata; keep traces at `0` unless you are actively profiling. |
+
+`createApp` is **async** so the rate-limit plugin (which registers an `onRoute`
+hook asynchronously) finishes **before** application routes are declared—this
+guarantees every route receives the limiter. Callers (`server.ts`, Vitest
+harnesses, `prisma-e2e.ts`) must `await createApp(...)`.
