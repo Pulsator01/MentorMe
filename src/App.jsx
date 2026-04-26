@@ -15,6 +15,8 @@ import CfePipelinePage from './pages/cfe/CfePipelinePage'
 import MentorDashboard from './pages/MentorDashboard'
 import MentorPortfolio from './pages/MentorPortfolio'
 import InvitationsPage from './pages/InvitationsPage'
+import NotificationsPage from './pages/NotificationsPage'
+import SettingsPage from './pages/SettingsPage'
 import TRLDefinitions from './pages/TRLDefinitions'
 import MidsemReadiness from './pages/MidsemReadiness'
 import LoginPage from './pages/auth/LoginPage'
@@ -158,6 +160,22 @@ function App() {
             element={(
               <ProtectedShell>
                 <MentorDashboard />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/notifications"
+            element={(
+              <ProtectedShell>
+                <NotificationsPage />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/settings"
+            element={(
+              <ProtectedShell>
+                <SettingsPage />
               </ProtectedShell>
             )}
           />

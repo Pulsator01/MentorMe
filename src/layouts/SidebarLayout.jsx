@@ -1,6 +1,18 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { BookOpenText, ClipboardList, Home, LayoutDashboard, LogOut, Menu, Sparkles, Users, X } from 'lucide-react'
+import {
+  Bell,
+  BookOpenText,
+  ClipboardList,
+  Home,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Settings,
+  Sparkles,
+  Users,
+  X,
+} from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { cn } from '../components/ui'
 
@@ -10,6 +22,8 @@ const navItems = [
   { label: 'Students', path: '/students', icon: Users, note: 'Prepare materials, meetings, and follow-ups.' },
   { label: 'Mentor Desk', path: '/mentors/desk', icon: Users, note: 'Accept requests, schedule sessions, and leave mentor notes.' },
   { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard, note: 'Pipeline, mentor network, and invitations all live here.' },
+  { label: 'Notifications', path: '/notifications', icon: Bell, note: 'Recent request changes routed to your workspace.' },
+  { label: 'Settings', path: '/settings', icon: Settings, note: 'Profile, password, and session controls.' },
   { label: 'Mid-sem Readiness', path: '/midsem', icon: ClipboardList, note: 'Show product scope, API progress, and DB coverage.' },
   { label: 'Readiness Playbook', path: '/playbook', icon: BookOpenText, note: 'Use TRL and BRL signals consistently.' },
 ]
@@ -17,7 +31,7 @@ const navItems = [
 function SidebarLayout({ children }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
-  const { currentUser, mode, logout } = useAppState()
+  const { currentUser, mode, logout, unreadNotificationCount } = useAppState()
   const navigate = useNavigate()
 
   const handleLogout = async () => {
@@ -45,32 +59,46 @@ function SidebarLayout({ children }) {
 
       <div className="flex h-full flex-col">
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'block rounded-2xl border px-4 py-3 transition-colors',
-                  isActive
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50',
-                )
-              }
-            >
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700">
-                  <item.icon size={16} />
-                </span>
-                <div>
-                  <p className="font-medium">{item.label}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{item.note}</p>
+          {navItems.map((item) => {
+            const showBadge = item.path === '/notifications' && unreadNotificationCount > 0
+
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === '/'}
+                onClick={() => setMobileOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    'block rounded-2xl border px-4 py-3 transition-colors',
+                    isActive
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50',
+                  )
+                }
+              >
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 rounded-xl bg-slate-100 p-2 text-slate-700">
+                    <item.icon size={16} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{item.label}</p>
+                      {showBadge ? (
+                        <span
+                          aria-label={`${unreadNotificationCount} unread notification${unreadNotificationCount === 1 ? '' : 's'}`}
+                          className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-semibold text-white"
+                        >
+                          {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{item.note}</p>
+                  </div>
                 </div>
-              </div>
-            </NavLink>
-          ))}
+              </NavLink>
+            )
+          })}
         </nav>
 
         <div className="border-t border-slate-200 px-5 py-4">

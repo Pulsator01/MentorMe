@@ -43,6 +43,33 @@ const mapApiState = ({ ventures, requests, mentors, currentUser, currentVentureI
   }
 }
 
+const NOTIFICATION_CAP = 50
+
+let notificationCounter = 0
+
+const buildNotificationId = () => {
+  notificationCounter += 1
+  return `n-${Date.now().toString(36)}-${notificationCounter.toString(36)}`
+}
+
+const appendNotification = (existing, notification) => {
+  const next = [{ read: false, ...notification, id: notification.id || buildNotificationId() }, ...existing]
+  return next.slice(0, NOTIFICATION_CAP)
+}
+
+const synthesizeRequestNotification = (state, requestId, summary) => {
+  if (!requestId) {
+    return null
+  }
+
+  return {
+    type: 'request.updated',
+    requestId,
+    summary,
+    receivedAt: new Date().toISOString(),
+  }
+}
+
 const reducer = (state, action) => {
   switch (action.type) {
     case 'hydrate':
@@ -64,6 +91,7 @@ const reducer = (state, action) => {
         currentUser: null,
         mode: state.mode,
         bootStatus: 'unauthenticated',
+        notifications: [],
       }
     case 'submit-request': {
       const request = {
@@ -87,6 +115,10 @@ const reducer = (state, action) => {
           brl: Number(action.payload.brl),
         },
         requests: [request, ...state.requests],
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, request.id, `New request ${request.id} submitted for CFE review.`),
+        ),
       }
     }
     case 'resubmit-request':
@@ -100,6 +132,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} re-submitted for CFE review.`),
+        ),
       }
     case 'approve-request':
       return {
@@ -109,6 +145,10 @@ const reducer = (state, action) => {
             ? { ...request, status: 'awaiting_mentor', cfeOwner: action.payload.owner || request.cfeOwner }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} approved — awaiting mentor.`),
+        ),
       }
     case 'reject-request':
       return {
@@ -117,6 +157,10 @@ const reducer = (state, action) => {
           request.id === action.payload.id
             ? { ...request, status: 'needs_work', mentorNotes: action.payload.reason }
             : request,
+        ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} returned to founder for revision.`),
         ),
       }
     case 'schedule-request':
@@ -132,6 +176,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Mentor session scheduled for ${action.payload.id}.`),
+        ),
       }
     case 'save-feedback':
       return {
@@ -144,6 +192,10 @@ const reducer = (state, action) => {
                 mentorNotes: action.payload.notes,
               }
             : request,
+        ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Mentor feedback recorded for ${action.payload.id}.`),
         ),
       }
     case 'attach-artifact':
@@ -169,6 +221,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} closed.`),
+        ),
       }
     case 'add-mentor':
       return {
@@ -188,6 +244,32 @@ const reducer = (state, action) => {
         mentors: state.mentors.map((mentor) =>
           mentor.id === action.payload.id ? { ...mentor, ...action.payload.updates } : mentor,
         ),
+      }
+    case 'notification-received': {
+      if (!action.payload) {
+        return state
+      }
+      return {
+        ...state,
+        notifications: appendNotification(state.notifications, action.payload),
+      }
+    }
+    case 'notification-mark-read':
+      return {
+        ...state,
+        notifications: state.notifications.map((notification) =>
+          notification.id === action.payload.id ? { ...notification, read: true } : notification,
+        ),
+      }
+    case 'notification-mark-all-read':
+      return {
+        ...state,
+        notifications: state.notifications.map((notification) => ({ ...notification, read: true })),
+      }
+    case 'notifications-clear':
+      return {
+        ...state,
+        notifications: [],
       }
     default:
       return state
@@ -668,6 +750,7 @@ export function AppStateProvider({ children }) {
     currentUser: null,
     mode: initialMode,
     bootStatus: apiBase ? 'pending' : 'ready',
+    notifications: [],
   })
   const stateRef = useRef(state)
   const backendRef = useRef({
@@ -723,6 +806,20 @@ export function AppStateProvider({ children }) {
           (message) => {
             if (!active || message?.type === 'connected') {
               return
+            }
+
+            const requestId = typeof message?.requestId === 'string' ? message.requestId : null
+            if (requestId) {
+              dispatch({
+                type: 'notification-received',
+                payload: {
+                  type: 'request.updated',
+                  requestId,
+                  summary: `Request ${requestId} was updated.`,
+                  receivedAt: new Date().toISOString(),
+                  payload: message,
+                },
+              })
             }
 
             void syncFromApi(client, pathname)
@@ -824,9 +921,14 @@ export function AppStateProvider({ children }) {
     venture: state.venture,
     mentors: state.mentors,
     requests: state.requests,
+    notifications: state.notifications,
+    unreadNotificationCount: state.notifications.filter((notification) => !notification.read).length,
     mode: state.mode,
     bootStatus: state.bootStatus,
     apiConfigured: Boolean(apiBase),
+    markNotificationRead: (id) => dispatch({ type: 'notification-mark-read', payload: { id } }),
+    markAllNotificationsRead: () => dispatch({ type: 'notification-mark-all-read' }),
+    clearNotifications: () => dispatch({ type: 'notifications-clear' }),
     register: async (payload) => {
       const client = ensureClient()
       const session = await client.register(payload)
