@@ -63,6 +63,7 @@ function AuthLayout({
   footer,
   brandHeadline = 'Mentor pipeline that respects everyone&rsquo;s time.',
   brandSubheadline = 'Sign in to keep founders, mentors, and the CFE team aligned across requests, sessions, and follow-ups.',
+  allowAuthenticated = false,
 }) {
   const { mode, currentUser, bootStatus, apiConfigured } = useAppState()
   const location = useLocation()
@@ -77,7 +78,7 @@ function AuthLayout({
     return <FullPageLoader message="Restoring your session" />
   }
 
-  if (currentUser) {
+  if (currentUser && !allowAuthenticated) {
     return <Navigate to={next || '/'} replace />
   }
 

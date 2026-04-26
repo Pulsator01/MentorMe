@@ -655,7 +655,7 @@ export const createApiClient = (baseUrl) => {
   }
 }
 
-const PUBLIC_PATH_PREFIXES = ['/login', '/signup', '/forgot-password', '/reset-password', '/auth', '/mentors/action']
+const PUBLIC_PATH_PREFIXES = ['/login', '/signup', '/forgot-password', '/reset-password', '/auth', '/mentors/action', '/invite']
 
 const isPublicPath = (pathname) => PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 

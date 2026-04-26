@@ -3,12 +3,14 @@ import SidebarLayout from './layouts/SidebarLayout'
 import { AppStateProvider } from './context/AppState'
 import RequireAuth from './components/RequireAuth'
 import RequireOnboarded from './components/RequireOnboarded'
+import RequireRole from './components/RequireRole'
 import RoleHome from './pages/RoleHome'
 import StudentDashboard from './pages/StudentDashboard'
 import StudentWorkspace from './pages/StudentWorkspace'
 import AdminDashboard from './pages/AdminDashboard'
 import MentorDashboard from './pages/MentorDashboard'
 import MentorPortfolio from './pages/MentorPortfolio'
+import InvitationsPage from './pages/InvitationsPage'
 import TRLDefinitions from './pages/TRLDefinitions'
 import MidsemReadiness from './pages/MidsemReadiness'
 import LoginPage from './pages/auth/LoginPage'
@@ -19,6 +21,7 @@ import GoogleCallbackPage from './pages/auth/GoogleCallbackPage'
 import MagicLinkVerifyPage from './pages/auth/MagicLinkVerifyPage'
 import FounderOnboardingPage from './pages/onboarding/FounderOnboardingPage'
 import StudentOnboardingPage from './pages/onboarding/StudentOnboardingPage'
+import InvitationAcceptPage from './pages/invitations/InvitationAcceptPage'
 
 function ProtectedShell({ children }) {
   return (
@@ -45,6 +48,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
           <Route path="/auth/verify" element={<MagicLinkVerifyPage />} />
+          <Route path="/invite/:token" element={<InvitationAcceptPage />} />
 
           <Route
             path="/onboarding/founder"
@@ -100,6 +104,16 @@ function App() {
             element={(
               <ProtectedShell>
                 <MentorPortfolio />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/cfe/invitations"
+            element={(
+              <ProtectedShell>
+                <RequireRole allowedRoles={['cfe', 'admin']}>
+                  <InvitationsPage />
+                </RequireRole>
               </ProtectedShell>
             )}
           />
