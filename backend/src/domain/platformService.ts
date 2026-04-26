@@ -1956,6 +1956,29 @@ export class PlatformService {
       status: 'pending',
       createdAt: nowIso(),
     })
-    void this.deps.queue.publish(topic, event.payload)
+    void this.deps.queue.publish(topic, {
+      outboxId: event.id,
+      aggregateType: event.aggregateType,
+      aggregateId: event.aggregateId,
+      payload: event.payload,
+    })
   }
 }
+
+export const OUTBOX_TOPICS = [
+  'auth.magic_link_requested',
+  'auth.password_reset_requested',
+  'auth.user_registered',
+  'invitation.created',
+  'meeting.scheduled',
+  'mentor.accepted',
+  'mentor.declined',
+  'mentor.outreach_created',
+  'onboarding.completed',
+  'request.approved',
+  'request.feedback_recorded',
+  'request.returned',
+  'request.submitted',
+] as const
+
+export type OutboxTopic = (typeof OUTBOX_TOPICS)[number]

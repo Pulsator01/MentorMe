@@ -137,6 +137,7 @@ export interface PlatformRepository {
   saveWebhookReceipt(receipt: WebhookReceipt): Promise<WebhookReceipt>
   saveOutboxEvent(event: OutboxEvent): Promise<OutboxEvent>
   listOutboxEvents(): Promise<OutboxEvent[]>
+  findOutboxEventById(id: string): Promise<OutboxEvent | undefined>
   saveAiRun(run: AiRun): Promise<AiRun>
   findAiRunById(id: string): Promise<AiRun | undefined>
   saveAiRunFeedback(feedback: AiRunFeedback): Promise<AiRunFeedback>

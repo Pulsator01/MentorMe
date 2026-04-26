@@ -5,6 +5,12 @@ databases:
     plan: free
 
 services:
+  - type: redis
+    name: mentorme-redis
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
   - type: web
     name: mentorme-api
     runtime: node
@@ -19,6 +25,11 @@ services:
         fromDatabase:
           name: mentorme-db
           property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mentorme-redis
+          property: connectionString
       - key: PERSISTENCE_BACKEND
         value: prisma
       - key: EXPOSE_DEBUG_TOKENS
@@ -31,11 +42,44 @@ services:
         value: mentorme-render
       - key: JWT_AUDIENCE
         value: mentorme-web
+      - key: APP_BASE_URL
+        value: https://mentorme-web.onrender.com
       - key: AI_PROVIDER
         value: auto
       - key: AI_JUDGE_PROVIDER
         value: auto
       - key: OPENAI_API_KEY
+        sync: false
+      # --- Email (Resend) — set in Render dashboard ---
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      # --- Google OAuth — set in Render dashboard ---
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      # --- Object storage (S3 or Cloudflare R2) — set in Render dashboard ---
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        sync: false
+      - key: S3_PUBLIC_BASE_URL
+        sync: false
+      - key: S3_PRESIGN_TTL_SECONDS
         sync: false
 
   - type: worker
@@ -50,6 +94,11 @@ services:
       - key: DATABASE_URL
         fromDatabase:
           name: mentorme-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: mentorme-redis
           property: connectionString
       - key: PERSISTENCE_BACKEND
         value: prisma
@@ -67,11 +116,37 @@ services:
         value: mentorme-render
       - key: JWT_AUDIENCE
         value: mentorme-web
+      - key: APP_BASE_URL
+        value: https://mentorme-web.onrender.com
       - key: AI_PROVIDER
         value: auto
       - key: AI_JUDGE_PROVIDER
         value: auto
       - key: OPENAI_API_KEY
+        sync: false
+      # --- Email (Resend) — set in Render dashboard ---
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_REPLY_TO
+        sync: false
+      # --- Object storage — worker emits links but does not need write keys.
+      # Keep storage envs in sync with the API service so generated URLs are
+      # signed with the same credentials.
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        sync: false
+      - key: S3_PUBLIC_BASE_URL
         sync: false
 
   - type: web

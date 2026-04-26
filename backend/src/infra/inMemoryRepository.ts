@@ -234,6 +234,10 @@ class InMemoryPlatformRepository implements PlatformRepository {
     return [...this.state.outboxEvents]
   }
 
+  async findOutboxEventById(id: string) {
+    return this.state.outboxEvents.find((event) => event.id === id)
+  }
+
   async saveAiRun(run: AiRun) {
     this.state.aiRuns = upsertById(this.state.aiRuns, run)
     return run

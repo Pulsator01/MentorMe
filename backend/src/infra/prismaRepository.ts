@@ -1020,6 +1020,11 @@ class PrismaPlatformRepository implements PlatformRepository {
     })).map(toOutboxEvent)
   }
 
+  async findOutboxEventById(id: string) {
+    const event = await this.prisma.outboxEvent.findUnique({ where: { id } })
+    return event ? toOutboxEvent(event) : undefined
+  }
+
   async saveAiRun(run: AiRun) {
     const { id, ...rest } = run
     const data = {
