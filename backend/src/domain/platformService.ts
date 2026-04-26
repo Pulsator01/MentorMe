@@ -3,19 +3,27 @@ import { z } from 'zod'
 import type {
   AiGateway,
   EmailGateway,
+  GoogleOAuthGateway,
   PlatformRepository,
   QueuePublisher,
   StorageService,
 } from './interfaces'
+import type { PasswordHasher } from '../infra/passwordHasher'
+import { safeAppRedirectPath } from '../util/safeRedirectPath'
 import { artifactStorageKey, futureIso, nextPrefixedId, nowIso, randomToken, sha256 } from './id'
 import type {
   Artifact,
   AuditEvent,
+  Invitation,
   MentorProfile,
   MentorRequest,
+  OAuthAccount,
+  PasswordResetTokenRecord,
   RequestView,
   User,
   UserRole,
+  Venture,
+  VentureMembership,
 } from './types'
 
 const requestCreateSchema = z.object({
@@ -96,7 +104,99 @@ const mentorRecommendationSchema = z.object({
   maxResults: z.number().int().min(1).max(5).optional(),
 })
 
+const lowercaseEmail = z
+  .string()
+  .min(3)
+  .max(254)
+  .email()
+  .transform((value) => value.trim().toLowerCase())
+
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(256, 'Password must be at most 256 characters')
+
+const registerSchema = z.object({
+  name: z.string().min(2).max(120),
+  email: lowercaseEmail,
+  password: passwordSchema,
+  role: z.enum(['founder', 'student']).default('founder'),
+  organizationId: z.string().min(1).optional(),
+  cohortId: z.string().min(1).optional(),
+})
+
+const loginSchema = z.object({
+  email: lowercaseEmail,
+  password: z.string().min(1).max(256),
+})
+
+const forgotPasswordSchema = z.object({
+  email: lowercaseEmail,
+})
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(20),
+  password: passwordSchema,
+})
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: passwordSchema,
+})
+
+const googleAuthorizeSchema = z.object({
+  redirectAfter: z.string().min(1).max(512).optional(),
+})
+
+const googleCallbackSchema = z.object({
+  code: z.string().min(10).max(2048),
+  state: z.string().min(10).max(2048),
+})
+
+const founderOnboardingSchema = z.object({
+  ventureName: z.string().trim().min(2).max(120),
+  domain: z.string().trim().min(2).max(80),
+  stage: z.string().trim().min(2).max(60),
+  trl: z.number().int().min(1).max(9),
+  brl: z.number().int().min(1).max(9),
+  location: z.string().trim().min(2).max(120).optional(),
+  summary: z.string().trim().min(20).max(2000),
+  nextMilestone: z.string().trim().min(5).max(400),
+  cohortId: z.string().trim().min(1).optional(),
+})
+
+const studentOnboardingSchema = z
+  .object({
+    ventureId: z.string().trim().min(1).optional(),
+    invitationToken: z.string().trim().min(20).optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.ventureId && !value.invitationToken) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide a ventureId or invitationToken',
+        path: [],
+      })
+    }
+  })
+
+const inviteRoleSchema = z.enum(['founder', 'student', 'cfe', 'mentor', 'admin'])
+
+const createInvitationSchema = z.object({
+  email: lowercaseEmail,
+  role: inviteRoleSchema,
+  ventureId: z.string().trim().min(1).optional(),
+  cohortId: z.string().trim().min(1).optional(),
+  message: z.string().trim().max(800).optional(),
+  expiresInDays: z.number().int().min(1).max(60).optional(),
+})
+
 const jwtTextEncoder = new TextEncoder()
+const PASSWORD_RESET_TTL_HOURS = 1
+const SESSION_TTL_HOURS = 24 * 30
+const OAUTH_STATE_TTL_SECONDS = 600
+const OAUTH_STATE_AUDIENCE = 'mentor-me-oauth-state'
+const INVITATION_TTL_DAYS_DEFAULT = 14
 
 type ServiceDeps = {
   repository: PlatformRepository
@@ -104,16 +204,21 @@ type ServiceDeps = {
   storage: StorageService
   queue: QueuePublisher
   ai: AiGateway
+  passwordHasher: PasswordHasher
+  googleOAuth?: GoogleOAuthGateway
   jwtIssuer: string
   jwtAudience: string
   jwtSecret: string
+  defaultOrganizationId: string
+  appBaseUrl: string
 }
 
 export class PlatformService {
   constructor(private readonly deps: ServiceDeps) {}
 
   async requestMagicLink(email: string) {
-    const user = await this.deps.repository.findUserByEmail(email)
+    const normalized = email.trim().toLowerCase()
+    const user = await this.deps.repository.findUserByEmail(normalized)
 
     if (!user) {
       return { accepted: true }
@@ -147,27 +252,274 @@ export class PlatformService {
 
     const user = await this.requireUser(record.userId)
     await this.deps.repository.saveMagicLink({ ...record, consumedAt: nowIso() })
+    return await this.issueSessionForUser(user, 'auth.magic_link_verified')
+  }
 
-    const refreshToken = randomToken()
-    const session = await this.deps.repository.saveSession({
-      id: `sess-${randomToken().slice(0, 10)}`,
-      userId: user.id,
-      refreshTokenHash: sha256(refreshToken),
-      expiresAt: futureIso(24 * 30),
+  async register(input: unknown) {
+    const payload = registerSchema.parse(input)
+    const existing = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (existing) {
+      throw new Error('An account with that email already exists')
+    }
+
+    const passwordHash = await this.deps.passwordHasher.hash(payload.password)
+    const userId = await this.allocateUserId(payload.role)
+    const organizationId = payload.organizationId
+      ? await this.resolveCommittedOrganizationId(payload.organizationId)
+      : await this.resolveDefaultOrganizationId()
+
+    let cohortId = payload.cohortId
+    if (cohortId) {
+      await this.requireCohortInOrganization(cohortId, organizationId)
+    }
+
+    const user: User = {
+      id: userId,
+      organizationId,
+      cohortId,
+      email: payload.email,
+      name: payload.name.trim(),
+      role: payload.role,
+      passwordHash,
+      emailVerified: false,
+      lastLoginAt: nowIso(),
+    }
+
+    await this.deps.repository.saveUser(user)
+
+    await this.deps.email.sendWelcome({
+      email: user.email,
+      name: user.name,
     })
 
-    const accessToken = await this.signAccessToken(user)
+    await this.recordOutbox('auth.user_registered', 'auth', user.id, {
+      email: user.email,
+      role: user.role,
+    })
+
+    return await this.issueSessionForUser(user, 'auth.password_register', {
+      role: user.role,
+    })
+  }
+
+  async login(input: unknown) {
+    const payload = loginSchema.parse(input)
+    const user = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (!user || !user.passwordHash) {
+      throw new Error('Invalid email or password')
+    }
+
+    const valid = await this.deps.passwordHasher.verify(user.passwordHash, payload.password)
+
+    if (!valid) {
+      throw new Error('Invalid email or password')
+    }
+
+    const refreshed: User = { ...user, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(refreshed)
+    return await this.issueSessionForUser(refreshed, 'auth.password_login')
+  }
+
+  async requestPasswordReset(input: unknown) {
+    const payload = forgotPasswordSchema.parse(input)
+    const user = await this.deps.repository.findUserByEmail(payload.email)
+
+    if (!user) {
+      return { accepted: true as const }
+    }
+
+    const token = randomToken()
+    const record: PasswordResetTokenRecord = {
+      id: `prt-${randomToken().slice(0, 10)}`,
+      userId: user.id,
+      tokenHash: sha256(token),
+      expiresAt: futureIso(PASSWORD_RESET_TTL_HOURS),
+    }
+    await this.deps.repository.savePasswordResetToken(record)
+
+    await this.deps.email.sendPasswordReset({
+      email: user.email,
+      name: user.name,
+      token,
+    })
+
+    await this.recordOutbox('auth.password_reset_requested', 'auth', user.id, { email: user.email })
+
+    return { accepted: true as const, token }
+  }
+
+  async resetPassword(input: unknown) {
+    const payload = resetPasswordSchema.parse(input)
+    const record = await this.deps.repository.findPasswordResetTokenByHash(sha256(payload.token))
+
+    if (!record || record.consumedAt || new Date(record.expiresAt).getTime() < Date.now()) {
+      throw new Error('Invalid or expired password reset link')
+    }
+
+    const user = await this.requireUser(record.userId)
+    const passwordHash = await this.deps.passwordHasher.hash(payload.password)
+    const updated: User = { ...user, passwordHash, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(updated)
+    await this.deps.repository.markPasswordResetTokenConsumed(record.id, nowIso())
+    await this.deps.repository.revokeAllSessionsForUser(user.id)
 
     await this.recordAudit({
       entityType: 'auth',
-      entityId: session.id,
+      entityId: user.id,
       actorType: 'user',
       actorUserId: user.id,
-      action: 'auth.magic_link_verified',
+      action: 'auth.password_reset_completed',
       payload: {},
     })
 
-    return { accessToken, refreshToken, user }
+    return await this.issueSessionForUser(updated, 'auth.password_reset_completed')
+  }
+
+  async changePassword(user: User, input: unknown) {
+    const payload = changePasswordSchema.parse(input)
+    const stored = await this.requireUser(user.id)
+
+    if (!stored.passwordHash) {
+      throw new Error('This account does not have a password set. Use the password-reset flow to set one.')
+    }
+
+    const valid = await this.deps.passwordHasher.verify(stored.passwordHash, payload.currentPassword)
+
+    if (!valid) {
+      throw new Error('Current password is incorrect')
+    }
+
+    if (payload.currentPassword === payload.newPassword) {
+      throw new Error('New password must differ from the current password')
+    }
+
+    const passwordHash = await this.deps.passwordHasher.hash(payload.newPassword)
+    const updated: User = { ...stored, passwordHash }
+    await this.deps.repository.saveUser(updated)
+    await this.deps.repository.revokeAllSessionsForUser(user.id)
+
+    await this.recordAudit({
+      entityType: 'auth',
+      entityId: user.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'auth.password_changed',
+      payload: {},
+    })
+
+    return await this.issueSessionForUser(updated, 'auth.password_changed')
+  }
+
+  async googleAuthorizeUrl(input: unknown) {
+    const oauth = this.requireGoogleOAuth()
+    const payload = googleAuthorizeSchema.parse(input ?? {})
+    const safeRedirect = payload.redirectAfter ? safeAppRedirectPath(payload.redirectAfter) : undefined
+    const state = await this.signOAuthState(safeRedirect && safeRedirect !== '/' ? safeRedirect : undefined)
+    return {
+      authorizeUrl: oauth.buildAuthorizeUrl(state),
+      state,
+    }
+  }
+
+  async googleOAuthCallback(input: unknown) {
+    const oauth = this.requireGoogleOAuth()
+    const payload = googleCallbackSchema.parse(input)
+    const stateClaims = await this.verifyOAuthState(payload.state)
+
+    const tokens = await oauth.exchangeCode(payload.code)
+    const profile = await oauth.fetchProfile(tokens.accessToken)
+
+    if (!profile.emailVerified) {
+      throw new Error('Google account email is not verified')
+    }
+
+    const linkedAccount = await this.deps.repository.findOAuthAccount('google', profile.providerAccountId)
+    let user: User | undefined
+    let isNewUser = false
+    let isNewLink = false
+
+    if (linkedAccount) {
+      user = await this.requireUser(linkedAccount.userId)
+    } else {
+      const existingByEmail = await this.deps.repository.findUserByEmail(profile.email.toLowerCase())
+
+      if (existingByEmail) {
+        user = existingByEmail
+        isNewLink = true
+      } else {
+        const organizationId = await this.resolveDefaultOrganizationId()
+        const userId = await this.allocateUserId('founder')
+        user = {
+          id: userId,
+          organizationId,
+          email: profile.email.toLowerCase(),
+          name: profile.name,
+          role: 'founder',
+          emailVerified: true,
+          emailVerifiedAt: nowIso(),
+          lastLoginAt: nowIso(),
+        }
+        isNewUser = true
+        isNewLink = true
+        await this.deps.repository.saveUser(user)
+        await this.deps.email.sendWelcome({ email: user.email, name: user.name })
+      }
+    }
+
+    if (!user) {
+      throw new Error('Failed to resolve Google user')
+    }
+
+    if (isNewLink) {
+      const account: OAuthAccount = {
+        id: `oauth-${randomToken().slice(0, 10)}`,
+        userId: user.id,
+        provider: 'google',
+        providerAccountId: profile.providerAccountId,
+        email: profile.email,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        expiresAt: tokens.expiresInSeconds
+          ? new Date(Date.now() + tokens.expiresInSeconds * 1000).toISOString()
+          : undefined,
+      }
+      await this.deps.repository.saveOAuthAccount(account)
+    }
+
+    if (!user.emailVerified) {
+      const verified: User = { ...user, emailVerified: true, emailVerifiedAt: nowIso() }
+      await this.deps.repository.saveUser(verified)
+      user = verified
+    }
+
+    const refreshed: User = { ...user, lastLoginAt: nowIso() }
+    await this.deps.repository.saveUser(refreshed)
+
+    if (isNewUser) {
+      await this.recordOutbox('auth.user_registered', 'auth', refreshed.id, {
+        email: refreshed.email,
+        role: refreshed.role,
+        provider: 'google',
+      })
+    }
+
+    const session = await this.issueSessionForUser(
+      refreshed,
+      isNewUser ? 'auth.google_signup' : 'auth.google_login',
+      { provider: 'google' },
+    )
+
+    const redirectAfter = stateClaims.redirectAfter
+      ? safeAppRedirectPath(stateClaims.redirectAfter)
+      : undefined
+
+    return {
+      ...session,
+      isNewUser,
+      redirectAfter: redirectAfter && redirectAfter !== '/' ? redirectAfter : undefined,
+    }
   }
 
   async refreshSession(refreshToken: string) {
@@ -199,6 +551,457 @@ export class PlatformService {
 
   getMe(user: User) {
     return { user }
+  }
+
+  async getOnboardingStatus(user: User) {
+    const memberships = await this.deps.repository.listMemberships()
+    const myMemberships = memberships.filter((membership) => membership.userId === user.id)
+    const onboarded = Boolean(user.onboardedAt)
+
+    let nextStep: 'completed' | 'founder_venture_details' | 'student_join_venture' | 'mentor_profile' | 'noop' = 'completed'
+
+    if (!onboarded) {
+      if (user.role === 'founder') {
+        nextStep = myMemberships.length === 0 ? 'founder_venture_details' : 'completed'
+      } else if (user.role === 'student') {
+        nextStep = myMemberships.length === 0 ? 'student_join_venture' : 'completed'
+      } else if (user.role === 'mentor') {
+        nextStep = 'mentor_profile'
+      } else {
+        nextStep = 'noop'
+      }
+    }
+
+    return {
+      onboarded,
+      onboardedAt: user.onboardedAt,
+      role: user.role,
+      organizationId: user.organizationId,
+      cohortId: user.cohortId,
+      ventureCount: myMemberships.length,
+      nextStep,
+    }
+  }
+
+  async getStudentJoinOptions(user: User) {
+    if (user.role !== 'student') {
+      throw new Error('Forbidden')
+    }
+
+    const ventures = await this.deps.repository.listVentures()
+    const filtered = ventures.filter((venture) => {
+      if (venture.organizationId !== user.organizationId) {
+        return false
+      }
+      if (user.cohortId && venture.cohortId !== user.cohortId) {
+        return false
+      }
+      return true
+    })
+
+    return {
+      ventures: filtered.map((venture) => ({
+        id: venture.id,
+        name: venture.name,
+        founderName: venture.founderName,
+        domain: venture.domain,
+        stage: venture.stage,
+        location: venture.location,
+        summary: venture.summary,
+      })),
+    }
+  }
+
+  async completeFounderOnboarding(user: User, input: unknown) {
+    if (user.role !== 'founder') {
+      throw new Error('Only founders can complete the founder onboarding wizard')
+    }
+
+    if (user.onboardedAt) {
+      const memberships = (await this.deps.repository.listMemberships()).filter((membership) => membership.userId === user.id)
+      if (memberships.length > 0) {
+        throw new Error('Founder onboarding is already complete')
+      }
+    }
+
+    const payload = founderOnboardingSchema.parse(input)
+    const cohortId = payload.cohortId || user.cohortId || (await this.resolveDefaultCohortId(user.organizationId))
+    const cohort = await this.requireCohortInOrganization(cohortId, user.organizationId)
+
+    const ventureId = `vnt-${randomToken().slice(0, 8)}`
+    const venture: Venture = {
+      id: ventureId,
+      organizationId: user.organizationId,
+      cohortId: cohort.id,
+      name: payload.ventureName,
+      founderName: user.name,
+      domain: payload.domain,
+      stage: payload.stage,
+      trl: payload.trl,
+      brl: payload.brl,
+      location: payload.location || 'Remote',
+      summary: payload.summary,
+      nextMilestone: payload.nextMilestone,
+      programNote: '',
+    }
+
+    const savedVenture = await this.deps.repository.saveVenture(venture)
+
+    const membership: VentureMembership = {
+      id: `mem-${randomToken().slice(0, 8)}`,
+      organizationId: user.organizationId,
+      ventureId: savedVenture.id,
+      userId: user.id,
+      role: 'founder',
+    }
+
+    await this.deps.repository.saveMembership(membership)
+
+    const updatedUser: User = {
+      ...user,
+      cohortId: cohort.id,
+      onboardedAt: nowIso(),
+    }
+    const persistedUser = await this.deps.repository.saveUser(updatedUser)
+
+    await this.recordAudit({
+      organizationId: user.organizationId,
+      entityType: 'auth',
+      entityId: user.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'onboarding.founder_completed',
+      payload: { ventureId: savedVenture.id, ventureName: savedVenture.name },
+    })
+
+    await this.recordOutbox('onboarding.completed', 'user', user.id, {
+      role: user.role,
+      ventureId: savedVenture.id,
+    })
+
+    return { user: persistedUser, venture: savedVenture }
+  }
+
+  async completeStudentOnboarding(user: User, input: unknown) {
+    if (user.role !== 'student') {
+      throw new Error('Only students can complete the student onboarding wizard')
+    }
+
+    const payload = studentOnboardingSchema.parse(input)
+    let ventureId: string | undefined = payload.ventureId
+    let acceptedInvitation: Invitation | undefined
+
+    if (payload.invitationToken) {
+      const invitation = await this.requireInvitation(payload.invitationToken)
+      this.assertInvitationFresh(invitation)
+
+      if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
+        throw new Error('This invitation was issued to a different email address')
+      }
+
+      if (invitation.role !== 'student') {
+        throw new Error('Invitation role does not match this onboarding step')
+      }
+
+      if (!invitation.ventureId) {
+        throw new Error('Invitation is missing a venture assignment')
+      }
+
+      ventureId = invitation.ventureId
+      acceptedInvitation = invitation
+    }
+
+    if (!ventureId) {
+      throw new Error('A ventureId or invitationToken is required to join a venture')
+    }
+
+    const venture = await this.requireVenture(ventureId)
+
+    if (venture.organizationId !== user.organizationId) {
+      throw new Error('This venture belongs to a different organization')
+    }
+
+    if (user.cohortId && venture.cohortId !== user.cohortId) {
+      throw new Error('This venture is not in your cohort')
+    }
+
+    const memberships = await this.deps.repository.listMemberships()
+    const existing = memberships.find((membership) => membership.userId === user.id && membership.ventureId === venture.id)
+
+    if (!existing) {
+      const membership: VentureMembership = {
+        id: `mem-${randomToken().slice(0, 8)}`,
+        organizationId: venture.organizationId,
+        ventureId: venture.id,
+        userId: user.id,
+        role: 'student',
+      }
+      await this.deps.repository.saveMembership(membership)
+    }
+
+    const updatedUser: User = {
+      ...user,
+      cohortId: venture.cohortId,
+      onboardedAt: user.onboardedAt || nowIso(),
+    }
+    const persistedUser = await this.deps.repository.saveUser(updatedUser)
+
+    if (acceptedInvitation && acceptedInvitation.status === 'pending') {
+      await this.deps.repository.saveInvitation({
+        ...acceptedInvitation,
+        status: 'accepted',
+        acceptedAt: nowIso(),
+        acceptedById: user.id,
+        updatedAt: nowIso(),
+      })
+    }
+
+    await this.recordAudit({
+      organizationId: user.organizationId,
+      entityType: 'auth',
+      entityId: user.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'onboarding.student_completed',
+      payload: { ventureId: venture.id, invitationId: acceptedInvitation?.id },
+    })
+
+    await this.recordOutbox('onboarding.completed', 'user', user.id, {
+      role: user.role,
+      ventureId: venture.id,
+      via: acceptedInvitation ? 'invitation' : 'self_select',
+    })
+
+    return { user: persistedUser, venture }
+  }
+
+  async createInvitation(user: User, input: unknown) {
+    if (user.role !== 'cfe' && user.role !== 'admin') {
+      throw new Error('Only CFE/admin users can create invitations')
+    }
+
+    const payload = createInvitationSchema.parse(input)
+
+    const existing = await this.deps.repository.findUserByEmail(payload.email)
+    if (existing) {
+      throw new Error('A user with that email already exists in the platform')
+    }
+
+    const pending = await this.deps.repository.findPendingInvitationByEmail(user.organizationId, payload.email)
+    if (pending) {
+      throw new Error('A pending invitation already exists for that email')
+    }
+
+    if (payload.ventureId) {
+      const venture = await this.requireVenture(payload.ventureId)
+      if (venture.organizationId !== user.organizationId) {
+        throw new Error('Venture does not belong to your organization')
+      }
+    }
+
+    if (payload.cohortId) {
+      await this.requireCohortInOrganization(payload.cohortId, user.organizationId)
+    }
+
+    const ttlDays = payload.expiresInDays || INVITATION_TTL_DAYS_DEFAULT
+    const token = randomToken()
+    const invitation: Invitation = {
+      id: `inv-${randomToken().slice(0, 10)}`,
+      organizationId: user.organizationId,
+      cohortId: payload.cohortId,
+      ventureId: payload.ventureId,
+      email: payload.email,
+      role: payload.role,
+      tokenHash: sha256(token),
+      status: 'pending',
+      message: payload.message,
+      expiresAt: futureIso(ttlDays * 24),
+      createdById: user.id,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    }
+
+    const saved = await this.deps.repository.saveInvitation(invitation)
+
+    const organization = this.resolveOrganizationName(user.organizationId)
+
+    await this.deps.email.sendInvitation({
+      email: saved.email,
+      inviterName: user.name,
+      organizationName: organization,
+      role: saved.role,
+      token,
+      message: saved.message,
+    })
+
+    await this.recordAudit({
+      organizationId: user.organizationId,
+      entityType: 'auth',
+      entityId: saved.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'invitation.created',
+      payload: { email: saved.email, role: saved.role },
+    })
+
+    await this.recordOutbox('invitation.created', 'invitation', saved.id, {
+      email: saved.email,
+      role: saved.role,
+    })
+
+    return {
+      invitation: this.toPublicInvitation(saved),
+      token,
+    }
+  }
+
+  async listInvitations(user: User) {
+    if (user.role !== 'cfe' && user.role !== 'admin') {
+      throw new Error('Only CFE/admin users can list invitations')
+    }
+
+    const records = await this.deps.repository.listInvitationsByOrganization(user.organizationId)
+    return {
+      invitations: records.map((record) => this.toPublicInvitation(record)),
+    }
+  }
+
+  async previewInvitation(token: string) {
+    const invitation = await this.requireInvitation(token)
+    const status = this.computeEffectiveStatus(invitation)
+    const organization = this.resolveOrganizationName(invitation.organizationId)
+    let venture: Venture | undefined
+
+    if (invitation.ventureId) {
+      venture = await this.deps.repository.findVentureById(invitation.ventureId)
+    }
+
+    return {
+      invitation: {
+        email: invitation.email,
+        role: invitation.role,
+        organizationName: organization,
+        ventureName: venture?.name,
+        message: invitation.message,
+        status,
+        expiresAt: invitation.expiresAt,
+      },
+    }
+  }
+
+  async acceptInvitation(user: User, token: string) {
+    const invitation = await this.requireInvitation(token)
+    this.assertInvitationFresh(invitation)
+
+    if (invitation.email.toLowerCase() !== user.email.toLowerCase()) {
+      throw new Error('This invitation was issued to a different email address')
+    }
+
+    if (invitation.organizationId !== user.organizationId) {
+      throw new Error('This invitation is for a different organization')
+    }
+
+    if (invitation.role !== user.role) {
+      throw new Error(`Invitation role mismatch (expected ${invitation.role}, current ${user.role})`)
+    }
+
+    let updatedUser: User = { ...user }
+    let venture: Venture | undefined
+
+    if (invitation.ventureId) {
+      venture = await this.requireVenture(invitation.ventureId)
+      if (venture.organizationId !== user.organizationId) {
+        throw new Error('Invitation venture is in another organization')
+      }
+
+      const memberships = await this.deps.repository.listMemberships()
+      const has = memberships.some((membership) => membership.userId === user.id && membership.ventureId === venture!.id)
+
+      if (!has) {
+        if (invitation.role !== 'founder' && invitation.role !== 'student') {
+          throw new Error('This invitation cannot attach venture membership for this role')
+        }
+        const membership: VentureMembership = {
+          id: `mem-${randomToken().slice(0, 8)}`,
+          organizationId: user.organizationId,
+          ventureId: venture.id,
+          userId: user.id,
+          role: invitation.role === 'founder' ? 'founder' : 'student',
+        }
+        await this.deps.repository.saveMembership(membership)
+      }
+
+      if (!user.cohortId) {
+        updatedUser = { ...updatedUser, cohortId: venture.cohortId }
+      }
+    } else if (invitation.cohortId && !user.cohortId) {
+      await this.requireCohortInOrganization(invitation.cohortId, user.organizationId)
+      updatedUser = { ...updatedUser, cohortId: invitation.cohortId }
+    }
+
+    if (!updatedUser.onboardedAt) {
+      updatedUser = { ...updatedUser, onboardedAt: nowIso() }
+    }
+
+    const persistedUser = await this.deps.repository.saveUser(updatedUser)
+
+    await this.deps.repository.saveInvitation({
+      ...invitation,
+      status: 'accepted',
+      acceptedAt: nowIso(),
+      acceptedById: user.id,
+      updatedAt: nowIso(),
+    })
+
+    await this.recordAudit({
+      organizationId: user.organizationId,
+      entityType: 'auth',
+      entityId: invitation.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'invitation.accepted',
+      payload: { ventureId: venture?.id },
+    })
+
+    return { user: persistedUser, venture }
+  }
+
+  async revokeInvitation(user: User, invitationId: string) {
+    if (user.role !== 'cfe' && user.role !== 'admin') {
+      throw new Error('Only CFE/admin users can revoke invitations')
+    }
+
+    const invitation = await this.deps.repository.findInvitationById(invitationId)
+    if (!invitation) {
+      throw new Error('Invitation not found')
+    }
+
+    if (invitation.organizationId !== user.organizationId) {
+      throw new Error('Invitation belongs to another organization')
+    }
+
+    if (invitation.status !== 'pending') {
+      throw new Error('Only pending invitations can be revoked')
+    }
+
+    const revoked = await this.deps.repository.saveInvitation({
+      ...invitation,
+      status: 'revoked',
+      revokedAt: nowIso(),
+      updatedAt: nowIso(),
+    })
+
+    await this.recordAudit({
+      organizationId: user.organizationId,
+      entityType: 'auth',
+      entityId: invitation.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action: 'invitation.revoked',
+      payload: { email: invitation.email },
+    })
+
+    return { invitation: this.toPublicInvitation(revoked) }
   }
 
   async listVentures(user: User) {
@@ -871,6 +1674,102 @@ export class PlatformService {
       .sign(jwtTextEncoder.encode(this.deps.jwtSecret))
   }
 
+  private async issueSessionForUser(user: User, action: string, payload: Record<string, unknown> = {}) {
+    const refreshToken = randomToken()
+    const session = await this.deps.repository.saveSession({
+      id: `sess-${randomToken().slice(0, 10)}`,
+      userId: user.id,
+      refreshTokenHash: sha256(refreshToken),
+      expiresAt: futureIso(SESSION_TTL_HOURS),
+    })
+    const accessToken = await this.signAccessToken(user)
+
+    await this.recordAudit({
+      entityType: 'auth',
+      entityId: session.id,
+      actorType: 'user',
+      actorUserId: user.id,
+      action,
+      payload,
+    })
+
+    return { accessToken, refreshToken, user }
+  }
+
+  private async signOAuthState(redirectAfter?: string) {
+    const nonce = randomToken().slice(0, 16)
+    return await new SignJWT({ nonce, redirectAfter: redirectAfter || '' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(this.deps.jwtIssuer)
+      .setAudience(OAUTH_STATE_AUDIENCE)
+      .setExpirationTime(`${OAUTH_STATE_TTL_SECONDS}s`)
+      .sign(jwtTextEncoder.encode(this.deps.jwtSecret))
+  }
+
+  private async verifyOAuthState(state: string): Promise<{ nonce: string; redirectAfter?: string }> {
+    try {
+      const verified = await jwtVerify(state, jwtTextEncoder.encode(this.deps.jwtSecret), {
+        issuer: this.deps.jwtIssuer,
+        audience: OAUTH_STATE_AUDIENCE,
+      })
+      const nonce = String(verified.payload.nonce || '')
+      const redirectAfter = verified.payload.redirectAfter ? String(verified.payload.redirectAfter) : undefined
+
+      if (!nonce) {
+        throw new Error('OAuth state missing nonce')
+      }
+
+      const safeRedirect = redirectAfter ? safeAppRedirectPath(redirectAfter) : undefined
+      return { nonce, redirectAfter: safeRedirect && safeRedirect !== '/' ? safeRedirect : undefined }
+    } catch {
+      throw new Error('OAuth state is invalid or has expired')
+    }
+  }
+
+  private requireGoogleOAuth() {
+    if (!this.deps.googleOAuth) {
+      throw new Error('Google sign-in is not configured on this server')
+    }
+    return this.deps.googleOAuth
+  }
+
+  private async listKnownOrganizationIds(): Promise<Set<string>> {
+    const ids = new Set<string>()
+    ids.add(this.deps.defaultOrganizationId)
+
+    const users = await this.deps.repository.listUsers()
+    users.forEach((u) => ids.add(u.organizationId))
+
+    const ventures = await this.deps.repository.listVentures()
+    ventures.forEach((v) => ids.add(v.organizationId))
+
+    return ids
+  }
+
+  private async resolveCommittedOrganizationId(requestedOrganizationId: string): Promise<string> {
+    const known = await this.listKnownOrganizationIds()
+    if (!known.has(requestedOrganizationId)) {
+      throw new Error('Unknown organization')
+    }
+    return requestedOrganizationId
+  }
+
+  private async resolveDefaultOrganizationId(): Promise<string> {
+    const users = await this.deps.repository.listUsers()
+    return users[0]?.organizationId || this.deps.defaultOrganizationId
+  }
+
+  private async allocateUserId(role: UserRole) {
+    const users = await this.deps.repository.listUsers()
+    const prefix = `user-${role}-`
+    const taken = new Set(users.map((existing) => existing.id))
+    let suffix = randomToken().slice(0, 8)
+    while (taken.has(`${prefix}${suffix}`)) {
+      suffix = randomToken().slice(0, 8)
+    }
+    return `${prefix}${suffix}`
+  }
+
   private assertRole(user: User, role: UserRole) {
     if (user.role !== role) {
       throw new Error('Forbidden')
@@ -990,6 +1889,87 @@ export class PlatformService {
     return record
   }
 
+  private async requireInvitation(token: string) {
+    const invitation = await this.deps.repository.findInvitationByHash(sha256(token))
+    if (!invitation) {
+      throw new Error('Invitation not found')
+    }
+    return invitation
+  }
+
+  private assertInvitationFresh(invitation: Invitation) {
+    const status = this.computeEffectiveStatus(invitation)
+    if (status !== 'pending') {
+      throw new Error(`Invitation is ${status}`)
+    }
+  }
+
+  private computeEffectiveStatus(invitation: Invitation): Invitation['status'] {
+    if (invitation.status === 'pending' && new Date(invitation.expiresAt).getTime() < Date.now()) {
+      return 'expired'
+    }
+    return invitation.status
+  }
+
+  private toPublicInvitation(invitation: Invitation) {
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      status: this.computeEffectiveStatus(invitation),
+      message: invitation.message,
+      ventureId: invitation.ventureId,
+      cohortId: invitation.cohortId,
+      expiresAt: invitation.expiresAt,
+      createdAt: invitation.createdAt,
+      acceptedAt: invitation.acceptedAt,
+      revokedAt: invitation.revokedAt,
+      createdById: invitation.createdById,
+    }
+  }
+
+  private async requireCohortInOrganization(cohortId: string, organizationId: string) {
+    const ventures = await this.deps.repository.listVentures()
+    const cohorts = new Set(ventures.filter((venture) => venture.organizationId === organizationId).map((venture) => venture.cohortId))
+    const users = await this.deps.repository.listUsers()
+    const seededFromUsers = users.filter((u) => u.organizationId === organizationId && u.cohortId).map((u) => u.cohortId as string)
+    seededFromUsers.forEach((id) => cohorts.add(id))
+
+    if (cohorts.size === 0) {
+      // Fall back to the requested id; downstream Prisma constraints will validate.
+      return { id: cohortId, organizationId, name: cohortId }
+    }
+
+    if (!cohorts.has(cohortId)) {
+      throw new Error('Cohort not found in this organization')
+    }
+
+    return { id: cohortId, organizationId, name: cohortId }
+  }
+
+  private async resolveDefaultCohortId(organizationId: string) {
+    const ventures = await this.deps.repository.listVentures()
+    const orgVenture = ventures.find((venture) => venture.organizationId === organizationId)
+    if (orgVenture) {
+      return orgVenture.cohortId
+    }
+
+    const users = await this.deps.repository.listUsers()
+    const cohortFromUser = users.find((user) => user.organizationId === organizationId && user.cohortId)?.cohortId
+    if (cohortFromUser) {
+      return cohortFromUser
+    }
+
+    throw new Error('No cohort is configured for this organization yet — ask CFE to create one')
+  }
+
+  private resolveOrganizationName(organizationId: string) {
+    if (organizationId === 'org-mentorme') {
+      return 'MentorMe'
+    }
+    return organizationId
+  }
+
   private async recordAudit(input: Omit<AuditEvent, 'id' | 'organizationId' | 'createdAt'> & { organizationId?: string }) {
     const users = input.actorUserId ? [] : await this.deps.repository.listUsers()
     const organizationId =
@@ -1014,6 +1994,29 @@ export class PlatformService {
       status: 'pending',
       createdAt: nowIso(),
     })
-    void this.deps.queue.publish(topic, event.payload)
+    void this.deps.queue.publish(topic, {
+      outboxId: event.id,
+      aggregateType: event.aggregateType,
+      aggregateId: event.aggregateId,
+      payload: event.payload,
+    })
   }
 }
+
+export const OUTBOX_TOPICS = [
+  'auth.magic_link_requested',
+  'auth.password_reset_requested',
+  'auth.user_registered',
+  'invitation.created',
+  'meeting.scheduled',
+  'mentor.accepted',
+  'mentor.declined',
+  'mentor.outreach_created',
+  'onboarding.completed',
+  'request.approved',
+  'request.feedback_recorded',
+  'request.returned',
+  'request.submitted',
+] as const
+
+export type OutboxTopic = (typeof OUTBOX_TOPICS)[number]

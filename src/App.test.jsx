@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import App from './App'
 
@@ -10,9 +10,11 @@ const renderAtRoute = (route = '/') => {
 describe('MentorMe role-based frontend', () => {
   afterEach(() => {
     cleanup()
+    vi.unstubAllEnvs()
   })
 
   beforeEach(() => {
+    vi.stubEnv('VITE_API_BASE_URL', '')
     window.history.pushState({}, 'Reset', '/')
   })
 
@@ -25,8 +27,8 @@ describe('MentorMe role-based frontend', () => {
     expect(screen.getAllByRole('link', { name: /open workspace/i })).toHaveLength(4)
   })
 
-  it('lets founders submit a mentor request from the founder workspace', async () => {
-    renderAtRoute('/founders')
+  it('lets founders submit a mentor request from the new-request page', async () => {
+    renderAtRoute('/founders/new-request')
 
     expect(
       await screen.findByRole('heading', { name: /build the right mentor ask before cfe routes it/i }),
@@ -46,42 +48,63 @@ describe('MentorMe role-based frontend', () => {
     expect(screen.getByDisplayValue('Aurora BioWorks')).toBeInTheDocument()
   })
 
-  it('keeps founder data scoped to the current venture and excludes paused mentors from matching', async () => {
+  it('shows the founder overview with venture-scoped nudges and hides other founders', async () => {
     renderAtRoute('/founders')
 
     expect(await screen.findByText(/ecodrone systems is in cfe review/i)).toBeInTheDocument()
     expect(screen.queryByText(/medimesh labs/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/farmsphere/i)).not.toBeInTheDocument()
+  })
 
-    fireEvent.click(screen.getAllByRole('link', { name: /mentor network/i })[0])
+  it('excludes paused mentors from the new-request mentor shortlist', async () => {
+    renderAtRoute('/founders/new-request')
+
+    expect(await screen.findByRole('button', { name: /naval shah/i })).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('link', { name: /cfe team/i })[0])
+    const cfeSubNav = await screen.findByRole('navigation', { name: /cfe workspace sections/i })
+    fireEvent.click(within(cfeSubNav).getByRole('link', { name: /mentor network/i }))
     fireEvent.click(screen.getAllByRole('button', { name: /pause visibility/i })[0])
-    fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
 
+    fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
+    expect(
+      await screen.findByRole('link', { name: /^new request$/i }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: /^new request$/i }))
+
+    expect(
+      await screen.findByRole('heading', { name: /build the right mentor ask before cfe routes it/i }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^naval shah$/i })).not.toBeInTheDocument()
   })
 
   it('keeps returned requests visible so founders can revise them after CFE review', async () => {
-    renderAtRoute('/cfe')
+    renderAtRoute('/cfe/pipeline')
 
     const reviewCard = await screen.findByTestId('request-card-req-002')
     fireEvent.click(within(reviewCard).getByRole('button', { name: /return/i }))
 
-    expect(await screen.findByText(/requests that were returned for better context or better material/i)).toBeInTheDocument()
+    const needsWorkColumn = await screen.findByTestId('kanban-column-needs_work')
+    expect(within(needsWorkColumn).getByTestId('request-card-req-002')).toBeInTheDocument()
 
     fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
 
     expect(await screen.findByText(/ecodrone systems is in needs work/i)).toBeInTheDocument()
     expect(screen.getByText(/revise brief/i)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: /^pipeline$/i }))
+
+    expect(await screen.findByTestId('founder-request-req-002')).toBeInTheDocument()
+
     fireEvent.click(screen.getByRole('button', { name: /re-submit to cfe/i }))
 
-    expect(await screen.findByText(/request re-submitted to cfe review/i)).toBeInTheDocument()
-    expect(screen.getByText(/ecodrone systems is in cfe review/i)).toBeInTheDocument()
+    expect(await screen.findByText(/request req-002 re-submitted to cfe review/i)).toBeInTheDocument()
   })
 
-  it('lets founders attach another artifact to an existing request', async () => {
-    renderAtRoute('/founders')
+  it('lets founders attach another artifact from the pipeline page', async () => {
+    renderAtRoute('/founders/pipeline')
 
-    expect(await screen.findByText(/ecodrone systems is in cfe review/i)).toBeInTheDocument()
+    expect(await screen.findByTestId('founder-request-req-002')).toBeInTheDocument()
 
     const fileInput = screen.getByLabelText(/upload artifact for req-002/i)
     const file = new File(['deck proof'], 'updated-deck.pdf', { type: 'application/pdf' })
@@ -97,7 +120,7 @@ describe('MentorMe role-based frontend', () => {
   })
 
   it('lets CFE close a follow-up request after the session is complete', async () => {
-    renderAtRoute('/cfe')
+    renderAtRoute('/cfe/pipeline')
 
     const followUpCard = await screen.findByTestId('request-card-req-005')
     fireEvent.click(within(followUpCard).getByRole('button', { name: /close request/i }))

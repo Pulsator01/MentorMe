@@ -43,6 +43,33 @@ const mapApiState = ({ ventures, requests, mentors, currentUser, currentVentureI
   }
 }
 
+const NOTIFICATION_CAP = 50
+
+let notificationCounter = 0
+
+const buildNotificationId = () => {
+  notificationCounter += 1
+  return `n-${Date.now().toString(36)}-${notificationCounter.toString(36)}`
+}
+
+const appendNotification = (existing, notification) => {
+  const next = [{ read: false, ...notification, id: notification.id || buildNotificationId() }, ...existing]
+  return next.slice(0, NOTIFICATION_CAP)
+}
+
+const synthesizeRequestNotification = (state, requestId, summary) => {
+  if (!requestId) {
+    return null
+  }
+
+  return {
+    type: 'request.updated',
+    requestId,
+    summary,
+    receivedAt: new Date().toISOString(),
+  }
+}
+
 const reducer = (state, action) => {
   switch (action.type) {
     case 'hydrate':
@@ -50,6 +77,21 @@ const reducer = (state, action) => {
         ...state,
         ...action.payload,
         mode: action.mode || state.mode,
+        bootStatus: 'authenticated',
+      }
+    case 'set-user':
+      return {
+        ...state,
+        currentUser: action.payload.user,
+        bootStatus: action.payload.bootStatus || state.bootStatus,
+      }
+    case 'reset-session':
+      return {
+        ...initialPlatformData,
+        currentUser: null,
+        mode: state.mode,
+        bootStatus: 'unauthenticated',
+        notifications: [],
       }
     case 'submit-request': {
       const request = {
@@ -73,6 +115,10 @@ const reducer = (state, action) => {
           brl: Number(action.payload.brl),
         },
         requests: [request, ...state.requests],
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, request.id, `New request ${request.id} submitted for CFE review.`),
+        ),
       }
     }
     case 'resubmit-request':
@@ -86,6 +132,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} re-submitted for CFE review.`),
+        ),
       }
     case 'approve-request':
       return {
@@ -95,6 +145,10 @@ const reducer = (state, action) => {
             ? { ...request, status: 'awaiting_mentor', cfeOwner: action.payload.owner || request.cfeOwner }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} approved — awaiting mentor.`),
+        ),
       }
     case 'reject-request':
       return {
@@ -103,6 +157,10 @@ const reducer = (state, action) => {
           request.id === action.payload.id
             ? { ...request, status: 'needs_work', mentorNotes: action.payload.reason }
             : request,
+        ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} returned to founder for revision.`),
         ),
       }
     case 'schedule-request':
@@ -118,6 +176,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Mentor session scheduled for ${action.payload.id}.`),
+        ),
       }
     case 'save-feedback':
       return {
@@ -130,6 +192,10 @@ const reducer = (state, action) => {
                 mentorNotes: action.payload.notes,
               }
             : request,
+        ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Mentor feedback recorded for ${action.payload.id}.`),
         ),
       }
     case 'attach-artifact':
@@ -155,6 +221,10 @@ const reducer = (state, action) => {
               }
             : request,
         ),
+        notifications: appendNotification(
+          state.notifications,
+          synthesizeRequestNotification(state, action.payload.id, `Request ${action.payload.id} closed.`),
+        ),
       }
     case 'add-mentor':
       return {
@@ -174,6 +244,32 @@ const reducer = (state, action) => {
         mentors: state.mentors.map((mentor) =>
           mentor.id === action.payload.id ? { ...mentor, ...action.payload.updates } : mentor,
         ),
+      }
+    case 'notification-received': {
+      if (!action.payload) {
+        return state
+      }
+      return {
+        ...state,
+        notifications: appendNotification(state.notifications, action.payload),
+      }
+    }
+    case 'notification-mark-read':
+      return {
+        ...state,
+        notifications: state.notifications.map((notification) =>
+          notification.id === action.payload.id ? { ...notification, read: true } : notification,
+        ),
+      }
+    case 'notification-mark-all-read':
+      return {
+        ...state,
+        notifications: state.notifications.map((notification) => ({ ...notification, read: true })),
+      }
+    case 'notifications-clear':
+      return {
+        ...state,
+        notifications: [],
       }
     default:
       return state
@@ -253,7 +349,16 @@ export const createApiClient = (baseUrl) => {
 
   const authorizedFetch = async (path, options = {}, allowRefresh = true) => {
     if (!accessToken) {
-      throw new Error('Not authenticated')
+      if (!allowRefresh) {
+        throw new Error('Not authenticated')
+      }
+
+      try {
+        const refreshBody = await json('/auth/refresh', { method: 'POST' })
+        accessToken = refreshBody.accessToken
+      } catch (error) {
+        throw new Error(error?.message || 'Not authenticated')
+      }
     }
 
     const response = await request(path, {
@@ -323,6 +428,13 @@ export const createApiClient = (baseUrl) => {
     return nextBuffer
   }
 
+  const captureSession = (body) => {
+    if (body?.accessToken) {
+      accessToken = body.accessToken
+    }
+    return body
+  }
+
   return {
     async loginForPath(pathname) {
       const email = getRoleEmailForPath(pathname)
@@ -340,17 +452,144 @@ export const createApiClient = (baseUrl) => {
         body: JSON.stringify({ token: requestBody.debugToken }),
       })
 
-      accessToken = verifyBody.accessToken
-      return verifyBody
+      return captureSession(verifyBody)
+    },
+    async register({ name, email, password, role, organizationId, cohortId }) {
+      const body = await json('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          ...(role ? { role } : {}),
+          ...(organizationId ? { organizationId } : {}),
+          ...(cohortId ? { cohortId } : {}),
+        }),
+      })
+      return captureSession(body)
+    },
+    async login({ email, password }) {
+      const body = await json('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      })
+      return captureSession(body)
+    },
+    async forgotPassword(email) {
+      return await json('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+    },
+    async resetPassword({ token, password }) {
+      const body = await json('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, password }),
+      })
+      return captureSession(body)
+    },
+    async changePassword({ currentPassword, newPassword }) {
+      const body = await authorizedJson('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      return captureSession(body)
+    },
+    async requestMagicLink(email) {
+      return await json('/auth/magic-link/request', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      })
+    },
+    async verifyMagicLink(token) {
+      const body = await json('/auth/magic-link/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token }),
+      })
+      return captureSession(body)
+    },
+    async getGoogleAuthorizeUrl(redirectAfter) {
+      return await json('/auth/google/authorize-url', {
+        method: 'POST',
+        body: JSON.stringify(redirectAfter ? { redirectAfter } : {}),
+      })
+    },
+    async completeGoogleOAuth({ code, state }) {
+      const body = await json('/auth/google/callback', {
+        method: 'POST',
+        body: JSON.stringify({ code, state }),
+      })
+      return captureSession(body)
+    },
+    async bootstrap() {
+      try {
+        const refreshBody = await json('/auth/refresh', { method: 'POST' })
+        accessToken = refreshBody.accessToken
+        const me = await authorizedJson('/me', {}, false)
+        return { user: me.user, accessToken }
+      } catch (error) {
+        accessToken = null
+        if (error?.status === 401 || error?.status === 400) {
+          return null
+        }
+        throw error
+      }
     },
     async logout() {
-      await json('/auth/logout', {
-        method: 'POST',
-      })
+      try {
+        await json('/auth/logout', { method: 'POST' })
+      } finally {
+        accessToken = null
+      }
+    },
+    hasSession() {
+      return Boolean(accessToken)
+    },
+    clearSession() {
       accessToken = null
     },
     getMe() {
       return authorizedJson('/me')
+    },
+    getOnboardingStatus() {
+      return authorizedJson('/me/onboarding')
+    },
+    completeFounderOnboarding(payload) {
+      return authorizedJson('/onboarding/founder', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    completeStudentOnboarding(payload) {
+      return authorizedJson('/onboarding/student', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    getStudentJoinOptions() {
+      return authorizedJson('/onboarding/student/options')
+    },
+    listInvitations() {
+      return authorizedJson('/invitations')
+    },
+    createInvitation(payload) {
+      return authorizedJson('/invitations', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    },
+    revokeInvitation(invitationId) {
+      return authorizedJson(`/invitations/${invitationId}`, {
+        method: 'DELETE',
+      })
+    },
+    previewInvitation(token) {
+      return json(`/invitations/${encodeURIComponent(token)}`)
+    },
+    acceptInvitation(token) {
+      return authorizedJson(`/invitations/${encodeURIComponent(token)}/accept`, {
+        method: 'POST',
+      })
     },
     getVentures() {
       return authorizedJson('/ventures')
@@ -498,12 +737,20 @@ export const createApiClient = (baseUrl) => {
   }
 }
 
+const PUBLIC_PATH_PREFIXES = ['/login', '/signup', '/forgot-password', '/reset-password', '/auth', '/mentors/action', '/invite']
+
+const isPublicPath = (pathname) => PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+
 export function AppStateProvider({ children }) {
   const location = useLocation()
+  const apiBase = import.meta.env.VITE_API_BASE_URL
+  const initialMode = apiBase ? 'api' : 'local'
   const [state, dispatch] = useReducer(reducer, {
     ...initialPlatformData,
     currentUser: null,
-    mode: 'local',
+    mode: initialMode,
+    bootStatus: apiBase ? 'pending' : 'ready',
+    notifications: [],
   })
   const stateRef = useRef(state)
   const backendRef = useRef({
@@ -549,64 +796,123 @@ export function AppStateProvider({ children }) {
     })
   }, [location.pathname])
 
-  useEffect(() => {
-    const apiBase = import.meta.env.VITE_API_BASE_URL
+  const startBackgroundSync = useCallback(
+    (client, pathname) => {
+      const streamAbortController = new AbortController()
+      let active = true
 
+      void client
+        .openNotificationsStream(
+          (message) => {
+            if (!active || message?.type === 'connected') {
+              return
+            }
+
+            const requestId = typeof message?.requestId === 'string' ? message.requestId : null
+            if (requestId) {
+              dispatch({
+                type: 'notification-received',
+                payload: {
+                  type: 'request.updated',
+                  requestId,
+                  summary: `Request ${requestId} was updated.`,
+                  receivedAt: new Date().toISOString(),
+                  payload: message,
+                },
+              })
+            }
+
+            void syncFromApi(client, pathname)
+          },
+          streamAbortController.signal,
+        )
+        .catch(() => {})
+
+      const pollTimer = window.setInterval(() => {
+        if (!active) {
+          return
+        }
+
+        void syncFromApi(client, pathname)
+      }, 2500)
+
+      return () => {
+        active = false
+        streamAbortController.abort()
+        window.clearInterval(pollTimer)
+      }
+    },
+    [syncFromApi],
+  )
+
+  useEffect(() => {
     if (!apiBase) {
       return undefined
     }
 
     let active = true
-    const client = createApiClient(apiBase)
+    const client = backendRef.current.client || createApiClient(apiBase)
     backendRef.current.client = client
-    const streamAbortController = new AbortController()
-    let pollTimer = 0
 
-    const sync = async () => {
+    const boot = async () => {
       try {
-        if (location.pathname.startsWith('/mentors')) {
-          backendRef.current.ready = false
-          return
-        }
+        const session = await client.bootstrap()
 
-        await client.loginForPath(location.pathname)
         if (!active) {
           return
         }
+
+        if (!session) {
+          backendRef.current.ready = false
+          dispatch({ type: 'set-user', payload: { user: null, bootStatus: 'unauthenticated' } })
+          return
+        }
+
         backendRef.current.ready = true
-        await syncFromApi(client, location.pathname)
-
-        void client
-          .openNotificationsStream(
-            (message) => {
-              if (!active || message?.type === 'connected') {
-                return
-              }
-
-              void syncFromApi(client, location.pathname)
-            },
-            streamAbortController.signal,
-          )
-          .catch(() => {})
-
-        pollTimer = window.setInterval(() => {
-          if (!active) {
-            return
-          }
-
-          void syncFromApi(client, location.pathname)
-        }, 2500)
+        dispatch({ type: 'set-user', payload: { user: session.user, bootStatus: 'authenticated' } })
       } catch {
+        if (!active) {
+          return
+        }
         backendRef.current.ready = false
+        dispatch({ type: 'set-user', payload: { user: null, bootStatus: 'unauthenticated' } })
       }
     }
 
-    void sync()
+    void boot()
 
     return () => {
       active = false
-      streamAbortController.abort()
-      window.clearInterval(pollTimer)
+    }
+  }, [apiBase])
+
+  useEffect(() => {
+    if (!backendRef.current.ready || !backendRef.current.client) {
+      return undefined
+    }
+
+    if (isPublicPath(location.pathname)) {
+      return undefined
+    }
+
+    void syncFromApi(backendRef.current.client, location.pathname)
+    return startBackgroundSync(backendRef.current.client, location.pathname)
+  }, [location.pathname, state.currentUser?.id, startBackgroundSync, syncFromApi])
+
+  const ensureClient = () => {
+    if (!backendRef.current.client) {
+      throw new Error('The API backend is not configured for this build (set VITE_API_BASE_URL).')
+    }
+    return backendRef.current.client
+  }
+
+  const refreshCurrentUser = useCallback(async (sessionUser) => {
+    if (sessionUser) {
+      dispatch({ type: 'set-user', payload: { user: sessionUser, bootStatus: 'authenticated' } })
+    }
+    backendRef.current.ready = true
+    if (backendRef.current.client) {
+      await syncFromApi(backendRef.current.client, location.pathname)
     }
   }, [location.pathname, syncFromApi])
 
@@ -615,7 +921,115 @@ export function AppStateProvider({ children }) {
     venture: state.venture,
     mentors: state.mentors,
     requests: state.requests,
+    notifications: state.notifications,
+    unreadNotificationCount: state.notifications.filter((notification) => !notification.read).length,
     mode: state.mode,
+    bootStatus: state.bootStatus,
+    apiConfigured: Boolean(apiBase),
+    markNotificationRead: (id) => dispatch({ type: 'notification-mark-read', payload: { id } }),
+    markAllNotificationsRead: () => dispatch({ type: 'notification-mark-all-read' }),
+    clearNotifications: () => dispatch({ type: 'notifications-clear' }),
+    register: async (payload) => {
+      const client = ensureClient()
+      const session = await client.register(payload)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    login: async (payload) => {
+      const client = ensureClient()
+      const session = await client.login(payload)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    logout: async () => {
+      if (backendRef.current.client) {
+        try {
+          await backendRef.current.client.logout()
+        } catch {
+          backendRef.current.client.clearSession()
+        }
+      }
+      backendRef.current.ready = false
+      dispatch({ type: 'reset-session' })
+    },
+    forgotPassword: async (email) => {
+      const client = ensureClient()
+      return await client.forgotPassword(email)
+    },
+    resetPassword: async (payload) => {
+      const client = ensureClient()
+      const session = await client.resetPassword(payload)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    changePassword: async (payload) => {
+      const client = ensureClient()
+      const session = await client.changePassword(payload)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    startGoogleOAuth: async (redirectAfter) => {
+      const client = ensureClient()
+      return await client.getGoogleAuthorizeUrl(redirectAfter)
+    },
+    completeGoogleOAuth: async (payload) => {
+      const client = ensureClient()
+      const session = await client.completeGoogleOAuth(payload)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    requestMagicLink: async (email) => {
+      const client = ensureClient()
+      return await client.requestMagicLink(email)
+    },
+    verifyMagicLink: async (token) => {
+      const client = ensureClient()
+      const session = await client.verifyMagicLink(token)
+      await refreshCurrentUser(session.user)
+      return session
+    },
+    getOnboardingStatus: async () => {
+      const client = ensureClient()
+      return await client.getOnboardingStatus()
+    },
+    completeFounderOnboarding: async (payload) => {
+      const client = ensureClient()
+      const result = await client.completeFounderOnboarding(payload)
+      await refreshCurrentUser(result.user)
+      return result
+    },
+    completeStudentOnboarding: async (payload) => {
+      const client = ensureClient()
+      const result = await client.completeStudentOnboarding(payload)
+      await refreshCurrentUser(result.user)
+      return result
+    },
+    getStudentJoinOptions: async () => {
+      const client = ensureClient()
+      return await client.getStudentJoinOptions()
+    },
+    listInvitations: async () => {
+      const client = ensureClient()
+      return await client.listInvitations()
+    },
+    createInvitation: async (payload) => {
+      const client = ensureClient()
+      return await client.createInvitation(payload)
+    },
+    revokeInvitation: async (invitationId) => {
+      const client = ensureClient()
+      return await client.revokeInvitation(invitationId)
+    },
+    previewInvitation: async (token) => {
+      const client = ensureClient()
+      return await client.previewInvitation(token)
+    },
+    acceptInvitation: async (token) => {
+      const client = ensureClient()
+      const result = await client.acceptInvitation(token)
+      await refreshCurrentUser(result.user)
+      return result
+    },
     submitRequest: async (payload) => {
       if (backendRef.current.ready && backendRef.current.client && state.venture.id) {
         await backendRef.current.client.createRequest(state.venture.id, {

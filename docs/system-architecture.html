@@ -532,7 +532,7 @@ flowchart TD
         <div class="diagram">
           <pre class="mermaid">
 flowchart TD
-    SERVER["backend/src/server.ts"] --&gt; APP["createApp()"]
+    SERVER["backend/src/server.ts"] --&gt; APP["await createApp()"]
     APP --&gt; ROUTES["Fastify routes"]
     ROUTES --&gt; AUTH["auth boundary&lt;br/&gt;Bearer access token"]
     ROUTES --&gt; SERVICE["PlatformService"]

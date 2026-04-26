@@ -117,6 +117,365 @@ describe('AppState API helpers', () => {
     )
   })
 
+  it('registers a new user with name, email, password, and role', async () => {
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ accessToken: 'register-token', user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' } }, 201),
+    )
+
+    const client = createApiClient('http://localhost:3001')
+    const result = await client.register({
+      name: 'Priya Founder',
+      email: 'priya@mentorme.test',
+      password: 'SuperSecret-123',
+      role: 'founder',
+    })
+
+    expect(result.user).toMatchObject({ email: 'priya@mentorme.test', role: 'founder' })
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3001/auth/register',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('Priya Founder'),
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      }),
+    )
+  })
+
+  it('logs in with email and password and captures the access token', async () => {
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ accessToken: 'login-token', user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' } }),
+    )
+
+    const client = createApiClient('http://localhost:3001')
+    await client.login({ email: 'priya@mentorme.test', password: 'SuperSecret-123' })
+
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3001/auth/login',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'priya@mentorme.test', password: 'SuperSecret-123' }),
+      }),
+    )
+  })
+
+  it('requests a password reset email and returns the response body', async () => {
+    fetch.mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-reset-token' }, 202))
+
+    const client = createApiClient('http://localhost:3001')
+    const result = await client.forgotPassword('priya@mentorme.test')
+
+    expect(result).toEqual({ accepted: true, debugToken: 'debug-reset-token' })
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/auth/forgot-password',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'priya@mentorme.test' }),
+      }),
+    )
+  })
+
+  it('completes a password reset and captures the new session token', async () => {
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ accessToken: 'reset-token', user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' } }),
+    )
+
+    const client = createApiClient('http://localhost:3001')
+    await client.resetPassword({ token: 'reset-debug-token-123456', password: 'BrandNew-456' })
+
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/auth/reset-password',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ token: 'reset-debug-token-123456', password: 'BrandNew-456' }),
+      }),
+    )
+  })
+
+  it('changes the password using the current bearer token and rotates the access token', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'old-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce(
+        jsonResponse({ accessToken: 'rotated-token', user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' } }),
+      )
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/founders')
+    await client.changePassword({ currentPassword: 'OldPass-12345', newPassword: 'BrandNew-456' })
+
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/auth/change-password',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer old-token',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ currentPassword: 'OldPass-12345', newPassword: 'BrandNew-456' }),
+      }),
+    )
+  })
+
+  it('builds a Google authorize URL and forwards the redirectAfter hint', async () => {
+    fetch.mockResolvedValueOnce(jsonResponse({ authorizeUrl: 'https://accounts.google.com/...', state: 'signed-state' }))
+
+    const client = createApiClient('http://localhost:3001')
+    const result = await client.getGoogleAuthorizeUrl('/cfe')
+
+    expect(result).toEqual({ authorizeUrl: 'https://accounts.google.com/...', state: 'signed-state' })
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/auth/google/authorize-url',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ redirectAfter: '/cfe' }),
+      }),
+    )
+  })
+
+  it('completes the Google OAuth callback and captures the session token', async () => {
+    fetch.mockResolvedValueOnce(
+      jsonResponse({
+        accessToken: 'google-token',
+        user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' },
+        isNewUser: true,
+        redirectAfter: '/founders',
+      }),
+    )
+
+    const client = createApiClient('http://localhost:3001')
+    const result = await client.completeGoogleOAuth({ code: 'goog-code-1234567890', state: 'signed-state-abc' })
+
+    expect(result).toMatchObject({ isNewUser: true, redirectAfter: '/founders' })
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/auth/google/callback',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ code: 'goog-code-1234567890', state: 'signed-state-abc' }),
+      }),
+    )
+  })
+
+  it('bootstrap returns the refreshed session when the cookie is valid', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'refresh-token' }))
+      .mockResolvedValueOnce(jsonResponse({ user: { id: 'u-1', email: 'priya@mentorme.test', role: 'founder' } }))
+
+    const client = createApiClient('http://localhost:3001')
+    const session = await client.bootstrap()
+
+    expect(session?.user).toMatchObject({ email: 'priya@mentorme.test' })
+    expect(client.hasSession()).toBe(true)
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:3001/auth/refresh',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3001/me',
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer refresh-token' }) }),
+    )
+  })
+
+  it('bootstrap returns null when no refresh cookie is available', async () => {
+    fetch.mockResolvedValueOnce(textResponse('Unauthorized', 401))
+
+    const client = createApiClient('http://localhost:3001')
+    const session = await client.bootstrap()
+
+    expect(session).toBeNull()
+    expect(client.hasSession()).toBe(false)
+  })
+
+  it('logout posts to /auth/logout and clears the cached access token', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'session-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce({ ok: true, status: 204, json: vi.fn(), text: vi.fn().mockResolvedValue('') })
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/founders')
+    expect(client.hasSession()).toBe(true)
+
+    await client.logout()
+
+    expect(client.hasSession()).toBe(false)
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+
+  it('reads the onboarding status using the authorized session', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'session-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        onboarded: false,
+        nextStep: 'founder_venture_details',
+        ventureCount: 0,
+        role: 'founder',
+        organizationId: 'org-mentorme',
+      }))
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/founders')
+    const status = await client.getOnboardingStatus()
+
+    expect(status.nextStep).toBe('founder_venture_details')
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/me/onboarding',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer session-token' }),
+      }),
+    )
+  })
+
+  it('completes the founder onboarding wizard with venture payload', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'session-token', user: { role: 'founder' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        user: { id: 'u-1', onboardedAt: '2026-04-26T05:00:00.000Z', role: 'founder' },
+        venture: { id: 'vnt-abc', name: 'Greenfield Robotics' },
+      }, 201))
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/founders')
+
+    const payload = {
+      ventureName: 'Greenfield Robotics',
+      domain: 'Robotics',
+      stage: 'TRL 4',
+      trl: 4,
+      brl: 3,
+      summary: 'Modular robotics platform for small-batch manufacturers in India.',
+      nextMilestone: 'Demonstrate gripper accuracy at first paid pilot site.',
+    }
+    const result = await client.completeFounderOnboarding(payload)
+
+    expect(result.venture.name).toBe('Greenfield Robotics')
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/onboarding/founder',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: expect.objectContaining({
+          Authorization: 'Bearer session-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
+  it('completes the student onboarding wizard with a ventureId payload', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'session-token', user: { role: 'student' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        user: { id: 'u-2', onboardedAt: '2026-04-26T05:00:00.000Z', role: 'student' },
+        venture: { id: 'v-medimesh', name: 'MediMesh Labs' },
+      }))
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/students')
+    const result = await client.completeStudentOnboarding({ ventureId: 'v-medimesh' })
+
+    expect(result.venture.id).toBe('v-medimesh')
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/onboarding/student',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ ventureId: 'v-medimesh' }),
+      }),
+    )
+  })
+
+  it('lists ventures available to a student through the join-options endpoint', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'session-token', user: { role: 'student' } }))
+      .mockResolvedValueOnce(jsonResponse({ ventures: [{ id: 'v-medimesh', name: 'MediMesh Labs' }] }))
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/students')
+    const result = await client.getStudentJoinOptions()
+
+    expect(result.ventures).toHaveLength(1)
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/onboarding/student/options',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer session-token' }),
+      }),
+    )
+  })
+
+  it('previews an invitation by raw token without a session', async () => {
+    fetch.mockResolvedValueOnce(jsonResponse({
+      invitation: {
+        email: 'invitee@mentorme.test',
+        role: 'student',
+        organizationName: 'MentorMe',
+        status: 'pending',
+        expiresAt: '2026-05-26T00:00:00.000Z',
+      },
+    }))
+
+    const client = createApiClient('http://localhost:3001')
+    const preview = await client.previewInvitation('invitation-token-abc-123')
+
+    expect(preview.invitation.role).toBe('student')
+    expect(fetch).toHaveBeenCalledWith(
+      'http://localhost:3001/invitations/invitation-token-abc-123',
+      expect.objectContaining({}),
+    )
+  })
+
+  it('creates an invitation via the authorized CFE endpoint', async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'cfe-token', user: { role: 'cfe' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        invitation: { id: 'inv-1', email: 'new@mentorme.test', role: 'founder', status: 'pending' },
+        debugToken: 'debug-invite-token-12345',
+      }, 201))
+
+    const client = createApiClient('http://localhost:3001')
+    await client.loginForPath('/cfe')
+    const result = await client.createInvitation({
+      email: 'new@mentorme.test',
+      role: 'founder',
+      message: 'Welcome to the cohort!',
+    })
+
+    expect(result.invitation.id).toBe('inv-1')
+    expect(result.debugToken).toBe('debug-invite-token-12345')
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:3001/invitations',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer cfe-token',
+          'Content-Type': 'application/json',
+        }),
+      }),
+    )
+  })
+
   it('sends authorized AI mentor recommendation requests with a JSON body', async () => {
     fetch
       .mockResolvedValueOnce(jsonResponse({ accepted: true, debugToken: 'debug-token-123456' }))

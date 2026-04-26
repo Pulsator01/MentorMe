@@ -1,91 +1,42 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, FileUp, Lightbulb, Send, Target } from 'lucide-react'
-import { useAppState } from '../context/AppState'
-import NudgeFeed from '../components/NudgeFeed'
-import ReadinessGauge from '../components/ReadinessGauge'
-import { Badge, ProgressBar, SectionCard, SectionHeading, StatCard, cn } from '../components/ui'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, BrainCircuit, FileUp, Lightbulb, Send, Target } from 'lucide-react'
+import { useAppState } from '../../context/AppState'
+import {
+  Badge,
+  ProgressBar,
+  SectionCard,
+  SectionHeading,
+  cn,
+} from '../../components/ui'
+import FounderSubNav from './FounderSubNav'
+import {
+  filterFounderRequests,
+  getFallbackReasons,
+  getMatchScore,
+  stageOptions,
+} from './founderHelpers'
 
-const stageOptions = ['Idea', 'TRL 3+', 'MVP', 'Pilot', 'Scale']
+const DEFAULT_AI_NOTES =
+  'We have a working MVP and a few pilot conversations, but our fundraising story is still messy. I need help deciding what proof matters most and how to position the next mentor meeting so it produces a sharper investor narrative.'
 
-const domainTokens = (text = '') => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+const DEFAULT_CHALLENGE = 'Need help framing our fundraising story and sequencing pilot conversations.'
+const DEFAULT_OUTCOME = 'Leave with a sharper mentor brief, meeting prep, and a clear next step after the first call.'
 
-const statusTone = {
-  draft: 'slate',
-  cfe_review: 'amber',
-  needs_work: 'rose',
-  awaiting_mentor: 'blue',
-  scheduled: 'emerald',
-  follow_up: 'blue',
-  closed: 'slate',
-}
-
-const formatDate = (value, opts) =>
-  new Date(value).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    ...(opts || {}),
-  })
-
-const getMatchScore = (mentor, form) => {
-  const tokens = domainTokens(`${form.domain} ${form.challenge}`)
-  let score = 58
-
-  mentor.focus.forEach((focus) => {
-    if (tokens.some((token) => focus.toLowerCase().includes(token))) {
-      score += 7
-    }
-  })
-
-  mentor.domains.forEach((domain) => {
-    if (tokens.some((token) => domain.toLowerCase().includes(token))) {
-      score += 6
-    }
-  })
-
-  if (mentor.stages.some((stage) => stage.toLowerCase() === form.stage.toLowerCase())) {
-    score += 12
-  }
-
-  if (mentor.tolerance === 'High') {
-    score += 6
-  }
-
-  return Math.min(99, score)
-}
-
-const getFallbackReasons = (mentor, form) => {
-  const tokens = domainTokens(`${form.domain} ${form.challenge} ${form.desiredOutcome}`)
-  const domainHits = mentor.domains.filter((domain) => tokens.some((token) => domain.toLowerCase().includes(token)))
-  const focusHits = mentor.focus.filter((focus) => tokens.some((token) => focus.toLowerCase().includes(token)))
-
-  return [
-    domainHits.length > 0 ? `Domain overlap: ${domainHits.slice(0, 2).join(', ')}` : '',
-    focusHits.length > 0 ? `Functional fit: ${focusHits.slice(0, 2).join(', ')}` : '',
-    mentor.stages.some((stage) => stage.toLowerCase() === form.stage.toLowerCase())
-      ? `Has experience with ${form.stage} stage asks`
-      : '',
-    mentor.tolerance === 'High' ? 'High patience tolerance suits an evolving founder ask' : '',
-  ].filter(Boolean)
-}
-
-function StudentDashboard() {
+function NewRequestPage() {
   const {
     venture,
     mentors,
     requests,
     submitRequest,
-    resubmitRequest,
-    uploadArtifact,
     generateAiMentorRecommendations,
     generateAiRequestBrief,
   } = useAppState()
+  const navigate = useNavigate()
+
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
-  const [resubmittingId, setResubmittingId] = useState('')
-  const [uploadingRequestId, setUploadingRequestId] = useState('')
-  const [aiNotes, setAiNotes] = useState(
-    'We have a working MVP and a few pilot conversations, but our fundraising story is still messy. I need help deciding what proof matters most and how to position the next mentor meeting so it produces a sharper investor narrative.',
-  )
+  const [aiNotes, setAiNotes] = useState(DEFAULT_AI_NOTES)
   const [aiSuggestion, setAiSuggestion] = useState(null)
   const [aiError, setAiError] = useState('')
   const [isGeneratingBrief, setIsGeneratingBrief] = useState(false)
@@ -98,17 +49,14 @@ function StudentDashboard() {
     domain: venture.domain,
     trl: venture.trl,
     brl: venture.brl,
-    challenge: 'Need help framing our fundraising story and sequencing pilot conversations.',
-    desiredOutcome: 'Leave with a sharper mentor brief, meeting prep, and a clear next step after the first call.',
+    challenge: DEFAULT_CHALLENGE,
+    desiredOutcome: DEFAULT_OUTCOME,
     artifactList: ['Pitch deck v4', 'Pilot learning note'],
   })
 
   const founderRequests = useMemo(
-    () =>
-      requests.filter(
-        (request) => request.ventureName === venture.name && request.founderName === venture.founder,
-      ),
-    [requests, venture.founder, venture.name],
+    () => filterFounderRequests(requests, venture),
+    [requests, venture],
   )
 
   const availableMentors = useMemo(
@@ -166,60 +114,6 @@ function StudentDashboard() {
     setSelectedMentorId(recommendedMentors[0]?.id || '')
   }, [recommendedMentors, selectedMentorId])
 
-  const requestCounts = {
-    queued: founderRequests.filter((request) => ['draft', 'cfe_review', 'awaiting_mentor'].includes(request.status)).length,
-    scheduled: founderRequests.filter((request) => request.status === 'scheduled').length,
-    needsWork: founderRequests.filter((request) => request.status === 'needs_work').length,
-  }
-
-  const nudges = useMemo(
-    () =>
-      founderRequests.slice(0, 4).map((request) => {
-        if (request.status === 'scheduled') {
-          return {
-            id: request.id,
-            title: `Prepare for ${request.ventureName}`,
-            time: formatDate(request.meetingAt, { year: 'numeric' }),
-            description: `Upload the pre-read and confirm who from CFE will join the session with ${selectedMentor?.name || 'the mentor'}.`,
-            status: 'urgent',
-            action: 'Upload pre-read',
-          }
-        }
-
-        if (request.status === 'follow_up') {
-          return {
-            id: request.id,
-            title: 'Capture what changed after the meeting',
-            time: 'Within 24h',
-            description: 'Log the mentor recommendation, any follow-up needed from CFE, and whether a second session is worth it.',
-            status: 'calm',
-            action: 'Log follow-up',
-          }
-        }
-
-        if (request.status === 'needs_work') {
-          return {
-            id: request.id,
-            title: `${request.ventureName} is in needs work`,
-            time: 'Action required',
-            description: request.mentorNotes || 'CFE needs a sharper brief before routing this request again.',
-            status: 'warning',
-            action: 'Revise brief',
-          }
-        }
-
-        return {
-          id: request.id,
-          title: `${request.ventureName} is in ${request.status.replace('_', ' ')}`,
-          time: formatDate(request.createdAt, { year: 'numeric' }),
-          description: 'CFE is checking fit, patience threshold, and whether the request is strong enough to send forward.',
-          status: request.status === 'cfe_review' ? 'warning' : 'calm',
-          action: request.status === 'cfe_review' ? 'Wait for approval' : 'Review request',
-        }
-      }),
-    [founderRequests, selectedMentor?.name],
-  )
-
   const handleAddArtifact = () => {
     const value = artifactInput.trim()
 
@@ -245,34 +139,6 @@ function StudentDashboard() {
       brl: Number(form.brl),
     })
     setFlashMessage('Request sent to CFE review')
-  }
-
-  const handleResubmit = async (requestId) => {
-    setResubmittingId(requestId)
-    try {
-      await resubmitRequest(requestId)
-      setFlashMessage('Request re-submitted to CFE review')
-    } finally {
-      setResubmittingId('')
-    }
-  }
-
-  const handleArtifactUpload = async (requestId, event) => {
-    const file = event.target.files?.[0]
-
-    if (!file) {
-      return
-    }
-
-    setUploadingRequestId(requestId)
-
-    try {
-      await uploadArtifact(requestId, file)
-      setFlashMessage(`${file.name} attached to ${requestId}`)
-    } finally {
-      setUploadingRequestId('')
-      event.target.value = ''
-    }
   }
 
   const handleGenerateBrief = async () => {
@@ -339,43 +205,35 @@ function StudentDashboard() {
     }
   }
 
+  const handleViewPipeline = () => {
+    navigate('/founders/pipeline')
+  }
+
   return (
     <div className="space-y-5 pb-8">
+      <FounderSubNav />
+
       <SectionCard>
         <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Founder workspace</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Request composer</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
               Build the right mentor ask before CFE routes it.
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
-              Founders should only do three things here: describe the venture clearly, attach enough context, and track what CFE does next.
+              Describe the venture clearly, attach proof, and let CFE handle the routing. The AI brief and mentor matcher only nudge the draft — CFE still owns the final routing decision.
             </p>
-            <div className="mt-5 grid gap-4 md:grid-cols-3">
-              <StatCard label="In queue" value={requestCounts.queued} detail="Draft, review, or mentor routing work that is still open." accent="amber" />
-              <StatCard label="Scheduled" value={requestCounts.scheduled} detail="Sessions that already have a meeting slot attached." accent="cyan" />
-              <StatCard label="Needs work" value={requestCounts.needsWork} detail="Requests that need a sharper brief before CFE sends them on." accent="rose" />
-            </div>
           </div>
-
           <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Current venture</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">{venture.name}</h2>
-              </div>
-              <ReadinessGauge trl={venture.trl} brl={venture.brl} size="sm" />
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Current venture</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{venture.name}</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge>{venture.stage}</Badge>
+              <Badge tone="blue">TRL {venture.trl}</Badge>
+              <Badge tone="emerald">BRL {venture.brl}</Badge>
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">{venture.summary}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge>{venture.stage}</Badge>
-              <Badge tone="blue">{venture.domain}</Badge>
-              <Badge tone="emerald">{venture.location}</Badge>
-            </div>
-            <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Next milestone</p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">{venture.nextMilestone}</p>
-            </div>
+            <p className="mt-4 text-xs uppercase tracking-[0.22em] text-slate-500">{founderRequests.length} requests in pipeline</p>
           </div>
         </div>
       </SectionCard>
@@ -601,9 +459,17 @@ function StudentDashboard() {
           {flashMessage ? (
             <div
               data-testid="founder-flash-message"
-              className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+              className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
             >
-              {flashMessage}
+              <span>{flashMessage}</span>
+              <button
+                type="button"
+                onClick={handleViewPipeline}
+                className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-900 transition hover:border-emerald-400"
+              >
+                Open pipeline
+                <ArrowRight size={14} aria-hidden="true" />
+              </button>
             </div>
           ) : null}
         </SectionCard>
@@ -769,98 +635,22 @@ function StudentDashboard() {
 
           <SectionCard>
             <SectionHeading
-              eyebrow="Nudges"
-              title="Only show follow-through that matters"
-              description="This is the founder-side timeline: review, prep, and revision requests from CFE."
+              eyebrow="After you submit"
+              title="Track everything from the pipeline page"
+              description="The pipeline page collects every founder request with filters for status, attachments, and resubmission."
             />
-            <NudgeFeed items={nudges} />
+            <Link
+              to="/founders/pipeline"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-white"
+            >
+              Open pipeline
+              <ArrowRight size={14} aria-hidden="true" />
+            </Link>
           </SectionCard>
         </div>
       </div>
-
-      <SectionCard>
-        <SectionHeading
-          eyebrow="Request tracker"
-          title="See the venture pipeline without the clutter"
-          description="Every request stays visible after submission so the founder can tell whether it is waiting, scheduled, or needs revision."
-        />
-        <div className="space-y-3">
-          {founderRequests.map((request) => (
-            <div
-              key={request.id}
-              data-testid={`founder-request-${request.id.toLowerCase()}`}
-              className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-slate-950">{request.ventureName}</h3>
-                    <Badge tone={statusTone[request.status] || 'slate'}>{request.status.replace('_', ' ')}</Badge>
-                  </div>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{request.challenge}</p>
-                </div>
-                <div className="min-w-[170px] rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-                  <p className="font-medium text-slate-900">{request.stage}</p>
-                  <p className="mt-1">TRL {request.trl} / BRL {request.brl}</p>
-                </div>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-500">
-                <span>Requested {formatDate(request.createdAt, { year: 'numeric' })}</span>
-                <span>{request.artifactList.length} attached items</span>
-                {request.meetingAt ? <span>Meeting {formatDate(request.meetingAt, { year: 'numeric' })}</span> : null}
-              </div>
-              {request.artifactList.length ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {request.artifactList.map((artifact) => (
-                    <Badge key={`${request.id}-${artifact}`} tone="blue">
-                      {artifact}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-              {request.status !== 'closed' ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">Attach another artifact</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        This uses the presign and complete API flow for the selected request.
-                      </p>
-                    </div>
-                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white">
-                      <FileUp size={16} />
-                      {uploadingRequestId === request.id ? 'Uploading...' : 'Upload file'}
-                      <input
-                        type="file"
-                        className="sr-only"
-                        data-testid={`upload-artifact-${request.id.toLowerCase()}`}
-                        aria-label={`Upload artifact for ${request.id}`}
-                        disabled={uploadingRequestId === request.id}
-                        onChange={(event) => void handleArtifactUpload(request.id, event)}
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : null}
-              {request.status === 'needs_work' ? (
-                <div className="mt-4">
-                  <button
-                    type="button"
-                    onClick={() => handleResubmit(request.id)}
-                    disabled={resubmittingId === request.id}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    <Send size={16} />
-                    {resubmittingId === request.id ? 'Re-submitting...' : 'Re-submit to CFE'}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </SectionCard>
     </div>
   )
 }
 
-export default StudentDashboard
+export default NewRequestPage

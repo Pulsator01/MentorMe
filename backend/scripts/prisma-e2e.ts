@@ -5,6 +5,7 @@ import { HeuristicAiGateway } from '../src/ai/heuristicAiGateway'
 import { createInlineQueuePublisher } from '../src/infra/inlineQueuePublisher'
 import { createStubEmailGateway } from '../src/infra/stubEmailGateway'
 import { createStubStorageService } from '../src/infra/stubStorageService'
+import { createArgon2PasswordHasher } from '../src/infra/passwordHasher'
 import { createRuntimeRepository } from '../src/runtime'
 import { resetAndSeedDatabase } from '../prisma/seedData'
 
@@ -81,17 +82,20 @@ const run = async () => {
   const runtime = createRuntimeRepository()
   assert.equal(runtime.mode, 'prisma', 'The live E2E must run with Prisma persistence')
 
-  const app = createApp({
+  const app = await createApp({
     repository: runtime.repository,
     email: createStubEmailGateway(),
     storage: createStubStorageService(),
     queue: createInlineQueuePublisher(),
     ai: new HeuristicAiGateway(),
+    passwordHasher: createArgon2PasswordHasher(),
     exposeTokens: true,
     jwtIssuer: process.env.JWT_ISSUER || 'mentor-me-local',
     jwtAudience: process.env.JWT_AUDIENCE || 'mentor-me-web',
     jwtSecret: process.env.JWT_SECRET || 'development-secret',
     cookieSecret: process.env.COOKIE_SECRET || 'development-cookie-secret',
+    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID || 'org-mentorme',
+    appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:5173',
   })
 
   try {

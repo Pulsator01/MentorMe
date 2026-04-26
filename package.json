@@ -1,7 +1,7 @@
 {
   "name": "plaksha-counsel",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -27,10 +27,14 @@
     "@aws-sdk/s3-request-presigner": "^3.883.0",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.1.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.3",
     "@fastify/swagger": "^9.7.0",
     "@fastify/swagger-ui": "^5.2.5",
     "@prisma/client": "^6.7.0",
+    "@sentry/node": "^9.47.1",
+    "argon2": "^0.44.0",
     "bullmq": "^5.58.3",
     "clsx": "^2.1.1",
     "fastify": "^5.6.1",

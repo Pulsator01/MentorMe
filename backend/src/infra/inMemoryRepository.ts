@@ -1,16 +1,22 @@
 import { createSeedState } from '../domain/seed'
 import type { PlatformRepository } from '../domain/interfaces'
 import type {
+  AiRun,
+  AiRunFeedback,
   Artifact,
   AuditEvent,
   ExternalActionToken,
+  Invitation,
   MagicLinkTokenRecord,
   Meeting,
   MeetingFeedback,
   MentorProfile,
   MentorRequest,
   MentorRequestShortlist,
+  OAuthAccount,
+  OAuthProvider,
   OutboxEvent,
+  PasswordResetTokenRecord,
   SessionRecord,
   User,
   Venture,
@@ -19,12 +25,17 @@ import type {
 } from '../domain/types'
 
 type State = ReturnType<typeof createSeedState> & {
+  aiRunFeedbacks: AiRunFeedback[]
+  aiRuns: AiRun[]
   feedbacks: MeetingFeedback[]
   magicLinks: MagicLinkTokenRecord[]
+  oauthAccounts: OAuthAccount[]
+  passwordResetTokens: PasswordResetTokenRecord[]
   sessions: SessionRecord[]
   externalActionTokens: ExternalActionToken[]
   webhookReceipts: WebhookReceipt[]
   outboxEvents: OutboxEvent[]
+  invitations: Invitation[]
 }
 
 class InMemoryPlatformRepository implements PlatformRepository {
@@ -42,6 +53,37 @@ class InMemoryPlatformRepository implements PlatformRepository {
     return this.state.users.find((user) => user.id === id)
   }
 
+  async saveUser(user: User) {
+    this.state.users = upsertById(this.state.users, user)
+    return user
+  }
+
+  async findOAuthAccount(provider: OAuthProvider, providerAccountId: string) {
+    return this.state.oauthAccounts.find(
+      (account) => account.provider === provider && account.providerAccountId === providerAccountId,
+    )
+  }
+
+  async saveOAuthAccount(account: OAuthAccount) {
+    this.state.oauthAccounts = upsertById(this.state.oauthAccounts, account)
+    return account
+  }
+
+  async savePasswordResetToken(token: PasswordResetTokenRecord) {
+    this.state.passwordResetTokens = upsertById(this.state.passwordResetTokens, token)
+    return token
+  }
+
+  async findPasswordResetTokenByHash(tokenHash: string) {
+    return this.state.passwordResetTokens.find((token) => token.tokenHash === tokenHash)
+  }
+
+  async markPasswordResetTokenConsumed(id: string, consumedAt: string) {
+    this.state.passwordResetTokens = this.state.passwordResetTokens.map((token) =>
+      token.id === id ? { ...token, consumedAt } : token,
+    )
+  }
+
   async listVentures() {
     return [...this.state.ventures]
   }
@@ -50,8 +92,18 @@ class InMemoryPlatformRepository implements PlatformRepository {
     return this.state.ventures.find((venture) => venture.id === id)
   }
 
+  async saveVenture(venture: Venture) {
+    this.state.ventures = upsertById(this.state.ventures, venture)
+    return venture
+  }
+
   async listMemberships() {
     return [...this.state.ventureMemberships]
+  }
+
+  async saveMembership(membership: VentureMembership) {
+    this.state.ventureMemberships = upsertById(this.state.ventureMemberships, membership)
+    return membership
   }
 
   async listMentors() {
@@ -139,6 +191,13 @@ class InMemoryPlatformRepository implements PlatformRepository {
     )
   }
 
+  async revokeAllSessionsForUser(userId: string) {
+    const now = new Date().toISOString()
+    this.state.sessions = this.state.sessions.map((session) =>
+      session.userId === userId && !session.revokedAt ? { ...session, revokedAt: now } : session,
+    )
+  }
+
   async saveExternalActionToken(token: ExternalActionToken) {
     this.state.externalActionTokens = upsertById(this.state.externalActionTokens, token)
     return token
@@ -174,6 +233,54 @@ class InMemoryPlatformRepository implements PlatformRepository {
   async listOutboxEvents() {
     return [...this.state.outboxEvents]
   }
+
+  async findOutboxEventById(id: string) {
+    return this.state.outboxEvents.find((event) => event.id === id)
+  }
+
+  async saveAiRun(run: AiRun) {
+    this.state.aiRuns = upsertById(this.state.aiRuns, run)
+    return run
+  }
+
+  async findAiRunById(id: string) {
+    return this.state.aiRuns.find((run) => run.id === id)
+  }
+
+  async saveAiRunFeedback(feedback: AiRunFeedback) {
+    this.state.aiRunFeedbacks = upsertById(this.state.aiRunFeedbacks, feedback)
+    return feedback
+  }
+
+  async saveInvitation(invitation: Invitation) {
+    this.state.invitations = upsertById(this.state.invitations, invitation)
+    return invitation
+  }
+
+  async findInvitationById(id: string) {
+    return this.state.invitations.find((invitation) => invitation.id === id)
+  }
+
+  async findInvitationByHash(tokenHash: string) {
+    return this.state.invitations.find((invitation) => invitation.tokenHash === tokenHash)
+  }
+
+  async listInvitationsByOrganization(organizationId: string) {
+    return this.state.invitations
+      .filter((invitation) => invitation.organizationId === organizationId)
+      .map((invitation) => ({ ...invitation }))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }
+
+  async findPendingInvitationByEmail(organizationId: string, email: string) {
+    const normalised = email.toLowerCase()
+    return this.state.invitations.find(
+      (invitation) =>
+        invitation.organizationId === organizationId &&
+        invitation.email.toLowerCase() === normalised &&
+        invitation.status === 'pending',
+    )
+  }
 }
 
 const upsertById = <T extends { id: string }>(items: T[], next: T) => {
@@ -188,14 +295,19 @@ const upsertById = <T extends { id: string }>(items: T[], next: T) => {
 
 export const createSeededInMemoryPlatformRepository = (configure?: (state: State) => void) => {
   const seed = createSeedState()
-  const state = {
+  const state: State = {
     ...seed,
+    aiRunFeedbacks: [],
+    aiRuns: [],
     feedbacks: [],
     magicLinks: [],
+    oauthAccounts: [],
+    passwordResetTokens: [],
     sessions: [],
     externalActionTokens: [],
     webhookReceipts: [],
     outboxEvents: [],
+    invitations: [],
   }
   configure?.(state)
 

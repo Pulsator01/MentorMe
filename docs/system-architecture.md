@@ -143,7 +143,7 @@ The frontend is centered on `AppStateProvider`:
 
 ```mermaid
 flowchart TD
-    SERVER["backend/src/server.ts"] --> APP["createApp()"]
+    SERVER["backend/src/server.ts"] --> APP["await createApp()"]
     APP --> ROUTES["Fastify routes"]
     ROUTES --> AUTH["auth boundary<br/>Bearer access token"]
     ROUTES --> SERVICE["PlatformService"]

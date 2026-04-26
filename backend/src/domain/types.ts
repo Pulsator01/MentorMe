@@ -1,5 +1,6 @@
-export type UserRole = 'cfe' | 'founder' | 'student'
+export type UserRole = 'cfe' | 'founder' | 'student' | 'mentor' | 'admin'
 export type VentureMembershipRole = 'founder' | 'student'
+export type InvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired'
 export type MentorTolerance = 'Low' | 'Medium' | 'High'
 export type MentorVisibility = 'Active' | 'Paused'
 export type RequestStatus =
@@ -32,6 +33,51 @@ export interface User {
   email: string
   name: string
   role: UserRole
+  passwordHash?: string
+  emailVerified?: boolean
+  emailVerifiedAt?: string
+  lastLoginAt?: string
+  onboardedAt?: string
+}
+
+export type OAuthProvider = 'google'
+
+export interface OAuthAccount {
+  id: string
+  userId: string
+  provider: OAuthProvider
+  providerAccountId: string
+  email?: string
+  accessToken?: string
+  refreshToken?: string
+  expiresAt?: string
+}
+
+export interface PasswordResetTokenRecord {
+  id: string
+  userId: string
+  tokenHash: string
+  expiresAt: string
+  consumedAt?: string
+}
+
+export interface Invitation {
+  id: string
+  organizationId: string
+  cohortId?: string
+  ventureId?: string
+  email: string
+  role: UserRole
+  tokenHash: string
+  status: InvitationStatus
+  message?: string
+  expiresAt: string
+  createdById: string
+  acceptedById?: string
+  acceptedAt?: string
+  revokedAt?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Venture {
@@ -224,4 +270,48 @@ export interface RequestView {
   mentorNotes: string
   meetingAt?: string
   calendlyLink?: string
+}
+
+
+export type AiTask = 'request_brief' | 'mentor_recommendation' | 'meeting_summary'
+export type AiRunStatus = 'completed' | 'failed'
+export type AiFeedbackRating = 'helpful' | 'not_helpful'
+export type AiFeedbackOutcome = 'accepted' | 'edited' | 'rejected'
+
+export interface AiRun {
+  id: string
+  organizationId: string
+  userId: string
+  task: AiTask
+  provider: 'heuristic' | 'openai'
+  requestedProvider: 'auto' | 'heuristic' | 'openai'
+  model: string
+  promptVersion: string
+  inputPayload: Record<string, unknown>
+  outputPayload?: Record<string, unknown>
+  confidence: number
+  shouldAbstain: boolean
+  caveats: string[]
+  latencyMs: number
+  attemptCount: number
+  fallbackUsed: boolean
+  usageInputTokens: number
+  usageOutputTokens: number
+  usageTotalTokens: number
+  finishReason: string
+  status: AiRunStatus
+  errorMessage?: string
+  createdAt: string
+}
+
+export interface AiRunFeedback {
+  id: string
+  aiRunId: string
+  organizationId: string
+  userId: string
+  rating: AiFeedbackRating
+  outcome: AiFeedbackOutcome
+  notes?: string
+  editedOutput?: Record<string, unknown>
+  createdAt: string
 }
