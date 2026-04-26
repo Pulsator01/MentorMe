@@ -60,6 +60,9 @@ The current build already includes a routed React product, a Fastify backend wit
 4.  **Open the application**:
     Navigate to `http://localhost:5173` in your browser.
 
+5.  **Product overview (optional)**:
+    Visit `http://localhost:5173/welcome` for the public marketing page (no sign-in required). Authenticated users still land on `/` for the role home.
+
 ## Backend Runtime
 
 The repo now includes a Fastify backend, Prisma schema, and worker scaffold under `backend/`.
@@ -127,30 +130,42 @@ npm run start:api
 npm run start:worker
 ```
 
-For hosted deployments, the API now exposes `GET /healthz` and the repo includes a tracked [render.yaml](/Users/owlxshri/Desktop/MentorMe/render.yaml) blueprint for the frontend, API, worker, and PostgreSQL stack.
+For hosted deployments, the API now exposes `GET /healthz` and the repo includes a tracked [render.yaml](./render.yaml) blueprint for the frontend, API, worker, and PostgreSQL stack.
 
 For a real deployment, set at least:
 
 - `VITE_API_BASE_URL`
 - `DATABASE_URL`
+- `REDIS_URL` (for BullMQ outbox workers; Render blueprint provisions Redis)
 - `JWT_SECRET`
 - `JWT_ISSUER`
 - `JWT_AUDIENCE`
 - `COOKIE_SECRET`
+- `ALLOWED_ORIGINS` (comma-separated SPA origins for credentialed CORS in production)
+- `TRUST_PROXY` or rely on `RENDER=true` so rate limits see real client IPs
 - `AI_PROVIDER`
 - `AI_JUDGE_PROVIDER`
 - `OPENAI_API_KEY` if using the OpenAI-backed path
+- `RESEND_API_KEY` + `EMAIL_FROM` for real outbound email (optional in dev)
+- S3/R2 variables (`S3_BUCKET`, `S3_REGION`, keys, optional `S3_ENDPOINT`) for presigned artifact uploads (optional in dev)
+- `SENTRY_DSN` (optional) for API and worker error reporting
 
-The frontend can stay on a static host such as Vercel with the existing [vercel.json](/Users/owlxshri/Desktop/MentorMe/vercel.json), or you can deploy the full stack with the tracked Render blueprint. The Fastify API honors the platform `PORT` env, and the worker shares the same Prisma-backed persistence contract.
+See [docs/infra-setup.md](./docs/infra-setup.md) for Resend, R2/S3, Redis, security headers, rate limits, and Sentry wiring.
+
+The frontend can stay on a static host such as Vercel with the existing [vercel.json](./vercel.json), or you can deploy the full stack with the tracked Render blueprint. The Fastify API honors the platform `PORT` env, and the worker shares the same Prisma-backed persistence contract.
+
+## Changelog
+
+Release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Review Docs
 
 For the code review package, use:
-- [docs/code-review-readiness.md](/Users/owlxshri/Desktop/MentorMe/docs/code-review-readiness.md)
-- [docs/frontend-system.md](/Users/owlxshri/Desktop/MentorMe/docs/frontend-system.md)
-- [docs/persistence-architecture.md](/Users/owlxshri/Desktop/MentorMe/docs/persistence-architecture.md)
-- [docs/system-architecture.md](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.md)
-- [docs/system-architecture.html](/Users/owlxshri/Desktop/MentorMe/docs/system-architecture.html)
+- [docs/code-review-readiness.md](./docs/code-review-readiness.md)
+- [docs/frontend-system.md](./docs/frontend-system.md)
+- [docs/persistence-architecture.md](./docs/persistence-architecture.md)
+- [docs/system-architecture.md](./docs/system-architecture.md)
+- [docs/system-architecture.html](./docs/system-architecture.html)
 
 ## Design System
 
@@ -163,6 +178,6 @@ The application uses a custom theme defined in `src/index.css`:
 
 For the current mid-sem presentation materials, use:
 
-- [docs/midsem-audit-2026-03-20.md](/Users/owlxshri/Desktop/MentorMe/docs/midsem-audit-2026-03-20.md)
-- [docs/midsem-video-scripts-and-slides.md](/Users/owlxshri/Desktop/MentorMe/docs/midsem-video-scripts-and-slides.md)
-- [docs/midsem-readiness.md](/Users/owlxshri/Desktop/MentorMe/docs/midsem-readiness.md)
+- [docs/midsem-audit-2026-03-20.md](./docs/midsem-audit-2026-03-20.md)
+- [docs/midsem-video-scripts-and-slides.md](./docs/midsem-video-scripts-and-slides.md)
+- [docs/midsem-readiness.md](./docs/midsem-readiness.md)
