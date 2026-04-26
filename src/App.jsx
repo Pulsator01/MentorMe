@@ -5,7 +5,9 @@ import RequireAuth from './components/RequireAuth'
 import RequireOnboarded from './components/RequireOnboarded'
 import RequireRole from './components/RequireRole'
 import RoleHome from './pages/RoleHome'
-import StudentDashboard from './pages/StudentDashboard'
+import FounderOverviewPage from './pages/founders/FounderOverviewPage'
+import NewRequestPage from './pages/founders/NewRequestPage'
+import FounderPipelinePage from './pages/founders/FounderPipelinePage'
 import StudentWorkspace from './pages/StudentWorkspace'
 import AdminDashboard from './pages/AdminDashboard'
 import MentorDashboard from './pages/MentorDashboard'
@@ -79,7 +81,23 @@ function App() {
             path="/founders"
             element={(
               <ProtectedShell>
-                <StudentDashboard />
+                <FounderOverviewPage />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/founders/new-request"
+            element={(
+              <ProtectedShell>
+                <NewRequestPage />
+              </ProtectedShell>
+            )}
+          />
+          <Route
+            path="/founders/pipeline"
+            element={(
+              <ProtectedShell>
+                <FounderPipelinePage />
               </ProtectedShell>
             )}
           />

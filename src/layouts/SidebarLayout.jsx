@@ -51,7 +51,7 @@ function SidebarLayout({ children }) {
             <NavLink
               key={item.path}
               to={item.path}
-              end={item.path === '/' || item.path === '/founders' || item.path === '/students' || item.path === '/cfe'}
+              end={item.path === '/' || item.path === '/cfe'}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 cn(
