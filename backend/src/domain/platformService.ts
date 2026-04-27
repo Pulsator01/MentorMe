@@ -10,8 +10,11 @@ import type {
 } from './interfaces'
 import type { PasswordHasher } from '../infra/passwordHasher'
 import { safeAppRedirectPath } from '../util/safeRedirectPath'
+import { getAiMeta } from '../ai/meta'
 import { artifactStorageKey, futureIso, nextPrefixedId, nowIso, randomToken, sha256 } from './id'
 import type {
+  AiRun,
+  AiTask,
   Artifact,
   AuditEvent,
   Invitation,
@@ -1607,9 +1610,9 @@ export class PlatformService {
     }
 
     const payload = requestBriefSchema.parse(input)
-    return {
-      suggestion: await this.deps.ai.generateRequestBrief(payload),
-    }
+    const suggestion = await this.deps.ai.generateRequestBrief(payload)
+    await this.persistAiRunFromGatewayOutput(user, 'request_brief', payload as Record<string, unknown>, suggestion)
+    return { suggestion }
   }
 
   async generateMeetingSummary(user: User, input: unknown) {
@@ -1618,9 +1621,9 @@ export class PlatformService {
     }
 
     const payload = meetingSummarySchema.parse(input)
-    return {
-      summary: await this.deps.ai.generateMeetingSummary(payload),
-    }
+    const summary = await this.deps.ai.generateMeetingSummary(payload)
+    await this.persistAiRunFromGatewayOutput(user, 'meeting_summary', payload as Record<string, unknown>, summary)
+    return { summary }
   }
 
   async generateMentorRecommendations(user: User, input: unknown) {
@@ -1656,12 +1659,59 @@ export class PlatformService {
       }
     }
 
-    return {
-      recommendations: await this.deps.ai.recommendMentors({
-        ...payload,
-        candidates,
-      }),
+    const recommendations = await this.deps.ai.recommendMentors({
+      ...payload,
+      candidates,
+    })
+    await this.persistAiRunFromGatewayOutput(
+      user,
+      'mentor_recommendation',
+      { ...payload, candidateIds: candidates.map((c) => c.id) } as Record<string, unknown>,
+      recommendations,
+    )
+    return { recommendations }
+  }
+
+  private async persistAiRunFromGatewayOutput(
+    user: User,
+    task: AiTask,
+    inputPayload: Record<string, unknown>,
+    output: unknown,
+  ) {
+    const meta = getAiMeta(output)
+    if (!meta) {
+      return
     }
+
+    const outputPayload = JSON.parse(JSON.stringify(output)) as Record<string, unknown>
+    const provider: AiRun['provider'] = outputPayload.provider === 'openai' ? 'openai' : 'heuristic'
+
+    const run: AiRun = {
+      id: `airun-${randomToken().slice(0, 12)}`,
+      organizationId: user.organizationId,
+      userId: user.id,
+      task,
+      provider,
+      requestedProvider: meta.requestedProvider,
+      model: meta.model,
+      promptVersion: meta.promptVersion,
+      inputPayload,
+      outputPayload,
+      confidence: meta.confidence,
+      shouldAbstain: meta.shouldAbstain,
+      caveats: meta.caveats,
+      latencyMs: meta.latencyMs,
+      attemptCount: meta.attemptCount,
+      fallbackUsed: meta.fallbackUsed,
+      usageInputTokens: meta.usageInputTokens,
+      usageOutputTokens: meta.usageOutputTokens,
+      usageTotalTokens: meta.usageTotalTokens,
+      finishReason: meta.finishReason,
+      status: 'completed',
+      createdAt: nowIso(),
+    }
+
+    await this.deps.repository.saveAiRun(run)
   }
 
   private async signAccessToken(user: User) {

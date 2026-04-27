@@ -62,6 +62,14 @@ export const createSeedState = () => {
       name: 'Neha from CFE',
       role: 'cfe',
     },
+    {
+      id: 'user-mentor-radhika',
+      organizationId: organization.id,
+      cohortId: cohort.id,
+      email: 'radhika@mentorme.test',
+      name: 'Dr. Radhika Menon',
+      role: 'mentor',
+    },
   ]
 
   const ventures: Venture[] = [

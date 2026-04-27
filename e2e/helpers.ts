@@ -29,15 +29,20 @@ const isRequestListPath = (url: string) => {
   }
 }
 
-export const gotoAndHydrate = async (page: Page, pathname: string) => {
-  const hydration = waitForRouteHydration(page)
+type GotoHydrateOptions = {
+  /** After the first booted session, further navigations do not re-run magic-link verify. */
+  skipMagicLinkVerify?: boolean
+}
+
+export const gotoAndHydrate = async (page: Page, pathname: string, options?: GotoHydrateOptions) => {
+  const hydration = options?.skipMagicLinkVerify ? waitForStateSync(page) : waitForRouteHydration(page)
 
   await page.goto(pathname)
   await hydration
 }
 
 export const reloadAndHydrate = async (page: Page) => {
-  const hydration = waitForRouteHydration(page)
+  const hydration = waitForStateSync(page)
 
   await page.reload()
   await hydration

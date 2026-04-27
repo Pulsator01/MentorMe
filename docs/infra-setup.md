@@ -31,6 +31,21 @@ same set of gateways selected by the same env vars.
 
 ---
 
+## Database migrations
+
+Schema changes ship as SQL migrations under `backend/prisma/migrations/`. After
+pulling new code, apply them to the target database before starting processes:
+
+```bash
+npx prisma migrate deploy --schema backend/prisma/schema.prisma
+```
+
+On Render, the tracked [`render.yaml`](../render.yaml) blueprint sets
+`preDeployCommand` to that command for both the API and worker services so each
+deploy runs migrations against `DATABASE_URL` automatically.
+
+---
+
 ## Selecting the runtime mode
 
 | Service | Real gateway is selected when… | Otherwise falls back to |

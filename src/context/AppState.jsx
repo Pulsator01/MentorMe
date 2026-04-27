@@ -285,6 +285,10 @@ const getRoleEmailForPath = (path) => {
     return 'ria.student@mentorme.test'
   }
 
+  if (path.startsWith('/mentors')) {
+    return 'radhika@mentorme.test'
+  }
+
   return 'aarav.sharma@mentorme.test'
 }
 
@@ -737,7 +741,16 @@ export const createApiClient = (baseUrl) => {
   }
 }
 
-const PUBLIC_PATH_PREFIXES = ['/login', '/signup', '/forgot-password', '/reset-password', '/auth', '/mentors/action', '/invite']
+const PUBLIC_PATH_PREFIXES = [
+  '/welcome',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/auth',
+  '/mentors/action',
+  '/invite',
+]
 
 const isPublicPath = (pathname) => PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))
 
@@ -753,10 +766,13 @@ export function AppStateProvider({ children }) {
     notifications: [],
   })
   const stateRef = useRef(state)
+  const pathRef = useRef(location.pathname)
   const backendRef = useRef({
     client: null,
     ready: false,
   })
+
+  pathRef.current = location.pathname
 
   useEffect(() => {
     stateRef.current = state
@@ -863,6 +879,24 @@ export function AppStateProvider({ children }) {
         }
 
         if (!session) {
+          const playwrightAuto = import.meta.env.VITE_PLAYWRIGHT_AUTO_AUTH === 'true'
+          const pathAtBoot = pathRef.current
+          if (playwrightAuto && !isPublicPath(pathAtBoot)) {
+            try {
+              await client.loginForPath(pathAtBoot)
+              const retry = await client.bootstrap()
+              if (!active) {
+                return
+              }
+              if (retry) {
+                backendRef.current.ready = true
+                dispatch({ type: 'set-user', payload: { user: retry.user, bootStatus: 'authenticated' } })
+                return
+              }
+            } catch {
+              // fall through to unauthenticated
+            }
+          }
           backendRef.current.ready = false
           dispatch({ type: 'set-user', payload: { user: null, bootStatus: 'unauthenticated' } })
           return

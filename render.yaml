@@ -16,6 +16,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm run prisma:generate
+    preDeployCommand: npx prisma migrate deploy --schema backend/prisma/schema.prisma
     startCommand: npm run start:api
     healthCheckPath: /healthz
     envVars:
@@ -102,6 +103,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci && npm run prisma:generate
+    preDeployCommand: npx prisma migrate deploy --schema backend/prisma/schema.prisma
     startCommand: npm run start:worker
     envVars:
       - key: NODE_VERSION

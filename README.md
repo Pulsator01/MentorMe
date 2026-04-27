@@ -88,6 +88,18 @@ npm run prisma:seed
 npm run e2e:prisma
 ```
 
+For production or CI against an existing database, apply pending migrations with:
+
+```bash
+npx prisma migrate deploy --schema backend/prisma/schema.prisma
+```
+
+The Render blueprint in `render.yaml` runs the same command as `preDeployCommand` on the API and worker services before each release.
+
+`npm run e2e:prisma` reads `DATABASE_URL` (and other vars) from a repo-root `.env` when they are not already present in the environment, matching the Playwright setup.
+
+Browser E2E (`npm run e2e:ui`) starts Vite with `VITE_PLAYWRIGHT_AUTO_AUTH=true` so protected routes can obtain a seeded-role session via the debug magic-link path (see `playwright.config.ts` and `AppState.jsx`). Do not enable that flag in production builds.
+
 The default local `.env` expects PostgreSQL on `localhost:5432`. For local demo auth, the API expects `EXPOSE_DEBUG_TOKENS=true`, which is already set by `npm run dev:full`.
 
 ## AI Endpoints And Evals
