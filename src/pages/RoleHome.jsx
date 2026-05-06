@@ -1,6 +1,10 @@
-import { ArrowRight, LayoutDashboard, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, Briefcase, GraduationCap, LayoutDashboard, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+const MotionDiv = motion.div
 import { SectionCard } from '../components/ui'
+import WarpBackground from '../components/WarpBackground'
 
 const roles = [
   {
@@ -8,55 +12,77 @@ const roles = [
     path: '/founders',
     icon: Sparkles,
     description: 'Request mentors, attach context, and track venture-level follow-through.',
+    accent: 'border-l-amber-400',
   },
   {
     title: 'Students',
     path: '/students',
-    icon: Users,
+    icon: GraduationCap,
     description: 'Prepare meeting notes, upload material, and stay on top of nudges and follow-ups.',
+    accent: 'border-l-sky-400',
   },
   {
     title: 'Mentors',
     path: '/mentors/desk',
-    icon: Users,
+    icon: Briefcase,
     description: 'Open the secure outreach desk, accept or decline requests, and leave feedback after the call.',
+    accent: 'border-l-emerald-400',
   },
   {
     title: 'CFE Team',
     path: '/cfe',
     icon: LayoutDashboard,
     description: 'Approve requests, manage mentor visibility, and keep the pipeline moving cleanly.',
+    accent: 'border-l-rose-400',
   },
 ]
 
 function RoleHome() {
   return (
-    <div className="space-y-6 pb-8">
-      <SectionCard className="bg-slate-950 text-white">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-300">Workspace Home</p>
-        <h1 className="mt-4 text-3xl font-semibold tracking-tight md:text-4xl">Choose the role-specific workspace you actually need.</h1>
-        <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 md:text-base">
-          This should not feel like one crowded page pretending to serve everyone. Founders, students, mentors, and the CFE team each get their own clearer flow.
-        </p>
+    <MotionDiv
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="space-y-6 pb-10"
+    >
+      <SectionCard className="relative overflow-hidden bg-slate-950 text-white sm:p-10">
+        <WarpBackground speed={0.12} starCount={80} />
+        <div className="relative z-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">Workspace Home</p>
+          <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-[2.5rem]">Choose the role-specific workspace you actually need.</h1>
+          <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-300">
+            Founders, students, mentors, and the CFE team each get their own focused flow.
+          </p>
+        </div>
       </SectionCard>
 
-      <div className="grid gap-4 xl:grid-cols-4">
-        {roles.map((role) => (
-          <SectionCard key={role.title}>
-            <role.icon size={18} className="text-slate-500" />
-            <h2 className="mt-4 text-xl font-semibold tracking-tight text-slate-950">{role.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-600">{role.description}</p>
-            <Link
-              to={role.path}
-              className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
-            >
-              Open workspace
-              <ArrowRight size={16} />
-            </Link>
-          </SectionCard>
+      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
+        {roles.map((role, i) => (
+          <MotionDiv
+            key={role.title}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + i * 0.08, duration: 0.4, ease: 'easeOut' }}
+            whileHover={{ y: -3 }}
+          >
+            <SectionCard className={`h-full border-l-4 ${role.accent}`}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                <role.icon size={18} />
+              </span>
+              <h2 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">{role.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-500">{role.description}</p>
+              <Link
+                to={role.path}
+                className="group mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+              >
+                Open workspace
+                <ArrowRight size={16} className="transition group-hover:translate-x-0.5" />
+              </Link>
+            </SectionCard>
+          </MotionDiv>
         ))}
       </div>
-    </div>
+    </MotionDiv>
   )
 }
 

@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { useAppState } from '../../context/AppState'
 import KanbanBoard from '../../components/KanbanBoard'
 import { SectionCard, SectionHeading } from '../../components/ui'
-import CfeSubNav from './CfeSubNav'
 
 function CfePipelinePage() {
   const { requests, mentors, approveRequest, rejectRequest, createMentorOutreach, closeRequest } = useAppState()
@@ -38,8 +37,6 @@ function CfePipelinePage() {
 
   return (
     <div className="space-y-5 pb-8">
-      <CfeSubNav />
-
       {mentorLinkPreview ? (
         <SectionCard>
           <SectionHeading

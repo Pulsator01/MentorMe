@@ -7,7 +7,7 @@ export function SectionCard({ children, className }) {
   return (
     <section
       className={cn(
-        'rounded-3xl border border-slate-200 bg-white p-6 shadow-sm',
+        'rounded-3xl border border-slate-200 bg-white p-7 shadow-sm sm:p-8 lg:p-10',
         className,
       )}
     >
@@ -18,13 +18,13 @@ export function SectionCard({ children, className }) {
 
 export function SectionHeading({ eyebrow, title, description, action }) {
   return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-      <div className="max-w-2xl">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="max-w-3xl">
         {eyebrow ? (
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{eyebrow}</p>
         ) : null}
-        <h2 className="text-xl font-semibold tracking-tight text-slate-950 md:text-2xl">{title}</h2>
-        {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p> : null}
+        <h2 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-[1.65rem]">{title}</h2>
+        {description ? <p className="mt-2 max-w-3xl text-[15px] leading-7 text-slate-500">{description}</p> : null}
       </div>
       {action}
     </div>
@@ -40,15 +40,15 @@ export function StatCard({ label, value, detail, accent = 'amber' }) {
   }
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md lg:p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</p>
-          <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{label}</p>
+          <p className="mt-3 text-4xl font-semibold tracking-tight text-slate-950">{value}</p>
         </div>
-        <span className={cn('mt-1 h-2.5 w-2.5 rounded-full', accents[accent])} />
+        <span className={cn('mt-1 h-3 w-3 rounded-full', accents[accent])} />
       </div>
-      <p className="mt-3 text-sm leading-6 text-slate-600">{detail}</p>
+      <p className="mt-4 text-sm leading-6 text-slate-500">{detail}</p>
     </div>
   )
 }

@@ -29,6 +29,7 @@ import FounderOnboardingPage from './pages/onboarding/FounderOnboardingPage'
 import StudentOnboardingPage from './pages/onboarding/StudentOnboardingPage'
 import InvitationAcceptPage from './pages/invitations/InvitationAcceptPage'
 import MarketingPage from './pages/MarketingPage'
+import DemoToggle from './components/DemoToggle'
 
 function ProtectedShell({ children }) {
   return (
@@ -48,6 +49,7 @@ function App() {
   return (
     <Router>
       <AppStateProvider>
+        {!import.meta.env.VITE_API_BASE_URL && <DemoToggle />}
         <Routes>
           <Route path="/welcome" element={<MarketingPage />} />
           <Route path="/login" element={<LoginPage />} />

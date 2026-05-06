@@ -9,7 +9,7 @@ function SubNav({ items, ariaLabel }) {
   return (
     <nav
       aria-label={ariaLabel}
-      className="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-2 shadow-sm"
+      className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"
     >
       {items.map((item) => (
         <NavLink
@@ -18,10 +18,10 @@ function SubNav({ items, ariaLabel }) {
           end={item.end ?? true}
           className={({ isActive }) =>
             cn(
-              'inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition',
+              'inline-flex flex-1 min-w-[140px] items-center justify-center gap-2 rounded-xl border px-5 py-3 text-sm font-semibold transition',
               isActive
                 ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-transparent text-slate-700 hover:border-slate-200 hover:bg-slate-50',
+                : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50',
             )
           }
         >

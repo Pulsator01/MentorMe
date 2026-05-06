@@ -18,24 +18,22 @@ describe('CFE workspace multi-page split', () => {
     vi.unstubAllEnvs()
   })
 
-  it('renders the CFE overview with stat cards, guardrails, and the sub-navigation', async () => {
+  it('renders the CFE overview with stat cards, guardrails, and sidebar navigation', async () => {
     renderAtRoute('/cfe')
 
     expect(
       await screen.findByRole('heading', {
-        name: /triage mentor access without turning the workflow into a mess/i,
+        name: /triage mentor access without the admin mess/i,
       }),
     ).toBeInTheDocument()
 
-    const subNav = screen.getByRole('navigation', { name: /cfe workspace sections/i })
-    expect(within(subNav).getByRole('link', { name: /overview/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /pipeline/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /mentor network/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /invitations/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /pipeline/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /mentor network/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /invitations/i }).length).toBeGreaterThan(0)
 
     expect(screen.getAllByText(/live pipeline/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/review queue/i).length).toBeGreaterThan(0)
-    expect(screen.getByText(/keep the guardrails simple/i)).toBeInTheDocument()
   })
 
   it('does not render the kanban on the overview page (kanban moved to pipeline)', async () => {
@@ -43,7 +41,7 @@ describe('CFE workspace multi-page split', () => {
 
     expect(
       await screen.findByRole('heading', {
-        name: /triage mentor access without turning the workflow into a mess/i,
+        name: /triage mentor access without the admin mess/i,
       }),
     ).toBeInTheDocument()
     expect(screen.queryByTestId('kanban-column-cfe_review')).not.toBeInTheDocument()
@@ -53,7 +51,7 @@ describe('CFE workspace multi-page split', () => {
   it('navigates from overview to pipeline via the quick action card', async () => {
     renderAtRoute('/cfe')
 
-    const quickAction = await screen.findByRole('link', { name: /go to pipeline/i })
+    const quickAction = await screen.findByRole('link', { name: /open the pipeline board/i })
     fireEvent.click(quickAction)
 
     expect(await screen.findByTestId('kanban-column-cfe_review')).toBeInTheDocument()
@@ -68,11 +66,11 @@ describe('CFE workspace multi-page split', () => {
     expect(screen.getByTestId('request-card-req-002')).toBeInTheDocument()
   })
 
-  it('lets CFE move from pipeline to mentor network via the sub-navigation', async () => {
+  it('lets CFE move from pipeline to mentor network via the sidebar navigation', async () => {
     renderAtRoute('/cfe/pipeline')
 
-    const subNav = await screen.findByRole('navigation', { name: /cfe workspace sections/i })
-    fireEvent.click(within(subNav).getByRole('link', { name: /mentor network/i }))
+    const networkLink = await screen.findByRole('link', { name: /mentor network/i })
+    fireEvent.click(networkLink)
 
     expect(
       await screen.findByRole('heading', {

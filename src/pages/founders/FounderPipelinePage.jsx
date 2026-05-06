@@ -9,7 +9,6 @@ import {
   StatCard,
   cn,
 } from '../../components/ui'
-import FounderSubNav from './FounderSubNav'
 import {
   filterFounderRequests,
   formatDate,
@@ -82,8 +81,6 @@ function FounderPipelinePage() {
 
   return (
     <div className="space-y-5 pb-8">
-      <FounderSubNav />
-
       <SectionCard>
         <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
           <div>
@@ -94,7 +91,7 @@ function FounderPipelinePage() {
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
               Every request stays visible after submission so the founder can tell whether it is waiting, scheduled, or needs revision.
             </p>
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="In queue" value={counts.queued} detail="Draft, review, or mentor routing work that is still open." accent="amber" />
               <StatCard label="Scheduled" value={counts.scheduled} detail="Sessions that already have a meeting slot attached." accent="cyan" />
               <StatCard label="Needs work" value={counts.needsWork} detail="Requests that need a sharper brief before CFE sends them on." accent="rose" />

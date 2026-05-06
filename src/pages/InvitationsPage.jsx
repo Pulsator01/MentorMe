@@ -3,7 +3,6 @@ import { Copy, Mail, RefreshCw, Trash2 } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { Badge, SectionCard, SectionHeading, StatCard, cn } from '../components/ui'
 import { Field, FieldGroup, FormError, FormNotice, PrimaryButton, SecondaryButton, Select, Textarea } from '../components/forms'
-import CfeSubNav from './cfe/CfeSubNav'
 
 const ROLE_OPTIONS = [
   { value: 'founder', label: 'Founder' },
@@ -164,7 +163,6 @@ function InvitationsPage() {
   if (mode === 'local') {
     return (
       <div className="space-y-5 pb-8">
-        <CfeSubNav />
         <SectionCard>
           <SectionHeading
             eyebrow="Invitations"
@@ -181,7 +179,6 @@ function InvitationsPage() {
   if (!canManage) {
     return (
       <div className="space-y-5 pb-8">
-        <CfeSubNav />
         <SectionCard>
           <SectionHeading
             eyebrow="Invitations"
@@ -195,7 +192,6 @@ function InvitationsPage() {
 
   return (
     <div className="space-y-5 pb-8">
-      <CfeSubNav />
       <SectionCard>
         <SectionHeading
           eyebrow="Invitations"

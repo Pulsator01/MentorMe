@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, BrainCircuit } from 'lucide-react'
 import { useAppState } from '../../context/AppState'
 import { Badge, SectionCard, SectionHeading } from '../../components/ui'
-import StudentSubNav from './StudentSubNav'
 import { filterFounderRequests } from '../founders/founderHelpers'
 
 const DEFAULT_NOTES =
@@ -48,10 +47,8 @@ function StudentFollowUpPage() {
 
   return (
     <div className="space-y-6 pb-8">
-      <StudentSubNav />
-
       <SectionCard>
-        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">AI follow-up</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">

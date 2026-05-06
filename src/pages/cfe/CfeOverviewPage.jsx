@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+const MotionDiv = motion.div
 import { Activity, ArrowRight, ClipboardList, Mail, ShieldCheck, Users } from 'lucide-react'
 import { useAppState } from '../../context/AppState'
 import { Badge, SectionCard, SectionHeading, StatCard } from '../../components/ui'
-import CfeSubNav from './CfeSubNav'
 
 const QUICK_ACTIONS = [
   {
@@ -22,7 +24,7 @@ const QUICK_ACTIONS = [
   },
   {
     title: 'Issue or revoke invitations',
-    description: 'Bring founders, students, mentors, and CFE admins into the workspace cleanly.',
+    description: 'Bring founders, students, mentors, and CFE admins into the workspace.',
     to: '/cfe/invitations',
     cta: 'Manage invitations',
     icon: Mail,
@@ -76,100 +78,79 @@ function CfeOverviewPage() {
   )
 
   return (
-    <div className="space-y-5 pb-8">
-      <CfeSubNav />
-
-      <SectionCard>
-        <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+    <MotionDiv
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="space-y-6 pb-10"
+    >
+      <SectionCard className="bg-slate-950 text-white sm:p-10">
+        <div className="grid gap-8 xl:grid-cols-[1.3fr_0.7fr]">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">CFE team workspace</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
-              Triage mentor access without turning the workflow into a mess.
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">CFE team workspace</p>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-[2.5rem]">
+              Triage mentor access without the admin mess.
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
-              The overview keeps the queue numbers honest. Use the pipeline page to act, the mentor network page to manage capacity, and the invitations page to bring people in.
+            <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
+              Use the pipeline to act, the mentor network to manage capacity, and the invitations page to bring people in.
             </p>
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label="Live pipeline"
-                value={stats.live}
-                detail="Requests still moving through review, revision, routing, or scheduling."
-                accent="amber"
-              />
-              <StatCard
-                label="Review queue"
-                value={stats.reviewQueue}
-                detail="Submissions waiting for a CFE go or no-go decision."
-                accent="rose"
-              />
-              <StatCard
-                label="Needs work"
-                value={stats.needsWork}
-                detail="Requests that were returned for better context or better material."
-                accent="rose"
-              />
-              <StatCard
-                label="Scheduled"
-                value={stats.scheduled}
-                detail="Approved sessions that already have a slot or meeting link."
-                accent="cyan"
-              />
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="Live pipeline" value={stats.live} detail="Requests moving through the system." accent="amber" />
+              <StatCard label="Review queue" value={stats.reviewQueue} detail="Waiting for a CFE go/no-go." accent="rose" />
+              <StatCard label="Needs work" value={stats.needsWork} detail="Returned for better context." accent="rose" />
+              <StatCard label="Scheduled" value={stats.scheduled} detail="Sessions with a confirmed slot." accent="cyan" />
             </div>
           </div>
 
-          <div className="grid gap-3">
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <ShieldCheck size={18} className="text-slate-500" aria-hidden="true" />
-              <h2 className="mt-4 text-lg font-semibold text-slate-950">Keep the guardrails simple</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                No direct founder-to-mentor access. CFE approves the handoff after checking stage, artifacts, and patience fit.
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <ShieldCheck size={20} className="text-emerald-400" aria-hidden="true" />
+              <h2 className="mt-4 text-lg font-semibold">No direct founder-to-mentor access</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                CFE approves the handoff after checking stage, artifacts, and patience fit.
               </p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <Users size={18} className="text-slate-500" aria-hidden="true" />
-              <h2 className="mt-4 text-lg font-semibold text-slate-950">{mentorCapacity} monthly mentor slots</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Total active bandwidth across the network. Open Mentor Network to pause visibility or lower monthly capacity.
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <Users size={20} className="text-sky-400" aria-hidden="true" />
+              <h2 className="mt-4 text-lg font-semibold">{mentorCapacity} monthly mentor slots</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Total active bandwidth. Open the network to adjust capacity.
               </p>
             </div>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <Activity size={18} className="text-slate-500" aria-hidden="true" />
-              <h2 className="mt-4 text-lg font-semibold text-slate-950">TRL 3 is the serious mentoring threshold</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Lower-readiness ventures can still ask for help, but CFE should be selective about spending mentor time too early.
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+              <Activity size={20} className="text-amber-400" aria-hidden="true" />
+              <h2 className="mt-4 text-lg font-semibold">TRL 3 mentoring threshold</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Be selective about spending mentor time on lower-readiness ventures.
               </p>
             </div>
           </div>
         </div>
       </SectionCard>
 
-      <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard>
           <SectionHeading
             eyebrow="Quick actions"
-            title="Move work without scrolling the whole page"
-            description="Each CFE responsibility lives behind one click so the workspace stays focused."
+            title="Move work forward"
           />
-          <div className="space-y-3">
+          <div className="space-y-4">
             {QUICK_ACTIONS.map((action) => (
               <Link
                 key={action.to}
                 to={action.to}
-                className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white"
+                className="group flex items-center justify-between gap-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-5 transition hover:border-slate-300 hover:bg-white hover:shadow-sm"
               >
-                <div className="flex items-start gap-3">
-                  <span className="rounded-2xl bg-white p-3 text-slate-700 shadow-sm">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
                     <action.icon size={18} aria-hidden="true" />
                   </span>
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">{action.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-600">{action.description}</p>
+                    <p className="font-semibold text-slate-950">{action.title}</p>
+                    <p className="mt-1.5 text-sm leading-6 text-slate-500">{action.description}</p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-2 self-center text-sm font-semibold text-slate-700">
-                  {action.cta}
-                  <ArrowRight size={14} aria-hidden="true" />
-                </span>
+                <ArrowRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-1 group-hover:text-slate-700" aria-hidden="true" />
               </Link>
             ))}
           </div>
@@ -178,12 +159,11 @@ function CfeOverviewPage() {
         <SectionCard>
           <SectionHeading
             eyebrow="Recent activity"
-            title="Requests waiting on a CFE decision"
-            description="A short list so the team can decide where to start. The full board lives on the pipeline page."
+            title="Requests waiting on a decision"
             action={
               <Link
                 to="/cfe/pipeline"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-slate-50"
               >
                 Open pipeline
                 <ArrowRight size={14} aria-hidden="true" />
@@ -191,27 +171,27 @@ function CfeOverviewPage() {
             }
           />
           {recentActivity.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
-              No active CFE work right now. Approved requests show up on the pipeline as they come in.
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-500">
+              No active CFE work right now.
             </div>
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {recentActivity.map((request) => (
                 <li
                   key={request.id}
                   data-testid={`cfe-recent-${request.id.toLowerCase()}`}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                  className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{request.id}</p>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{request.id}</p>
                         <Badge tone={STATUS_TONES[request.status] || 'slate'}>
                           {STATUS_LABELS[request.status] || request.status.replace('_', ' ')}
                         </Badge>
                       </div>
-                      <h3 className="mt-2 text-sm font-semibold text-slate-950">{request.ventureName}</h3>
-                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{request.challenge}</p>
+                      <h3 className="mt-2 font-semibold text-slate-950">{request.ventureName}</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{request.challenge}</p>
                     </div>
                     <Badge tone={request.trl >= 3 ? 'emerald' : 'rose'}>TRL {request.trl}</Badge>
                   </div>
@@ -221,7 +201,7 @@ function CfeOverviewPage() {
           )}
         </SectionCard>
       </div>
-    </div>
+    </MotionDiv>
   )
 }
 

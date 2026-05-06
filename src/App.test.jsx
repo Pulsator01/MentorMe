@@ -61,9 +61,7 @@ describe('MentorMe role-based frontend', () => {
 
     expect(await screen.findByRole('button', { name: /naval shah/i })).toBeInTheDocument()
 
-    fireEvent.click(screen.getAllByRole('link', { name: /cfe team/i })[0])
-    const cfeSubNav = await screen.findByRole('navigation', { name: /cfe workspace sections/i })
-    fireEvent.click(within(cfeSubNav).getByRole('link', { name: /mentor network/i }))
+    fireEvent.click(screen.getAllByRole('link', { name: /mentor network/i })[0])
     fireEvent.click(screen.getAllByRole('button', { name: /pause visibility/i })[0])
 
     fireEvent.click(screen.getAllByRole('link', { name: /founders/i })[0])
@@ -92,7 +90,7 @@ describe('MentorMe role-based frontend', () => {
     expect(await screen.findByText(/ecodrone systems is in needs work/i)).toBeInTheDocument()
     expect(screen.getByText(/revise brief/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('link', { name: /^pipeline$/i }))
+    fireEvent.click(screen.getAllByRole('link', { name: /^pipeline$/i })[0])
 
     expect(await screen.findByTestId('founder-request-req-002')).toBeInTheDocument()
 

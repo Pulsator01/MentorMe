@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { Search, SlidersHorizontal, UserPlus2 } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { Badge, ProgressBar, SectionCard, SectionHeading } from '../components/ui'
-import CfeSubNav from './cfe/CfeSubNav'
 
 const emptyForm = {
   name: '',
@@ -53,7 +52,6 @@ function MentorPortfolio() {
 
   return (
     <div className="space-y-5 pb-8">
-      <CfeSubNav />
       <SectionCard>
         <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
           <div>
@@ -200,7 +198,7 @@ function MentorPortfolio() {
           }
         />
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {filteredMentors.map((mentor) => {
             const load = getMentorLoad(mentor.id)
 

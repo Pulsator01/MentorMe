@@ -18,7 +18,7 @@ describe('Student workspace multi-page split', () => {
     vi.unstubAllEnvs()
   })
 
-  it('renders the student overview with sub-navigation and the prep checklist', async () => {
+  it('renders the student overview with sidebar navigation and the prep checklist', async () => {
     renderAtRoute('/students')
 
     expect(
@@ -27,9 +27,8 @@ describe('Student workspace multi-page split', () => {
       }),
     ).toBeInTheDocument()
 
-    const subNav = screen.getByRole('navigation', { name: /student workspace sections/i })
-    expect(within(subNav).getByRole('link', { name: /workspace/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /ai follow-up/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /ai follow-up/i }).length).toBeGreaterThan(0)
 
     expect(screen.getByRole('heading', { name: /pre-read pack/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /meeting prep/i })).toBeInTheDocument()
@@ -42,8 +41,9 @@ describe('Student workspace multi-page split', () => {
   it('navigates from the overview into the AI follow-up page via the highlight card', async () => {
     renderAtRoute('/students')
 
-    const subNav = await screen.findByRole('navigation', { name: /student workspace sections/i })
-    expect(within(subNav).getByRole('link', { name: /ai follow-up/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', {
+      name: /keep student-facing work simple/i,
+    })).toBeInTheDocument()
 
     const highlight = screen.getByRole('link', { name: /open ai follow-up/i })
     fireEvent.click(highlight)

@@ -30,23 +30,23 @@ function NudgeItem({ item, last }) {
 
   return (
     <div className="relative pl-8">
-      {!last ? <div className={`absolute left-[9px] top-7 bottom-[-18px] w-px ${style.line}`} /> : null}
+      {!last ? <div className={`absolute left-[9px] top-7 bottom-[-22px] w-px ${style.line}`} /> : null}
       <MotionDiv
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.3 }}
         transition={{ duration: 0.35 }}
-        className={`rounded-[24px] border p-4 ${style.card}`}
+        className={`rounded-2xl border p-5 ${style.card}`}
       >
         <div className="absolute left-0 top-5 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full border border-white bg-slate-950 text-white">
           <Icon size={12} className={style.iconClass} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">{item.time}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{item.time}</p>
           {item.action ? (
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
             >
               <FileUp size={12} />
               {item.action}
@@ -54,7 +54,7 @@ function NudgeItem({ item, last }) {
           ) : null}
         </div>
         <h3 className="mt-3 text-base font-semibold text-slate-950">{item.title}</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
       </MotionDiv>
     </div>
   )
@@ -62,7 +62,7 @@ function NudgeItem({ item, last }) {
 
 function NudgeFeed({ items }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {items.map((item, index) => (
         <NudgeItem key={item.id} item={item} last={index === items.length - 1} />
       ))}

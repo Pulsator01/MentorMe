@@ -1,16 +1,18 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+const MotionDiv = motion.div
 import { ArrowRight, BookOpenText, BrainCircuit, CalendarClock, CheckCircle2, FileText, Link2 } from 'lucide-react'
 import { useAppState } from '../../context/AppState'
 import NudgeFeed from '../../components/NudgeFeed'
 import { Badge, SectionCard, SectionHeading, StatCard } from '../../components/ui'
-import StudentSubNav from './StudentSubNav'
 import { filterFounderRequests, formatDate } from '../founders/founderHelpers'
 
 const PREP_ITEMS = [
   { icon: FileText, title: 'Pre-read pack', text: 'Pitch deck, one-page brief, and any technical note that CFE asked for.' },
   { icon: CalendarClock, title: 'Meeting prep', text: 'Confirm timing, attendees, and the 2-3 questions that matter most.' },
-  { icon: CheckCircle2, title: 'Follow-up note', text: 'Write down what changed immediately after the meeting while details are still fresh.' },
+  { icon: CheckCircle2, title: 'Follow-up note', text: 'Write down what changed immediately after the meeting while details are fresh.' },
   { icon: Link2, title: 'Useful links', text: 'Keep the meeting link, shared docs, and playbook references together.' },
 ]
 
@@ -74,42 +76,43 @@ function StudentOverviewPage() {
   )
 
   return (
-    <div className="space-y-6 pb-8">
-      <StudentSubNav />
-
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard>
-          <SectionHeading
-            eyebrow="Student Workspace"
-            title="Keep student-facing work simple: prepare, show up, and follow through."
-            description="This workspace is for students supporting the startup journey. It focuses on readiness, meeting prep, materials, and follow-up instead of the full founder request flow."
-          />
-          <div className="grid gap-4 md:grid-cols-3">
+    <MotionDiv
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="space-y-6 pb-10"
+    >
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <SectionCard className="bg-slate-950 text-white sm:p-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">Student Workspace</p>
+          <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Keep student-facing work simple: prepare, show up, and follow through.</h2>
+          <p className="mt-3 max-w-xl text-[15px] leading-7 text-slate-300">Meeting prep, materials, and follow-up — not the full request flow.</p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Upcoming"
               value={upcoming.length}
-              detail="Scheduled sessions that still need prep or attendance confirmation."
+              detail="Sessions that still need prep."
               accent="amber"
             />
             <StatCard
               label="Follow-ups"
               value={followUps.length}
-              detail="Meetings that already happened and need clean documentation."
+              detail="Need clean documentation."
               accent="emerald"
             />
             <StatCard
               label="Playbook"
               value="TRL / BRL"
-              detail="Use the readiness guide before uploading materials or asking for another mentor."
+              detail="Readiness guide for uploads."
               accent="cyan"
             />
           </div>
         </SectionCard>
 
         <SectionCard>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Current venture</p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{venture.name}</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{venture.summary}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Current venture</p>
+          <h2 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">{venture.name}</h2>
+          <p className="mt-3 text-[15px] leading-7 text-slate-500">{venture.summary}</p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Badge>{venture.stage}</Badge>
             <Badge tone="blue">TRL {venture.trl}</Badge>
@@ -117,7 +120,7 @@ function StudentOverviewPage() {
           </div>
           <Link
             to="/playbook"
-            className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-100"
           >
             <BookOpenText size={16} />
             Open readiness playbook
@@ -125,19 +128,24 @@ function StudentOverviewPage() {
         </SectionCard>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard>
           <SectionHeading
             eyebrow="Prep checklist"
-            title="Keep materials and meeting hygiene in one place"
-            description="Students should always know what to upload, what to read, and what to capture after the call."
+            title="Meeting hygiene in one place"
           />
-          <div className="space-y-3">
+          <div className="space-y-4">
             {PREP_ITEMS.map((item) => (
-              <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <item.icon size={16} className="text-slate-500" aria-hidden="true" />
-                <h3 className="mt-3 font-semibold text-slate-950">{item.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
+              <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
+                <div className="flex items-start gap-4">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+                    <item.icon size={16} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h3 className="font-semibold text-slate-950">{item.title}</h3>
+                    <p className="mt-1.5 text-sm leading-6 text-slate-500">{item.text}</p>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -147,7 +155,6 @@ function StudentOverviewPage() {
           <SectionHeading
             eyebrow="Student actions"
             title="What needs attention right now"
-            description="Only surface action-worthy work here so the page stays useful."
           />
           <NudgeFeed
             items={
@@ -171,11 +178,11 @@ function StudentOverviewPage() {
         <SectionHeading
           eyebrow="AI follow-through"
           title="Turn raw meeting notes into clean next steps"
-          description="The AI follow-up assistant takes rough meeting notes and produces founder, student, and CFE action items. It lives on its own page so students can paste a full transcript without losing the prep checklist."
+          description="Paste a full transcript and get founder, student, and CFE action items."
           action={
             <Link
               to="/students/follow-up"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-white"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-300 hover:bg-white"
             >
               <BrainCircuit size={16} aria-hidden="true" />
               Open AI follow-up
@@ -183,11 +190,8 @@ function StudentOverviewPage() {
             </Link>
           }
         />
-        <p className="text-sm leading-6 text-slate-600">
-          Use it after every mentor session: paste the rough notes, generate the summary, and copy the action items into the founder, student, and CFE channels.
-        </p>
       </SectionCard>
-    </div>
+    </MotionDiv>
   )
 }
 

@@ -39,3 +39,6 @@ src/**/*.js
 *.sw?
 
 docs/prd-mentorme-semester-roadmap.md
+
+# Local agent guidance
+CLAUDE.md

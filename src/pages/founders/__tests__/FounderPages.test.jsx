@@ -18,17 +18,16 @@ describe('Founder workspace multi-page split', () => {
     vi.unstubAllEnvs()
   })
 
-  it('renders the overview with all four stats and the sub-navigation', async () => {
+  it('renders the overview with all four stats and sidebar navigation', async () => {
     renderAtRoute('/founders')
 
     expect(
       await screen.findByRole('heading', { name: /build the right mentor ask before cfe routes it/i }),
     ).toBeInTheDocument()
 
-    const subNav = screen.getByRole('navigation', { name: /founder workspace sections/i })
-    expect(within(subNav).getByRole('link', { name: /overview/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /new request/i })).toBeInTheDocument()
-    expect(within(subNav).getByRole('link', { name: /pipeline/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: /new request/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /pipeline/i }).length).toBeGreaterThan(0)
 
     expect(screen.getAllByText(/in queue/i).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/scheduled/i).length).toBeGreaterThan(0)

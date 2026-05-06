@@ -26,8 +26,8 @@ describe('Marketing landing page', () => {
       }),
     ).toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: /sign in to your workspace/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: /create an account/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /choose a workspace/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /enter the platform/i }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /get started/i })).toBeInTheDocument()
   })
 })

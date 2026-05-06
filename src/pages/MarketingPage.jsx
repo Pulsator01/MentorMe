@@ -1,4 +1,9 @@
 import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+const MotionDiv = motion.div
+const MotionH1 = motion.h1
+const MotionP = motion.p
 import {
   ArrowRight,
   BrainCircuit,
@@ -10,6 +15,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Badge, SectionCard, SectionHeading } from '../components/ui'
+import WarpBackground from '../components/WarpBackground'
 
 const pillars = [
   {
@@ -36,24 +42,33 @@ const steps = [
   { n: '04', title: 'Ship with confidence', copy: 'Production email (Resend), object storage (S3/R2), Redis-backed queues, and hardened HTTP defaults when you deploy.' },
 ]
 
+const fadeUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.12, duration: 0.5, ease: 'easeOut' },
+  }),
+}
+
 function MarketingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 text-slate-900">
-      <header className="border-b border-slate-200/80 bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <Link to="/welcome" className="text-sm font-semibold tracking-tight text-slate-950">
+      <header className="absolute inset-x-0 top-0 z-20">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5 sm:px-6">
+          <Link to="/welcome" className="text-sm font-semibold tracking-tight text-white">
             MentorMe
           </Link>
           <nav className="flex items-center gap-2 sm:gap-3">
             <Link
-              to="/login"
-              className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+              to="/"
+              className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
             >
               Sign in
             </Link>
             <Link
-              to="/signup"
-              className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+              to="/founders"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-amber-300"
             >
               Get started
               <ArrowRight size={14} aria-hidden="true" />
@@ -62,49 +77,78 @@ function MarketingPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-16 px-4 py-14 sm:px-6 sm:py-20">
-        <section className="text-center">
-          <Badge tone="amber">Mentor operations platform</Badge>
-          <h1 className="mx-auto mt-5 max-w-3xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
+      <section className="relative overflow-hidden bg-slate-950 pb-20 pt-28 sm:pb-28 sm:pt-36">
+        <WarpBackground speed={0.15} starCount={120} />
+        <div className="relative z-10 mx-auto max-w-6xl px-4 text-center sm:px-6">
+          <MotionDiv custom={0} variants={fadeUp} initial="hidden" animate="visible">
+            <Badge tone="amber">Mentor operations platform</Badge>
+          </MotionDiv>
+          <MotionH1
+            custom={1}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="mx-auto mt-6 max-w-4xl text-5xl font-semibold tracking-tight text-balance text-white sm:text-6xl"
+          >
             The operating system for mentor access inside incubators
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">
+          </MotionH1>
+          <MotionP
+            custom={2}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg"
+          >
             MentorMe replaces ad hoc inboxes and side-channel DMs with one auditable workflow—from founder ask to
             mentor session to CFE closeout—while keeping each role in a focused, multi-page workspace.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          </MotionP>
+          <MotionDiv
+            custom={3}
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="mt-10 flex flex-wrap items-center justify-center gap-3"
+          >
             <Link
-              to="/signup"
-              className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+              to="/founders"
+              className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-amber-400/20 transition hover:bg-amber-300 hover:shadow-amber-400/30"
             >
-              Create an account
+              Enter the platform
               <ArrowRight size={16} aria-hidden="true" />
             </Link>
             <Link
-              to="/login"
-              className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-400"
+              to="/"
+              className="inline-flex items-center gap-2 rounded-full border border-white/25 px-6 py-3 text-sm font-semibold text-white backdrop-blur transition hover:border-white/40 hover:bg-white/10"
             >
-              Sign in to your workspace
+              Choose a workspace
             </Link>
-          </div>
-          <p className="mt-6 text-xs text-slate-500">
-            Mentors and CFE accounts are provisioned by your program team—self-serve signup is for founders and students.
-          </p>
-        </section>
+          </MotionDiv>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-slate-50 to-transparent" />
+      </section>
 
+      <main className="mx-auto max-w-6xl space-y-16 px-4 py-14 sm:px-6 sm:py-20">
         <section className="grid gap-5 md:grid-cols-3">
-          {pillars.map((pillar) => (
-            <SectionCard key={pillar.title} className="h-full border-slate-200/80">
-              <div className="flex items-start gap-3">
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
-                  <pillar.icon size={18} aria-hidden="true" />
-                </span>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-950">{pillar.title}</h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{pillar.body}</p>
+          {pillars.map((pillar, i) => (
+            <MotionDiv
+              key={pillar.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-40px' }}
+              transition={{ delay: i * 0.1, duration: 0.45, ease: 'easeOut' }}
+            >
+              <SectionCard className="h-full border-slate-200/80">
+                <div className="flex items-start gap-3">
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
+                    <pillar.icon size={18} aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-950">{pillar.title}</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{pillar.body}</p>
+                  </div>
                 </div>
-              </div>
-            </SectionCard>
+              </SectionCard>
+            </MotionDiv>
           ))}
         </section>
 
@@ -190,17 +234,17 @@ function MarketingPage() {
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
-                to="/signup"
+                to="/founders"
                 className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-amber-300"
               >
-                Create an account
+                Enter the platform
                 <ArrowRight size={16} aria-hidden="true" />
               </Link>
               <Link
-                to="/login"
+                to="/"
                 className="inline-flex items-center gap-2 rounded-full border border-white/30 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
               >
-                Sign in
+                Choose a workspace
               </Link>
             </div>
           </div>
@@ -209,11 +253,6 @@ function MarketingPage() {
 
       <footer className="border-t border-slate-200 bg-white py-8 text-center text-xs text-slate-500">
         <p>MentorMe — structured mentor access for accelerators, entrepreneurship cells, and innovation offices.</p>
-        <p className="mt-2">
-          Developers: see <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">README.md</code>
-          {' '}and <code className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">docs/infra-setup.md</code>
-          {' '}for runbooks and environment variables.
-        </p>
       </footer>
     </div>
   )

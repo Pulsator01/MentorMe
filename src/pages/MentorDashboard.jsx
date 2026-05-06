@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+const MotionDiv = motion.div
 import { CalendarCheck2, CheckCircle2, Clock3, Link2, MessagesSquare, ShieldCheck, XCircle } from 'lucide-react'
 import { useAppState } from '../context/AppState'
 import { Badge, SectionCard, SectionHeading, StatCard } from '../components/ui'
@@ -219,17 +222,17 @@ function MentorDashboard() {
 
   if (!hasToken && mode === 'api') {
     return (
-      <div className="space-y-6 pb-8">
-        <SectionCard className="bg-slate-950 text-white">
+      <div className="space-y-6 pb-10">
+        <SectionCard className="bg-slate-950 text-white sm:p-10">
           <Badge tone="amber">Secure mentor desk</Badge>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight">Open this page from a CFE-generated secure mentor link.</h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-            The live mentor journey is token-based. Generate a link from the CFE workspace, then open it here to accept or decline the request, schedule the meeting, and leave feedback after the call.
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Open this page from a CFE-generated secure link.</h1>
+          <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
+            Generate a link from the CFE workspace, then open it here to accept or decline the request, schedule the meeting, and leave feedback.
           </p>
-          <div className="mt-6">
+          <div className="mt-8">
             <Link
               to="/cfe"
-              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
             >
               Back to CFE workspace
             </Link>
@@ -240,52 +243,57 @@ function MentorDashboard() {
   }
 
   return (
-    <div className="space-y-6 pb-8">
+    <MotionDiv
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="space-y-6 pb-10"
+    >
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard className="bg-slate-950 text-white">
+        <SectionCard className="bg-slate-950 text-white sm:p-10">
           <Badge tone="amber">Mentor Desk</Badge>
-          <h1 className="mt-5 text-4xl font-semibold tracking-tight">Review one vetted request without the admin clutter.</h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-            The mentor experience is intentionally narrow: decide quickly, share a slot, and leave one useful note after the meeting.
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Review one vetted request without the admin clutter.</h1>
+          <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
+            Decide quickly, share a slot, and leave one useful note after the meeting.
           </p>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <StatCard
-              label="Response state"
+              label="Response"
               value={response ? response : loading ? 'Loading' : 'Pending'}
-              detail="Mentors should be able to accept or decline without needing a login."
+              detail="Accept or decline without needing a login."
               accent="amber"
             />
             <StatCard
-              label="Request status"
+              label="Status"
               value={request ? request.status.replace('_', ' ') : 'Waiting'}
-              detail="This updates as the mentor schedules and submits feedback."
+              detail="Updates as you schedule and submit feedback."
               accent="cyan"
             />
             <StatCard
               label="Artifacts"
               value={request?.artifactList?.length || 0}
-              detail="Enough context should be attached before the mentor spends time."
+              detail="Context attached before you engage."
               accent="emerald"
             />
           </div>
         </SectionCard>
 
         <SectionCard>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Mentor context</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Mentor context</p>
           {loading ? (
-            <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
               Loading mentor request...
             </div>
           ) : mentor ? (
             <>
-              <div className="mt-4 flex items-start justify-between gap-4">
+              <div className="mt-5 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{mentor.name}</h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">{mentor.title}</p>
+                  <p className="mt-2 text-[15px] leading-7 text-slate-500">{mentor.title}</p>
                 </div>
                 <Badge tone="blue">{mentor.tolerance} tolerance</Badge>
               </div>
-              <p className="mt-4 text-sm leading-6 text-slate-600">{mentor.bio}</p>
+              <p className="mt-4 text-sm leading-6 text-slate-500">{mentor.bio}</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {mentor.focus.map((item) => (
                   <Badge key={item}>{item}</Badge>
@@ -293,7 +301,7 @@ function MentorDashboard() {
               </div>
             </>
           ) : (
-            <div className="mt-4 rounded-[22px] border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-sm text-slate-500">
+            <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
               No mentor request is loaded yet.
             </div>
           )}
@@ -301,44 +309,44 @@ function MentorDashboard() {
       </div>
 
       {flashMessage ? (
-        <div className="rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-medium text-emerald-800">
           {flashMessage}
         </div>
       ) : null}
 
       {error ? (
-        <div className="rounded-[22px] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-800">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[1.02fr_0.98fr]">
+      <div className="grid gap-6 xl:grid-cols-2">
         <SectionCard>
           <SectionHeading
             eyebrow="Request summary"
             title={request ? request.ventureName : 'Waiting for a secure link'}
-            description="Mentors should see the problem, desired outcome, and supporting material before choosing to engage."
+            description="The problem, desired outcome, and supporting material."
           />
 
           {request ? (
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-6">
+                <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
                       <h3 className="text-lg font-semibold text-slate-950">{request.ventureName}</h3>
                       <Badge tone="amber">{request.stage}</Badge>
                       <Badge tone="blue">{request.status.replace('_', ' ')}</Badge>
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">{request.challenge}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-500">{request.challenge}</p>
                   </div>
-                  <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
                     <p className="font-semibold text-slate-950">TRL {request.trl}</p>
-                    <p className="mt-1">BRL {request.brl}</p>
+                    <p className="mt-1 text-slate-500">BRL {request.brl}</p>
                   </div>
                 </div>
-                <p className="mt-4 text-sm leading-6 text-slate-700">{request.desiredOutcome}</p>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <p className="mt-5 text-sm leading-6 text-slate-600">{request.desiredOutcome}</p>
+                <div className="mt-5 flex flex-wrap gap-2">
                   {request.artifactList.map((artifact) => (
                     <Badge key={`${request.id}-${artifact}`} tone="blue">
                       {artifact}
@@ -348,27 +356,27 @@ function MentorDashboard() {
               </div>
 
               {!response && hasToken ? (
-                <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+                <div className="rounded-2xl border border-slate-200 bg-white p-6">
                   <SectionHeading
                     eyebrow="Decision"
                     title="Respond to the outreach"
-                    description="If you decline, CFE keeps the request in routing and can redirect it to another mentor."
+                    description="If you decline, CFE keeps the request in routing."
                   />
                   <label className="mt-4 block">
                     <span className="text-sm font-medium text-slate-700">Decline reason</span>
                     <textarea
-                      className="mt-2 min-h-24 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                      className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
                       value={decisionReason}
                       onChange={(event) => setDecisionReason(event.target.value)}
                       placeholder="Optional unless you decline"
                     />
                   </label>
-                  <div className="mt-4 flex flex-wrap gap-3">
+                  <div className="mt-5 flex flex-wrap gap-3">
                     <button
                       type="button"
                       disabled={submittingDecision}
                       onClick={() => void handleDecision('accepted')}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-300"
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-300"
                     >
                       <CheckCircle2 size={16} />
                       Accept request
@@ -377,7 +385,7 @@ function MentorDashboard() {
                       type="button"
                       disabled={submittingDecision || !decisionReason.trim()}
                       onClick={() => void handleDecision('declined')}
-                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-6 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <XCircle size={16} />
                       Decline request
@@ -387,7 +395,7 @@ function MentorDashboard() {
               ) : null}
             </div>
           ) : (
-            <div className="rounded-[24px] border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
               Open the desk from a secure mentor link to load a specific request.
             </div>
           )}
@@ -398,7 +406,7 @@ function MentorDashboard() {
             <SectionHeading
               eyebrow="Scheduling"
               title="Share the meeting slot"
-              description="Once the mentor accepts, this step sends the meeting details back into the CFE-managed pipeline."
+              description="Sends details back into the CFE pipeline."
             />
 
             {request ? (
@@ -411,7 +419,7 @@ function MentorDashboard() {
                   <input
                     value={scheduleDraft.calendlyLink}
                     onChange={(event) => setScheduleDraft((current) => ({ ...current, calendlyLink: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
                   />
                 </label>
                 <label className="block">
@@ -423,20 +431,20 @@ function MentorDashboard() {
                     type="datetime-local"
                     value={scheduleDraft.meetingAt}
                     onChange={(event) => setScheduleDraft((current) => ({ ...current, meetingAt: event.target.value }))}
-                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
                   />
                 </label>
                 <button
                   type="button"
                   disabled={!canSchedule || submittingSchedule || !scheduleDraft.calendlyLink || !scheduleDraft.meetingAt}
                   onClick={() => void handleSchedule()}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   <CalendarCheck2 size={16} />
                   {submittingSchedule ? 'Saving slot...' : 'Share slot'}
                 </button>
                 {request.meetingAt ? (
-                  <div className="rounded-[22px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
                     Meeting confirmed for {formatFullDate(request.meetingAt)}
                   </div>
                 ) : null}
@@ -448,7 +456,7 @@ function MentorDashboard() {
             <SectionHeading
               eyebrow="After the call"
               title="Leave one useful feedback note"
-              description="The note should help CFE decide whether the founder needs follow-up, another mentor, or a second session."
+              description="Helps CFE decide on follow-up, another mentor, or a second session."
             />
             {request ? (
               <div className="space-y-4">
@@ -465,11 +473,11 @@ function MentorDashboard() {
                         mentorNotes: event.target.value,
                       }))
                     }
-                    className="mt-2 min-h-28 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                    className="mt-2 min-h-28 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
                     placeholder="What changed after the conversation?"
                   />
                 </label>
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3.5 text-sm text-slate-700">
                   <input
                     type="checkbox"
                     checked={feedbackDraft.nextStepRequired}
@@ -482,7 +490,7 @@ function MentorDashboard() {
                   />
                   A clear next step is required from the founder or CFE
                 </label>
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-3.5 text-sm text-slate-700">
                   <input
                     type="checkbox"
                     checked={feedbackDraft.secondSessionRecommended}
@@ -499,7 +507,7 @@ function MentorDashboard() {
                   type="button"
                   disabled={!canLeaveFeedback || submittingFeedback || feedbackDraft.mentorNotes.trim().length < 5}
                   onClick={() => void handleFeedback()}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   <ShieldCheck size={16} />
                   {submittingFeedback ? 'Saving note...' : 'Save feedback'}
@@ -509,7 +517,7 @@ function MentorDashboard() {
           </SectionCard>
         </div>
       </div>
-    </div>
+    </MotionDiv>
   )
 }
 
