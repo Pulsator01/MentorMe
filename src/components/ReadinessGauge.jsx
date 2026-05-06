@@ -1,79 +1,147 @@
+import { useId } from 'react'
 import { motion } from 'framer-motion'
 
 const MotionCircle = motion.circle
+const MAX_READINESS = 9
+const ARC_ANIMATION_DURATION = 0.95
 
 const sizes = {
-  sm: { width: 118, stroke: 7, inner: 31, outer: 45, text: 'text-sm' },
-  md: { width: 162, stroke: 9, inner: 43, outer: 62, text: 'text-lg' },
-  lg: { width: 220, stroke: 11, inner: 60, outer: 84, text: 'text-2xl' },
+  sm: { width: 118, stroke: 6, inner: 33, outer: 46, legendLabel: 'text-[10px]', legendValue: 'text-xs' },
+  md: { width: 162, stroke: 8, inner: 45, outer: 63, legendLabel: 'text-[11px]', legendValue: 'text-sm' },
+  lg: { width: 220, stroke: 10, inner: 62, outer: 86, legendLabel: 'text-xs', legendValue: 'text-base' },
 }
 
 const getTone = (value) => {
   if (value <= 3) {
-    return '#f97316'
+    return {
+      start: '#fdba74',
+      end: '#fb923c',
+      solid: '#fdba74',
+    }
   }
 
   if (value <= 6) {
-    return '#0ea5e9'
+    return {
+      start: '#7dd3fc',
+      end: '#38bdf8',
+      solid: '#7dd3fc',
+    }
   }
 
-  return '#10b981'
+  return {
+    start: '#6ee7b7',
+    end: '#34d399',
+    solid: '#6ee7b7',
+  }
 }
 
-function Ring({ radius, stroke, progress, color, delay, circumference, center }) {
+const clampReadiness = (value) => Math.min(MAX_READINESS, Math.max(1, Number(value) || 1))
+
+const toProgress = (value) => clampReadiness(value) / MAX_READINESS
+
+function Ring({ radius, stroke, progress, gradientId, delay, circumference, center }) {
   return (
     <>
-      <circle cx={center} cy={center} r={radius} stroke="#e2e8f0" strokeWidth={stroke} fill="transparent" />
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        stroke="rgba(255,255,255,0.14)"
+        strokeWidth={stroke}
+        fill="transparent"
+      />
       <MotionCircle
         cx={center}
         cy={center}
         r={radius}
-        stroke={color}
+        stroke={`url(#${gradientId})`}
         strokeWidth={stroke}
         fill="transparent"
         strokeDasharray={circumference}
         strokeLinecap="round"
+        transform={`rotate(-90 ${center} ${center})`}
         initial={{ strokeDashoffset: circumference }}
         animate={{ strokeDashoffset: circumference - progress * circumference }}
-        transition={{ duration: 0.9, ease: 'easeOut', delay }}
+        transition={{ duration: ARC_ANIMATION_DURATION, ease: 'easeOut', delay }}
       />
     </>
   )
 }
 
+function LegendPill({ label, value, color, labelClass, valueClass }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-center">
+      <span className="mx-auto mb-1 block h-[2px] w-5 rounded-full" style={{ backgroundColor: color }} />
+      <p className={`font-medium uppercase tracking-[0.14em] text-slate-400 ${labelClass}`}>{label}</p>
+      <p className={`mt-0.5 font-semibold tabular-nums text-slate-100 ${valueClass}`}>
+        {value}
+        <span className="text-slate-500">/{MAX_READINESS}</span>
+      </p>
+    </div>
+  )
+}
+
 function ReadinessGauge({ trl = 1, brl = 1, size = 'md' }) {
-  const { width, stroke, inner, outer, text } = sizes[size]
+  const { width, stroke, inner, outer, legendLabel, legendValue } = sizes[size]
   const center = width / 2
+  const trlValue = clampReadiness(trl)
+  const brlValue = clampReadiness(brl)
+  const trlTone = getTone(trlValue)
+  const brlTone = getTone(brlValue)
+  const idPrefix = useId().replace(/:/g, '')
   const innerCircumference = 2 * Math.PI * inner
   const outerCircumference = 2 * Math.PI * outer
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width, height: width }}>
-      <div className="absolute inset-3 rounded-full bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.18),transparent_50%),linear-gradient(180deg,rgba(255,255,255,0.95),rgba(241,245,249,0.95))]" />
-      <svg width={width} height={width} className="-rotate-90">
-        <Ring
-          radius={outer}
-          stroke={stroke}
-          progress={brl / 9}
-          color={getTone(brl)}
-          delay={0}
-          circumference={outerCircumference}
-          center={center}
+    <div className="inline-flex flex-col items-center" aria-label={`Readiness: TRL ${trlValue}, BRL ${brlValue}`}>
+      <div className="relative flex items-center justify-center rounded-full border border-white/12 bg-white/[0.02]" style={{ width, height: width }}>
+        <svg width={width} height={width}>
+          <defs>
+            <linearGradient id={`${idPrefix}-outer-gradient`} x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor={brlTone.start} />
+              <stop offset="100%" stopColor={brlTone.end} />
+            </linearGradient>
+            <linearGradient id={`${idPrefix}-inner-gradient`} x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={trlTone.start} />
+              <stop offset="100%" stopColor={trlTone.end} />
+            </linearGradient>
+          </defs>
+          <Ring
+            radius={outer}
+            stroke={stroke}
+            progress={toProgress(brlValue)}
+            delay={0}
+            gradientId={`${idPrefix}-outer-gradient`}
+            circumference={outerCircumference}
+            center={center}
+          />
+          <Ring
+            radius={inner}
+            stroke={stroke}
+            progress={toProgress(trlValue)}
+            delay={0.18}
+            gradientId={`${idPrefix}-inner-gradient`}
+            circumference={innerCircumference}
+            center={center}
+          />
+        </svg>
+        <div className="absolute h-2.5 w-2.5 rounded-full bg-white/70 shadow-[0_0_0_4px_rgba(255,255,255,0.08)]" />
+      </div>
+      <div className="mt-2 grid w-full grid-cols-2 gap-2">
+        <LegendPill
+          label="TRL"
+          value={trlValue}
+          color={trlTone.solid}
+          labelClass={legendLabel}
+          valueClass={legendValue}
         />
-        <Ring
-          radius={inner}
-          stroke={stroke}
-          progress={trl / 9}
-          color={getTone(trl)}
-          delay={0.18}
-          circumference={innerCircumference}
-          center={center}
+        <LegendPill
+          label="BRL"
+          value={brlValue}
+          color={brlTone.solid}
+          labelClass={legendLabel}
+          valueClass={legendValue}
         />
-      </svg>
-      <div className="absolute text-center">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Readiness</p>
-        <p className={`mt-2 font-semibold tracking-tight text-slate-950 ${text}`}>TRL {trl}</p>
-        <p className={`font-semibold tracking-tight text-slate-600 ${text}`}>BRL {brl}</p>
       </div>
     </div>
   )
