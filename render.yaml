@@ -42,6 +42,8 @@ services:
         generateValue: true
       - key: APP_BASE_URL
         sync: false
+      - key: API_BASE_URL
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
       - key: TRUST_PROXY
@@ -97,7 +99,7 @@ services:
     name: mentorme-worker
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run prisma:generate && npx prisma migrate deploy --schema backend/prisma/schema.prisma
+    buildCommand: npm ci && npm run prisma:generate
     startCommand: npm run start:worker
     envVars:
       - key: NODE_VERSION

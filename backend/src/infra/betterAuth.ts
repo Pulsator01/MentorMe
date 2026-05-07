@@ -22,6 +22,7 @@ export function createBetterAuth(opts: {
   trustedOrigins: string[]
   email: EmailGateway
   defaultOrganizationId: string
+  defaultCohortId: string
   googleClientId?: string
   googleClientSecret?: string
   cookieDomain?: string
@@ -81,7 +82,12 @@ export function createBetterAuth(opts: {
           defaultValue: opts.defaultOrganizationId,
           input: true,
         },
-        cohortId: { type: 'string', required: false, input: true },
+        cohortId: {
+          type: 'string',
+          required: false,
+          defaultValue: opts.defaultCohortId,
+          input: true,
+        },
         onboardedAt: { type: 'string', required: false },
         lastLoginAt: { type: 'string', required: false },
       },

@@ -40,9 +40,9 @@ pulling new code, apply them to the target database before starting processes:
 npx prisma migrate deploy --schema backend/prisma/schema.prisma
 ```
 
-On Render, the tracked [`render.yaml`](../render.yaml) blueprint sets
-`preDeployCommand` to that command for both the API and worker services so each
-deploy runs migrations against `DATABASE_URL` automatically.
+On Render, the tracked [`render.yaml`](../render.yaml) blueprint runs that
+command from the API web service build command so each deploy applies pending
+migrations against `DATABASE_URL` before the API release starts.
 
 ---
 
@@ -71,7 +71,7 @@ We use Resend's HTTP API directly via `fetch`; no SDK is required.
    - `EMAIL_FROM` — verified sender, e.g. `MentorMe <noreply@mentorme.app>`.
    - `EMAIL_REPLY_TO` *(optional)* — single Reply-To address.
    - `APP_BASE_URL` — public URL of the frontend (used to render links inside
-     emails, e.g. `https://mentorme-web.onrender.com`).
+     emails). Production uses `https://mentor-me-sable.vercel.app`.
 3. Smoke test: trigger a magic-link from `/login`. The Resend dashboard will
    show the message under **Logs**, and the API request log will print
    `email send ok` from `ResendEmailGateway`.
@@ -134,7 +134,7 @@ CORS for the bucket needs to allow `PUT` from the frontend origin:
 ```jsonc
 [
   {
-    "AllowedOrigins": ["https://mentorme-web.onrender.com"],
+    "AllowedOrigins": ["https://mentor-me-sable.vercel.app"],
     "AllowedMethods": ["PUT"],
     "AllowedHeaders": ["content-type", "x-amz-meta-*"],
     "MaxAgeSeconds": 600
@@ -206,25 +206,41 @@ These can be overridden by passing `defaultJobOptions` to
 
 ---
 
-## 4. Render deploy snippet
+## 4. Hosted deployment URLs
 
-`render.yaml` in the repo root provisions everything: PostgreSQL, Redis, the
-API web service, the background worker, and the static frontend. After
-`render blueprint launch`:
+Production is split across Vercel and Render:
+
+| Surface | Host | Required env |
+| --- | --- | --- |
+| Frontend SPA | `https://mentor-me-sable.vercel.app` | Vercel `VITE_API_BASE_URL=https://mentorme-api-tcs5.onrender.com` |
+| Backend API | `https://mentorme-api-tcs5.onrender.com` | Render `API_BASE_URL=https://mentorme-api-tcs5.onrender.com` |
+| Browser cookie/CORS allow-list | Vercel frontend origin | Render `APP_BASE_URL=https://mentor-me-sable.vercel.app`, `ALLOWED_ORIGINS=https://mentor-me-sable.vercel.app` |
+
+Use origins without trailing slashes in env vars. The frontend URL may be opened
+with a trailing slash in the browser, but auth/CORS config should use the origin
+only.
+
+## 5. Render deploy snippet
+
+`render.yaml` in the repo root provisions PostgreSQL, Redis, the API web
+service, and the background worker. The frontend is deployed separately on
+Vercel. After `render blueprint launch`:
 
 1. Add the secrets that Render will not generate for you — `RESEND_API_KEY`,
    `EMAIL_FROM`, `EMAIL_REPLY_TO`, `OPENAI_API_KEY`, `S3_*`, `GOOGLE_OAUTH_*`
    — under each service's **Environment** tab. The blueprint marks all of
    them with `sync: false` so Render prompts you to fill them in once.
-2. Run the Prisma migration on first deploy (`prisma migrate deploy` is part
-   of `npm run start:api`'s prelude in this repo; if you change that, run it
-   manually from the Render shell).
-3. Hit `/healthz` on the API and `https://<frontend>` to verify both are
-   green.
+2. Set `APP_BASE_URL`, `API_BASE_URL`, and `ALLOWED_ORIGINS` to the production
+   URLs listed above.
+3. Run the Prisma migration on first deploy if the API build command was not
+   used (`prisma migrate deploy` is part of the API build in `render.yaml` and
+   the Nixpacks start command in this repo).
+4. Hit `https://mentorme-api-tcs5.onrender.com/healthz` on the API and
+   `https://mentor-me-sable.vercel.app` to verify both are green.
 
 ---
 
-## 5. Local dev quick reference
+## 6. Local dev quick reference
 
 ```
 # Stubs everywhere — no Resend, no S3, no Redis required.
@@ -260,7 +276,7 @@ npm run start:api
 
 ---
 
-## 6. Security headers, CORS, rate limits, and Sentry
+## 7. Security headers, CORS, rate limits, and Sentry
 
 The Fastify stack wires **`@fastify/helmet`** (baseline headers + CSP tuned for
 Swagger UI), **`@fastify/rate-limit`** (global IP bucket with `/healthz`
@@ -270,6 +286,8 @@ excluded, plus a tighter per-route bucket on `POST /auth/*` endpoints), and
 | Variable | Purpose |
 | --- | --- |
 | `ALLOWED_ORIGINS` | Comma-separated list of browser origins that may call the API with cookies. Empty = reflect `Origin` (local only). |
+| `APP_BASE_URL` | Public frontend origin used for Better Auth trusted origins and outbound links. Production: `https://mentor-me-sable.vercel.app`. |
+| `API_BASE_URL` | Public API origin used by Better Auth. Production: `https://mentorme-api-tcs5.onrender.com`. |
 | `TRUST_PROXY` | Set `true` (or rely on `RENDER=true`) so `X-Forwarded-For` is honoured for rate limiting. |
 | `RATE_LIMIT_GLOBAL_MAX` / `RATE_LIMIT_GLOBAL_WINDOW_MS` | Global request ceiling per IP per window. |
 | `RATE_LIMIT_AUTH_MAX` / `RATE_LIMIT_AUTH_WINDOW_MS` | Burst limiter for authentication routes. |

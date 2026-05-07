@@ -5,4 +5,4 @@ cmds = ["rm -rf node_modules/.vite", "npm ci"]
 cmds = ["npm run prisma:generate"]
 
 [start]
-cmd = "npm run start:api"
+cmd = "npx prisma migrate deploy --schema backend/prisma/schema.prisma && npm run start:api"
