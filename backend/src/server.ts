@@ -100,7 +100,7 @@ const bootstrap = async () => {
         defaultOrganizationId: defaultOrgId,
         googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
         googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-        cookieSecure: nodeEnv === 'production',
+        cookieSecure: process.env.NODE_ENV === 'production',
       })
     : undefined
 

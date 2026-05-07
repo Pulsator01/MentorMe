@@ -77,7 +77,7 @@ export function createBetterAuth(opts: {
         role: { type: 'string', required: true, defaultValue: 'founder', input: true },
         organizationId: {
           type: 'string',
-          required: true,
+          required: false,
           defaultValue: opts.defaultOrganizationId,
           input: true,
         },
@@ -98,7 +98,11 @@ export function createBetterAuth(opts: {
 
     advanced: {
       cookiePrefix: 'mentor_me',
-      ...(opts.cookieDomain ? { defaultCookieAttributes: { domain: opts.cookieDomain } } : {}),
+      defaultCookieAttributes: {
+        ...(opts.cookieDomain ? { domain: opts.cookieDomain } : {}),
+        // SameSite=None + Secure required for cross-origin (Vercel → Render) cookie sends
+        ...(opts.cookieSecure ? { sameSite: 'none' as const, secure: true } : {}),
+      },
     },
   })
 }
