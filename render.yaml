@@ -175,7 +175,6 @@ services:
   - type: web
     name: mentorme-web
     runtime: static
-    plan: free
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     routes:
