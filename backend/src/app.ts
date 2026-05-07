@@ -889,10 +889,30 @@ export const createApp = async (options: AppOptions) => {
 
   if (options.auth) {
     const betterAuthHandler = toNodeHandler(options.auth)
+    type RawRequestWithBody = FastifyRequest['raw'] & {
+      body?: unknown
+    }
+    const setAuthCorsHeaders = (request: FastifyRequest, reply: FastifyReply) => {
+      const origin = request.headers.origin
+      if (!origin) return
+      if (httpSec.corsAllowedOrigins.length > 0 && !httpSec.corsAllowedOrigins.includes(origin)) return
+
+      reply.raw.setHeader('access-control-allow-origin', origin)
+      reply.raw.setHeader('access-control-allow-credentials', 'true')
+      reply.raw.setHeader('vary', 'Origin')
+    }
+
     app.all('/api/auth/*', async (request, reply) => {
       reply.hijack()
 
       try {
+        setAuthCorsHeaders(request, reply)
+
+        if (request.body !== undefined) {
+          const rawRequest = request.raw as RawRequestWithBody
+          rawRequest.body = request.body
+        }
+
         await betterAuthHandler(request.raw, reply.raw)
       } catch (error) {
         app.log.error(error, 'Better Auth raw handler failed')
