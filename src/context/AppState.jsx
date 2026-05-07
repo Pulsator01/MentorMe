@@ -638,7 +638,7 @@ export function AppStateProvider({ children }) {
     stateRef.current = state
   }, [state])
 
-  const syncFromApi = useCallback(async (clientOverride, pathnameOverride = location.pathname) => {
+  const syncFromApi = useCallback(async (clientOverride, pathnameOverride = pathRef.current) => {
     const client = clientOverride || backendRef.current.client
 
     if (!client) {
@@ -670,7 +670,7 @@ export function AppStateProvider({ children }) {
         currentVentureId: scopedVentureId,
       }),
     })
-  }, [location.pathname])
+  }, [])
 
   const startBackgroundSync = useCallback(
     (client, pathname) => {
@@ -775,12 +775,12 @@ export function AppStateProvider({ children }) {
     return startBackgroundSync(backendRef.current.client, location.pathname)
   }, [location.pathname, state.currentUser?.id, startBackgroundSync, syncFromApi])
 
-  const ensureClient = () => {
+  const ensureClient = useCallback(() => {
     if (!backendRef.current.client) {
       throw new Error('The API backend is not configured for this build (set VITE_API_BASE_URL).')
     }
     return backendRef.current.client
-  }
+  }, [])
 
   const refreshCurrentUser = useCallback(async (sessionUser) => {
     if (sessionUser) {
@@ -788,9 +788,33 @@ export function AppStateProvider({ children }) {
     }
     backendRef.current.ready = true
     if (backendRef.current.client) {
-      await syncFromApi(backendRef.current.client, location.pathname)
+      await syncFromApi(backendRef.current.client, pathRef.current)
     }
-  }, [location.pathname, syncFromApi])
+  }, [syncFromApi])
+
+  const getOnboardingStatus = useCallback(async () => {
+    const client = ensureClient()
+    return await client.getOnboardingStatus()
+  }, [ensureClient])
+
+  const completeFounderOnboarding = useCallback(async (payload) => {
+    const client = ensureClient()
+    const result = await client.completeFounderOnboarding(payload)
+    await refreshCurrentUser(result.user)
+    return result
+  }, [ensureClient, refreshCurrentUser])
+
+  const completeStudentOnboarding = useCallback(async (payload) => {
+    const client = ensureClient()
+    const result = await client.completeStudentOnboarding(payload)
+    await refreshCurrentUser(result.user)
+    return result
+  }, [ensureClient, refreshCurrentUser])
+
+  const getStudentJoinOptions = useCallback(async () => {
+    const client = ensureClient()
+    return await client.getStudentJoinOptions()
+  }, [ensureClient])
 
   const value = {
     currentUser: state.currentUser,
@@ -866,26 +890,10 @@ export function AppStateProvider({ children }) {
       await refreshCurrentUser(result.data?.user)
       return result.data
     },
-    getOnboardingStatus: async () => {
-      const client = ensureClient()
-      return await client.getOnboardingStatus()
-    },
-    completeFounderOnboarding: async (payload) => {
-      const client = ensureClient()
-      const result = await client.completeFounderOnboarding(payload)
-      await refreshCurrentUser(result.user)
-      return result
-    },
-    completeStudentOnboarding: async (payload) => {
-      const client = ensureClient()
-      const result = await client.completeStudentOnboarding(payload)
-      await refreshCurrentUser(result.user)
-      return result
-    },
-    getStudentJoinOptions: async () => {
-      const client = ensureClient()
-      return await client.getStudentJoinOptions()
-    },
+    getOnboardingStatus,
+    completeFounderOnboarding,
+    completeStudentOnboarding,
+    getStudentJoinOptions,
     listInvitations: async () => {
       const client = ensureClient()
       return await client.listInvitations()
