@@ -36,18 +36,14 @@ services:
         value: prisma
       - key: EXPOSE_DEBUG_TOKENS
         value: "false"
-      - key: JWT_SECRET
+      - key: BETTER_AUTH_SECRET
         generateValue: true
       - key: COOKIE_SECRET
         generateValue: true
-      - key: JWT_ISSUER
-        value: mentorme-render
-      - key: JWT_AUDIENCE
-        value: mentorme-web
       - key: APP_BASE_URL
-        value: https://mentorme-web.onrender.com
+        sync: false
       - key: ALLOWED_ORIGINS
-        value: https://mentorme-web.onrender.com
+        sync: false
       - key: TRUST_PROXY
         value: "true"
       - key: AI_PROVIDER
@@ -119,22 +115,21 @@ services:
           property: connectionString
       - key: PERSISTENCE_BACKEND
         value: prisma
-      - key: JWT_SECRET
+      - key: BETTER_AUTH_SECRET
         fromService:
           type: web
           name: mentorme-api
-          envVarKey: JWT_SECRET
+          envVarKey: BETTER_AUTH_SECRET
       - key: COOKIE_SECRET
         fromService:
           type: web
           name: mentorme-api
           envVarKey: COOKIE_SECRET
-      - key: JWT_ISSUER
-        value: mentorme-render
-      - key: JWT_AUDIENCE
-        value: mentorme-web
       - key: APP_BASE_URL
-        value: https://mentorme-web.onrender.com
+        fromService:
+          type: web
+          name: mentorme-api
+          envVarKey: APP_BASE_URL
       - key: AI_PROVIDER
         value: auto
       - key: AI_JUDGE_PROVIDER
