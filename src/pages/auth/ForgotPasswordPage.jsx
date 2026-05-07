@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import AuthLayout from '../../layouts/AuthLayout'
 import {
   Field,
@@ -11,7 +11,6 @@ import {
 import { useAppState } from '../../context/AppState'
 
 function ForgotPasswordPage() {
-  const navigate = useNavigate()
   const { forgotPassword } = useAppState()
 
   const [email, setEmail] = useState('')
@@ -25,11 +24,7 @@ function ForgotPasswordPage() {
     setInfo(null)
     setSubmitting(true)
     try {
-      const response = await forgotPassword(email.trim())
-      if (response?.debugToken) {
-        navigate(`/reset-password?token=${encodeURIComponent(response.debugToken)}`, { replace: true })
-        return
-      }
+      await forgotPassword(email.trim())
       setInfo('If an account exists for that email, a reset link is on its way.')
     } catch (caught) {
       setError(caught?.message || 'Could not send reset email. Try again in a minute.')

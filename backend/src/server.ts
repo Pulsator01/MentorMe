@@ -2,10 +2,8 @@ import * as Sentry from '@sentry/node'
 import { createApp, type HttpSecurityOptions } from './app'
 import { createAiGateway } from './ai/runtime'
 import { createInfraRuntime } from './infra/runtime'
-import { createArgon2PasswordHasher } from './infra/passwordHasher'
-import { createGoogleOAuthGateway } from './infra/googleOAuthGateway'
 import { createRuntimeRepository } from './runtime'
-import type { GoogleOAuthGateway } from './domain/interfaces'
+import { createBetterAuth } from './infra/betterAuth'
 
 const parsePositiveInt = (raw: string | undefined, fallback: number): number => {
   if (raw === undefined || raw === '') {
@@ -25,9 +23,7 @@ const buildHttpSecurityFromEnv = (): HttpSecurityOptions | undefined => {
   const corsAllowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS)
   const hasRateEnv =
     process.env.RATE_LIMIT_GLOBAL_MAX !== undefined ||
-    process.env.RATE_LIMIT_GLOBAL_WINDOW_MS !== undefined ||
-    process.env.RATE_LIMIT_AUTH_MAX !== undefined ||
-    process.env.RATE_LIMIT_AUTH_WINDOW_MS !== undefined
+    process.env.RATE_LIMIT_GLOBAL_WINDOW_MS !== undefined
 
   if (corsAllowedOrigins.length === 0 && !hasRateEnv) {
     return undefined
@@ -39,57 +35,37 @@ const buildHttpSecurityFromEnv = (): HttpSecurityOptions | undefined => {
       ? {
           rateLimitGlobalMax: parsePositiveInt(process.env.RATE_LIMIT_GLOBAL_MAX, 400),
           rateLimitGlobalWindowMs: parsePositiveInt(process.env.RATE_LIMIT_GLOBAL_WINDOW_MS, 60_000),
-          rateLimitAuthMax: parsePositiveInt(process.env.RATE_LIMIT_AUTH_MAX, 40),
-          rateLimitAuthWindowMs: parsePositiveInt(process.env.RATE_LIMIT_AUTH_WINDOW_MS, 900_000),
         }
       : {}),
   }
 }
 
-const DEV_JWT_PLACEHOLDER = 'development-secret'
 const DEV_COOKIE_PLACEHOLDER = 'development-cookie-secret'
+const DEV_AUTH_SECRET_PLACEHOLDER = 'development-better-auth-secret'
 
-const resolveAuthSecrets = () => {
+const resolveSecrets = () => {
   const nodeEnv = process.env.NODE_ENV || 'development'
   const isProduction = nodeEnv === 'production'
 
-  const jwtSecret = (process.env.JWT_SECRET || '').trim() || (!isProduction ? DEV_JWT_PLACEHOLDER : '')
   const cookieSecret = (process.env.COOKIE_SECRET || '').trim() || (!isProduction ? DEV_COOKIE_PLACEHOLDER : '')
+  const betterAuthSecret = (process.env.BETTER_AUTH_SECRET || '').trim() || (!isProduction ? DEV_AUTH_SECRET_PLACEHOLDER : '')
 
   if (isProduction) {
-    if (!process.env.JWT_SECRET?.trim() || !process.env.COOKIE_SECRET?.trim()) {
-      console.error('FATAL: JWT_SECRET and COOKIE_SECRET must be set to non-empty values when NODE_ENV=production')
-      process.exit(1)
-    }
-    if (process.env.JWT_SECRET === DEV_JWT_PLACEHOLDER || process.env.COOKIE_SECRET === DEV_COOKIE_PLACEHOLDER) {
-      console.error('FATAL: Do not use development placeholder secrets in production')
+    if (!process.env.COOKIE_SECRET?.trim() || !process.env.BETTER_AUTH_SECRET?.trim()) {
+      console.error('FATAL: COOKIE_SECRET and BETTER_AUTH_SECRET must be set to non-empty values when NODE_ENV=production')
       process.exit(1)
     }
   }
 
-  return { jwtSecret, cookieSecret }
+  return { cookieSecret, betterAuthSecret }
 }
 
 const bootstrap = async () => {
-  const { jwtSecret, cookieSecret } = resolveAuthSecrets()
+  const { cookieSecret, betterAuthSecret } = resolveSecrets()
   const port = Number(process.env.PORT || process.env.API_PORT || 3001)
   const runtime = createRuntimeRepository()
   const ai = createAiGateway()
   const infra = createInfraRuntime()
-
-  const buildGoogleOAuth = (): GoogleOAuthGateway | undefined => {
-    const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID
-    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
-    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI
-
-    if (!clientId || !clientSecret || !redirectUri) {
-      return undefined
-    }
-
-    return createGoogleOAuthGateway({ clientId, clientSecret, redirectUri })
-  }
-
-  const googleOAuth = buildGoogleOAuth()
 
   const sentryDsn = process.env.SENTRY_DSN
   if (sentryDsn) {
@@ -109,24 +85,36 @@ const bootstrap = async () => {
 
   const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.RENDER === 'true'
 
+  const defaultOrgId = process.env.DEFAULT_ORGANIZATION_ID || 'org-mentorme'
+  const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173'
+  const apiBaseUrl = process.env.API_BASE_URL || `http://localhost:${port}`
+
+  const auth = runtime.prisma
+    ? createBetterAuth({
+        prisma: runtime.prisma,
+        secret: betterAuthSecret,
+        baseURL: apiBaseUrl,
+        appBaseUrl,
+        trustedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS).concat(appBaseUrl),
+        email: infra.email.gateway,
+        defaultOrganizationId: defaultOrgId,
+        googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+        googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      })
+    : undefined
+
   const app = await createApp({
     repository: runtime.repository,
     email: infra.email.gateway,
     storage: infra.storage.service,
     queue: infra.queue.publisher,
     ai: ai.gateway,
-    passwordHasher: createArgon2PasswordHasher(),
-    googleOAuth,
-    jwtIssuer: process.env.JWT_ISSUER || 'mentor-me-local',
-    jwtAudience: process.env.JWT_AUDIENCE || 'mentor-me-web',
-    jwtSecret,
+    auth,
     cookieSecret,
     calendlyWebhookSigningSecret: process.env.CALENDLY_WEBHOOK_SIGNING_SECRET,
-    cookieDomain: process.env.COOKIE_DOMAIN,
-    cookieSecure: process.env.COOKIE_SECURE === 'true',
     exposeTokens: process.env.EXPOSE_DEBUG_TOKENS === 'true',
-    defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID || 'org-mentorme',
-    appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:5173',
+    defaultOrganizationId: defaultOrgId,
+    appBaseUrl,
     trustProxy,
     httpSecurity: buildHttpSecurityFromEnv(),
   })
@@ -162,7 +150,7 @@ const bootstrap = async () => {
   try {
     await app.listen({ host: '0.0.0.0', port })
     app.log.info(
-      `MentorMe API listening on ${port} | persistence=${runtime.mode} | ai=${ai.mode} | email=${infra.email.mode} | storage=${infra.storage.mode} | queue=${infra.queue.mode} | googleOAuth=${googleOAuth ? 'enabled' : 'disabled'} | sentry=${sentryDsn ? 'enabled' : 'disabled'} | trustProxy=${trustProxy}`,
+      `MentorMe API listening on ${port} | persistence=${runtime.mode} | ai=${ai.mode} | email=${infra.email.mode} | storage=${infra.storage.mode} | queue=${infra.queue.mode} | auth=${auth ? 'better-auth' : 'disabled'} | sentry=${sentryDsn ? 'enabled' : 'disabled'} | trustProxy=${trustProxy}`,
     )
   } catch (error) {
     app.log.error(error)

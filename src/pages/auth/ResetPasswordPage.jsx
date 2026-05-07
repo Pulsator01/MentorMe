@@ -5,6 +5,7 @@ import {
   Field,
   FieldGroup,
   FormError,
+  FormNotice,
   PrimaryButton,
 } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
@@ -21,6 +22,7 @@ function ResetPasswordPage() {
   const [confirm, setConfirm] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(false)
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -42,7 +44,8 @@ function ResetPasswordPage() {
     setSubmitting(true)
     try {
       await resetPassword({ token, password })
-      navigate('/', { replace: true })
+      setSuccess(true)
+      setTimeout(() => navigate('/login', { replace: true }), 2000)
     } catch (caught) {
       setError(caught?.message || 'Reset failed. The link may have expired.')
     } finally {
@@ -65,6 +68,7 @@ function ResetPasswordPage() {
       }
     >
       <FormError>{!token ? 'Reset token is missing. Open the link from your reset email.' : error}</FormError>
+      <FormNotice tone="success">{success ? 'Password updated. Redirecting to sign in…' : null}</FormNotice>
 
       <form onSubmit={handleSubmit} noValidate>
         <FieldGroup>

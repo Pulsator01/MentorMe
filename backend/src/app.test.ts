@@ -8,8 +8,6 @@ import { createSeededInMemoryPlatformRepository } from './infra/inMemoryReposito
 import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
-import type { GoogleOAuthGateway, GoogleOAuthProfile, GoogleOAuthTokens } from './domain/interfaces'
-import type { PasswordHasher } from './infra/passwordHasher'
 import { buildCalendlyWebhookSignature } from './infra/calendlyWebhookSignature'
 
 const CALENDLY_TEST_SECRET = 'vitest-calendly-webhook-secret'
@@ -35,44 +33,12 @@ const injectSignedCalendlyWebhook = async (
 
 type SeedConfigurator = Parameters<typeof createSeededInMemoryPlatformRepository>[0]
 
-interface StubGoogleOAuthOptions {
-  redirectUri?: string
-  exchange?: (code: string) => Promise<GoogleOAuthTokens>
-  fetchProfile?: (accessToken: string) => Promise<GoogleOAuthProfile>
-}
-
-const createStubPasswordHasher = (): PasswordHasher => ({
-  async hash(plain: string) {
-    return `hashed:${plain}`
-  },
-  async verify(hash: string, plain: string) {
-    return hash === `hashed:${plain}`
-  },
-})
-
-const createStubGoogleOAuth = (options: StubGoogleOAuthOptions = {}): GoogleOAuthGateway => ({
-  redirectUri: options.redirectUri || 'http://localhost:5173/auth/google/callback',
-  buildAuthorizeUrl(state: string) {
-    return `https://accounts.google.test/o/oauth2/v2/auth?state=${encodeURIComponent(state)}`
-  },
-  exchangeCode:
-    options.exchange ||
-    (async (code: string) => ({ accessToken: `google-access-${code}`, expiresInSeconds: 3600 })),
-  fetchProfile:
-    options.fetchProfile ||
-    (async () => ({
-      providerAccountId: 'google-acct-1',
-      email: 'new.founder@mentorme.test',
-      emailVerified: true,
-      name: 'New Founder',
-    })),
-})
+const TEST_AUTH_HEADER = 'x-test-user-email'
 
 const parseJson = <T>(response: { body: string }) => JSON.parse(response.body) as T
 
 interface BuildTestAppOptions {
   configureRepository?: SeedConfigurator
-  googleOAuth?: GoogleOAuthGateway
 }
 
 const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) => {
@@ -84,7 +50,6 @@ const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) 
   const storage = createStubStorageService()
   const queue = createInlineQueuePublisher()
   const ai = new HeuristicAiGateway()
-  const passwordHasher = createStubPasswordHasher()
   const generateRequestBrief = vi.spyOn(ai, 'generateRequestBrief')
   const generateMeetingSummary = vi.spyOn(ai, 'generateMeetingSummary')
 
@@ -94,12 +59,8 @@ const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) 
     storage,
     queue,
     ai,
-    passwordHasher,
-    googleOAuth: opts.googleOAuth,
     exposeTokens: true,
-    jwtIssuer: 'mentor-me-test',
-    jwtAudience: 'mentor-me-web',
-    jwtSecret: 'test-secret',
+    testAuthBypassHeader: TEST_AUTH_HEADER,
     cookieSecret: 'cookie-secret',
     defaultOrganizationId: 'org-mentorme',
     appBaseUrl: 'http://localhost:5173',
@@ -116,7 +77,6 @@ const buildTestApp = async (input: SeedConfigurator | BuildTestAppOptions = {}) 
     storage,
     queue,
     ai,
-    passwordHasher,
     generateRequestBrief,
     generateMeetingSummary,
   }
@@ -139,36 +99,13 @@ describe('MentorMe backend workflow', () => {
     expect(parseJson<{ status: string }>(response).status).toBe('ok')
   })
 
-  it('issues a magic link, verifies it, and returns the authenticated user context', async () => {
+  it('returns the authenticated user context via /me', async () => {
     const { app } = await buildTestApp()
-
-    const requestRes = await app.inject({
-      method: 'POST',
-      url: '/auth/magic-link/request',
-      payload: { email: 'aarav.sharma@mentorme.test' },
-    })
-
-    expect(requestRes.statusCode).toBe(202)
-    const requestBody = parseJson<{ debugToken: string }>(requestRes)
-    expect(requestBody.debugToken).toBeTruthy()
-
-    const verifyRes = await app.inject({
-      method: 'POST',
-      url: '/auth/magic-link/verify',
-      payload: { token: requestBody.debugToken },
-    })
-
-    expect(verifyRes.statusCode).toBe(200)
-    const verifyBody = parseJson<{ accessToken: string; user: { role: string } }>(verifyRes)
-    expect(verifyBody.user.role).toBe('founder')
-    expect(verifyBody.accessToken).toBeTruthy()
 
     const meRes = await app.inject({
       method: 'GET',
       url: '/me',
-      headers: {
-        authorization: `Bearer ${verifyBody.accessToken}`,
-      },
+      headers: { [TEST_AUTH_HEADER]: 'aarav.sharma@mentorme.test' },
     })
 
     expect(meRes.statusCode).toBe(200)
@@ -182,7 +119,7 @@ describe('MentorMe backend workflow', () => {
     const venturesRes = await app.inject({
       method: 'GET',
       url: '/ventures',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
 
     expect(venturesRes.statusCode).toBe(200)
@@ -193,7 +130,7 @@ describe('MentorMe backend workflow', () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/ventures/v-ecodrone/requests',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         stage: 'MVP',
         trl: 4,
@@ -211,7 +148,7 @@ describe('MentorMe backend workflow', () => {
     const requestsRes = await app.inject({
       method: 'GET',
       url: '/ventures/v-ecodrone/requests',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
 
     expect(requestsRes.statusCode).toBe(200)
@@ -275,7 +212,7 @@ describe('MentorMe backend workflow', () => {
     const requestsRes = await app.inject({
       method: 'GET',
       url: '/requests',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
 
     expect(requestsRes.statusCode).toBe(200)
@@ -290,7 +227,7 @@ describe('MentorMe backend workflow', () => {
     const returnRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/return',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         reason: 'Need sharper supporting material before routing.',
       },
@@ -302,7 +239,7 @@ describe('MentorMe backend workflow', () => {
     const approveRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/approve',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         ownerName: 'Ritu from CFE',
       },
@@ -324,7 +261,7 @@ describe('MentorMe backend workflow', () => {
     const returnRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/return',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         reason: 'Please add a clearer fundraising memo before routing.',
       },
@@ -336,7 +273,7 @@ describe('MentorMe backend workflow', () => {
     const submitRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/submit',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
 
     expect(submitRes.statusCode).toBe(200)
@@ -353,7 +290,7 @@ describe('MentorMe backend workflow', () => {
     const updateRes = await app.inject({
       method: 'PATCH',
       url: '/mentors/m-naval',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         visibility: 'Paused',
       },
@@ -386,7 +323,7 @@ describe('MentorMe backend workflow', () => {
     const presignRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/artifacts/presign',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         filename: 'pitch-deck-v5.pdf',
         contentType: 'application/pdf',
@@ -402,7 +339,7 @@ describe('MentorMe backend workflow', () => {
     const completeRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/artifacts/complete',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         artifactId: presignBody.artifact.id,
       },
@@ -419,7 +356,7 @@ describe('MentorMe backend workflow', () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/ventures/v-ecodrone/requests',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         stage: 'MVP',
         trl: 4,
@@ -438,7 +375,7 @@ describe('MentorMe backend workflow', () => {
     const requestsRes = await app.inject({
       method: 'GET',
       url: '/requests',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
 
     const requestsBody = parseJson<{ requests: Array<{ id: string; artifactList: string[] }> }>(requestsRes)
@@ -453,7 +390,7 @@ describe('MentorMe backend workflow', () => {
     const outreachRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-002/mentor-outreach',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
 
     expect(outreachRes.statusCode).toBe(201)
@@ -510,7 +447,7 @@ describe('MentorMe backend workflow', () => {
     const acceptOutreachRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-003/mentor-outreach',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
 
     expect(acceptOutreachRes.statusCode).toBe(201)
@@ -531,7 +468,7 @@ describe('MentorMe backend workflow', () => {
     const declineOutreachRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-901/mentor-outreach',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
 
     expect(declineOutreachRes.statusCode).toBe(201)
@@ -562,7 +499,7 @@ describe('MentorMe backend workflow', () => {
     const outreachRes = await app.inject({
       method: 'POST',
       url: '/requests/REQ-003/mentor-outreach',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
 
     expect(outreachRes.statusCode).toBe(201)
@@ -625,7 +562,7 @@ describe('MentorMe backend workflow', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/ai/request-brief',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         ventureName: 'EcoDrone Systems',
         domain: 'Industrial drones',
@@ -658,7 +595,7 @@ describe('MentorMe backend workflow', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/ai/meeting-summary',
-      headers: { authorization: `Bearer ${studentToken}` },
+      headers: { [TEST_AUTH_HEADER]: studentToken },
       payload: {
         ventureName: 'EcoDrone Systems',
         mentorName: 'Naval Bhatia',
@@ -704,7 +641,7 @@ describe('MentorMe backend workflow', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/ai/mentor-recommendations',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         ventureName: 'EcoDrone Systems',
         domain: 'Industrial drones',
@@ -788,11 +725,6 @@ describe('MentorMe backend workflow', () => {
       storage: createStubStorageService(),
       queue: createInlineQueuePublisher(),
       ai: new HeuristicAiGateway(),
-      passwordHasher: createStubPasswordHasher(),
-      exposeTokens: true,
-      jwtIssuer: 'mentor-me-test',
-      jwtAudience: 'mentor-me-web',
-      jwtSecret: 'test-secret',
       cookieSecret: 'cookie-secret',
       defaultOrganizationId: 'org-mentorme',
       appBaseUrl: 'http://localhost:5173',
@@ -816,25 +748,6 @@ describe('MentorMe backend workflow', () => {
     process.env.NODE_ENV = prev
   })
 
-  it('rejects registration with an unknown organizationId', async () => {
-    const { app } = await buildTestApp()
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Org Hijack',
-        email: 'org.hijack@mentorme.test',
-        password: 'SuperSecret-123',
-        role: 'founder',
-        organizationId: 'org-absolutely-unknown',
-      },
-    })
-
-    expect(response.statusCode).toBe(400)
-    expect(response.body.toLowerCase()).toContain('unknown organization')
-  })
-
   it('rejects unauthenticated notification stream requests', async () => {
     const { app } = await buildTestApp()
 
@@ -843,446 +756,8 @@ describe('MentorMe backend workflow', () => {
       url: '/notifications/stream',
     })
 
-    expect(notificationsRes.statusCode).toBe(400)
-    expect(notificationsRes.body).toContain('Unauthorized')
-  })
-
-  it('registers a new founder, sends a welcome email, and issues a session', async () => {
-    const { app, email, repository } = await buildTestApp()
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: '  Priya Founder  ',
-        email: 'Priya.Founder@MentorMe.test',
-        password: 'SuperSecret-123',
-        role: 'founder',
-      },
-    })
-
-    expect(response.statusCode).toBe(201)
-    const body = parseJson<{ accessToken: string; user: { email: string; role: string; name: string } }>(response)
-    expect(body.user.email).toBe('priya.founder@mentorme.test')
-    expect(body.user.name).toBe('Priya Founder')
-    expect(body.user.role).toBe('founder')
-    expect(body.accessToken).toBeTruthy()
-    expect(response.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')?.value).toBeTruthy()
-
-    const stored = await repository.findUserByEmail('priya.founder@mentorme.test')
-    expect(stored?.passwordHash).toBeTruthy()
-    expect(stored?.passwordHash).not.toBe('SuperSecret-123')
-
-    const welcome = email.sent.find((entry) => entry.type === 'welcome')
-    expect(welcome).toMatchObject({ email: 'priya.founder@mentorme.test', name: 'Priya Founder' })
-  })
-
-  it('rejects registration when the email is already in use', async () => {
-    const { app } = await buildTestApp()
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Aarav Sharma',
-        email: 'aarav.sharma@mentorme.test',
-        password: 'AnotherPassword-1',
-      },
-    })
-
-    expect(response.statusCode).toBe(400)
-    expect(response.body).toContain('email')
-  })
-
-  it('lets a registered user log in with email + password', async () => {
-    const { app } = await buildTestApp()
-
-    await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Login Tester',
-        email: 'login.tester@mentorme.test',
-        password: 'CorrectHorse-Battery-Staple',
-        role: 'student',
-      },
-    })
-
-    const loginRes = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: {
-        email: 'LOGIN.tester@mentorme.test',
-        password: 'CorrectHorse-Battery-Staple',
-      },
-    })
-
-    expect(loginRes.statusCode).toBe(200)
-    const body = parseJson<{ accessToken: string; user: { email: string; role: string } }>(loginRes)
-    expect(body.user.email).toBe('login.tester@mentorme.test')
-    expect(body.user.role).toBe('student')
-    expect(body.accessToken).toBeTruthy()
-
-    const meRes = await app.inject({
-      method: 'GET',
-      url: '/me',
-      headers: { authorization: `Bearer ${body.accessToken}` },
-    })
-    expect(meRes.statusCode).toBe(200)
-    expect(parseJson<{ user: { email: string } }>(meRes).user.email).toBe('login.tester@mentorme.test')
-  })
-
-  it('rejects logins with unknown email or wrong password', async () => {
-    const { app } = await buildTestApp()
-
-    const unknownRes = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'nope@mentorme.test', password: 'whatever-1234' },
-    })
-    expect(unknownRes.statusCode).toBe(401)
-    expect(unknownRes.body).toContain('Invalid email or password')
-
-    await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Wrong Pass',
-        email: 'wrong.pass@mentorme.test',
-        password: 'RightPass-9999',
-      },
-    })
-
-    const wrongPassRes = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'wrong.pass@mentorme.test', password: 'WrongPass-0000' },
-    })
-    expect(wrongPassRes.statusCode).toBe(401)
-    expect(wrongPassRes.body).toContain('Invalid email or password')
-  })
-
-  it('rejects login for magic-link-only accounts (no password set)', async () => {
-    const { app } = await buildTestApp()
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'aarav.sharma@mentorme.test', password: 'anything-12345' },
-    })
-
-    expect(response.statusCode).toBe(401)
-    expect(response.body).toContain('Invalid email or password')
-  })
-
-  it('completes a forgot/reset password flow and revokes prior sessions', async () => {
-    const { app, email, repository } = await buildTestApp()
-
-    await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Reset User',
-        email: 'reset.user@mentorme.test',
-        password: 'OldPassword-1234',
-      },
-    })
-
-    const initialLogin = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'reset.user@mentorme.test', password: 'OldPassword-1234' },
-    })
-    expect(initialLogin.statusCode).toBe(200)
-    const initialRefreshCookie = initialLogin.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')
-    expect(initialRefreshCookie?.value).toBeTruthy()
-    const oldRefreshToken = initialRefreshCookie!.value
-
-    const forgotRes = await app.inject({
-      method: 'POST',
-      url: '/auth/forgot-password',
-      payload: { email: 'reset.user@mentorme.test' },
-    })
-    expect(forgotRes.statusCode).toBe(202)
-    const forgotBody = parseJson<{ accepted: boolean; debugToken?: string }>(forgotRes)
-    expect(forgotBody.accepted).toBe(true)
-    expect(forgotBody.debugToken).toBeTruthy()
-
-    const resetEmail = email.sent.find((entry) => entry.type === 'password_reset')
-    expect(resetEmail).toMatchObject({ email: 'reset.user@mentorme.test', name: 'Reset User' })
-
-    const resetRes = await app.inject({
-      method: 'POST',
-      url: '/auth/reset-password',
-      payload: { token: forgotBody.debugToken, password: 'BrandNew-Password-1!' },
-    })
-    expect(resetRes.statusCode).toBe(200)
-    expect(parseJson<{ user: { email: string } }>(resetRes).user.email).toBe('reset.user@mentorme.test')
-
-    const replayRes = await app.inject({
-      method: 'POST',
-      url: '/auth/reset-password',
-      payload: { token: forgotBody.debugToken, password: 'AnotherNew-Password-9!' },
-    })
-    expect(replayRes.statusCode).toBe(400)
-    expect(replayRes.body).toContain('Invalid or expired')
-
-    const oldLogin = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'reset.user@mentorme.test', password: 'OldPassword-1234' },
-    })
-    expect(oldLogin.statusCode).toBe(401)
-
-    const newLogin = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'reset.user@mentorme.test', password: 'BrandNew-Password-1!' },
-    })
-    expect(newLogin.statusCode).toBe(200)
-
-    const refreshOldSession = await app.inject({
-      method: 'POST',
-      url: '/auth/refresh',
-      cookies: { mentor_me_refresh: oldRefreshToken },
-    })
-    expect(refreshOldSession.statusCode).toBe(400)
-
-    expect(await repository.findUserByEmail('reset.user@mentorme.test')).toBeTruthy()
-  })
-
-  it('returns 202 from forgot-password for unknown emails without leaking existence', async () => {
-    const { app, email } = await buildTestApp()
-
-    const response = await app.inject({
-      method: 'POST',
-      url: '/auth/forgot-password',
-      payload: { email: 'nobody@mentorme.test' },
-    })
-
-    expect(response.statusCode).toBe(202)
-    const body = parseJson<{ accepted: boolean; debugToken?: string }>(response)
-    expect(body.accepted).toBe(true)
-    expect(body.debugToken).toBeUndefined()
-    expect(email.sent.find((entry) => entry.type === 'password_reset')).toBeUndefined()
-  })
-
-  it('lets a logged-in user change their password and rotates sessions', async () => {
-    const { app } = await buildTestApp()
-
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Change Pass',
-        email: 'change.pass@mentorme.test',
-        password: 'OriginalPass-2024',
-      },
-    })
-    const accessToken = parseJson<{ accessToken: string }>(registerRes).accessToken
-    const oldRefreshToken = registerRes.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')!.value
-
-    const wrongCurrentRes = await app.inject({
-      method: 'POST',
-      url: '/auth/change-password',
-      headers: { authorization: `Bearer ${accessToken}` },
-      payload: { currentPassword: 'WrongCurrent-1234', newPassword: 'BrandNew-Password-1!' },
-    })
-    expect(wrongCurrentRes.statusCode).toBe(400)
-
-    const samePasswordRes = await app.inject({
-      method: 'POST',
-      url: '/auth/change-password',
-      headers: { authorization: `Bearer ${accessToken}` },
-      payload: { currentPassword: 'OriginalPass-2024', newPassword: 'OriginalPass-2024' },
-    })
-    expect(samePasswordRes.statusCode).toBe(400)
-    expect(samePasswordRes.body).toContain('differ')
-
-    const changeRes = await app.inject({
-      method: 'POST',
-      url: '/auth/change-password',
-      headers: { authorization: `Bearer ${accessToken}` },
-      payload: { currentPassword: 'OriginalPass-2024', newPassword: 'TotallyNew-Password-1!' },
-    })
-    expect(changeRes.statusCode).toBe(200)
-
-    const refreshRes = await app.inject({
-      method: 'POST',
-      url: '/auth/refresh',
-      cookies: { mentor_me_refresh: oldRefreshToken },
-    })
-    expect(refreshRes.statusCode).toBe(400)
-
-    const oldPwdLogin = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'change.pass@mentorme.test', password: 'OriginalPass-2024' },
-    })
-    expect(oldPwdLogin.statusCode).toBe(401)
-
-    const newPwdLogin = await app.inject({
-      method: 'POST',
-      url: '/auth/login',
-      payload: { email: 'change.pass@mentorme.test', password: 'TotallyNew-Password-1!' },
-    })
-    expect(newPwdLogin.statusCode).toBe(200)
-  })
-
-  it('returns 501 for Google OAuth endpoints when the gateway is not configured', async () => {
-    const { app } = await buildTestApp()
-
-    const authorizeRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/authorize-url',
-      payload: {},
-    })
-    expect(authorizeRes.statusCode).toBe(501)
-    expect(authorizeRes.body).toContain('not configured')
-
-    const callbackRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/callback',
-      payload: { code: 'a'.repeat(20), state: 'b'.repeat(20) },
-    })
-    expect(callbackRes.statusCode).toBe(501)
-    expect(callbackRes.body).toContain('not configured')
-  })
-
-  it('signs Google OAuth state, exchanges codes, and signs up new founders', async () => {
-    const googleOAuth = createStubGoogleOAuth({
-      fetchProfile: async () => ({
-        providerAccountId: 'google-acct-new-1',
-        email: 'oauth.new@mentorme.test',
-        emailVerified: true,
-        name: 'OAuth Newcomer',
-      }),
-    })
-    const { app, email, repository } = await buildTestApp({ googleOAuth })
-
-    const authorizeRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/authorize-url',
-      payload: { redirectAfter: '/founder' },
-    })
-    expect(authorizeRes.statusCode).toBe(200)
-    const authorizeBody = parseJson<{ authorizeUrl: string; state: string }>(authorizeRes)
-    expect(authorizeBody.state).toBeTruthy()
-    expect(authorizeBody.authorizeUrl).toContain('accounts.google.test')
-    expect(authorizeBody.authorizeUrl).toContain(encodeURIComponent(authorizeBody.state))
-
-    const callbackRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/callback',
-      payload: { code: 'google-code-1234567890', state: authorizeBody.state },
-    })
-    expect(callbackRes.statusCode).toBe(200)
-    const body = parseJson<{
-      accessToken: string
-      user: { email: string; emailVerified?: boolean }
-      isNewUser: boolean
-      redirectAfter?: string
-    }>(callbackRes)
-    expect(body.user.email).toBe('oauth.new@mentorme.test')
-    expect(body.user.emailVerified).toBe(true)
-    expect(body.isNewUser).toBe(true)
-    expect(body.redirectAfter).toBe('/founder')
-    expect(body.accessToken).toBeTruthy()
-    expect(callbackRes.cookies.find((cookie) => cookie.name === 'mentor_me_refresh')?.value).toBeTruthy()
-
-    const stored = await repository.findUserByEmail('oauth.new@mentorme.test')
-    expect(stored?.role).toBe('founder')
-    expect(stored?.emailVerified).toBe(true)
-    expect(stored?.passwordHash).toBeUndefined()
-    expect(email.sent.find((entry) => entry.type === 'welcome')).toMatchObject({
-      email: 'oauth.new@mentorme.test',
-    })
-  })
-
-  it('links a Google account to an existing email-based user without creating a duplicate', async () => {
-    const googleOAuth = createStubGoogleOAuth({
-      fetchProfile: async () => ({
-        providerAccountId: 'google-acct-link-1',
-        email: 'link.user@mentorme.test',
-        emailVerified: true,
-        name: 'Link User',
-      }),
-    })
-    const { app, repository } = await buildTestApp({ googleOAuth })
-
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Link User',
-        email: 'link.user@mentorme.test',
-        password: 'PreExisting-Pass-1',
-      },
-    })
-    expect(registerRes.statusCode).toBe(201)
-    const originalUser = await repository.findUserByEmail('link.user@mentorme.test')
-    expect(originalUser).toBeTruthy()
-
-    const authorizeRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/authorize-url',
-      payload: {},
-    })
-    const state = parseJson<{ state: string }>(authorizeRes).state
-
-    const callbackRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/callback',
-      payload: { code: 'google-code-link-12345', state },
-    })
-    expect(callbackRes.statusCode).toBe(200)
-    const body = parseJson<{ user: { email: string }; isNewUser: boolean }>(callbackRes)
-    expect(body.user.email).toBe('link.user@mentorme.test')
-    expect(body.isNewUser).toBe(false)
-
-    const linkedAccount = await repository.findOAuthAccount('google', 'google-acct-link-1')
-    expect(linkedAccount?.userId).toBe(originalUser?.id)
-  })
-
-  it('rejects Google OAuth when the email is not verified', async () => {
-    const googleOAuth = createStubGoogleOAuth({
-      fetchProfile: async () => ({
-        providerAccountId: 'google-acct-unverified',
-        email: 'unverified@mentorme.test',
-        emailVerified: false,
-        name: 'Unverified',
-      }),
-    })
-    const { app } = await buildTestApp({ googleOAuth })
-
-    const authorizeRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/authorize-url',
-      payload: {},
-    })
-    const state = parseJson<{ state: string }>(authorizeRes).state
-
-    const callbackRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/callback',
-      payload: { code: 'google-code-unverified-1', state },
-    })
-
-    expect(callbackRes.statusCode).toBe(400)
-    expect(callbackRes.body).toContain('not verified')
-  })
-
-  it('rejects Google OAuth callbacks with an invalid or forged state', async () => {
-    const googleOAuth = createStubGoogleOAuth()
-    const { app } = await buildTestApp({ googleOAuth })
-
-    const callbackRes = await app.inject({
-      method: 'POST',
-      url: '/auth/google/callback',
-      payload: { code: 'a-real-google-code-12345', state: 'not-a-signed-state-token' },
-    })
-
-    expect(callbackRes.statusCode).toBe(400)
+    expect(notificationsRes.statusCode).toBeGreaterThanOrEqual(400)
+    expect(notificationsRes.statusCode).toBeLessThan(500)
   })
 
   it('reports the seeded founder as having venture access (no further wizard needed)', async () => {
@@ -1292,7 +767,7 @@ describe('MentorMe backend workflow', () => {
     const statusRes = await app.inject({
       method: 'GET',
       url: '/me/onboarding',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { [TEST_AUTH_HEADER]: token },
     })
 
     expect(statusRes.statusCode).toBe(200)
@@ -1310,23 +785,19 @@ describe('MentorMe backend workflow', () => {
   it('walks a fresh founder through the onboarding wizard and creates a venture', async () => {
     const { app, repository } = await buildTestApp()
 
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Maya Greenfield',
-        email: 'maya.greenfield@mentorme.test',
-        password: 'GreenStart-9999',
-        role: 'founder',
-      },
+    await repository.saveUser({
+      id: 'user-founder-maya',
+      organizationId: 'org-mentorme',
+      email: 'maya.greenfield@mentorme.test',
+      name: 'Maya Greenfield',
+      role: 'founder',
+      emailVerified: true,
     })
-    expect(registerRes.statusCode).toBe(201)
-    const accessToken = parseJson<{ accessToken: string }>(registerRes).accessToken
 
     const beforeRes = await app.inject({
       method: 'GET',
       url: '/me/onboarding',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { [TEST_AUTH_HEADER]: 'maya.greenfield@mentorme.test' },
     })
     expect(beforeRes.statusCode).toBe(200)
     const before = parseJson<{ onboarded: boolean; nextStep: string }>(beforeRes)
@@ -1336,7 +807,7 @@ describe('MentorMe backend workflow', () => {
     const wizardRes = await app.inject({
       method: 'POST',
       url: '/onboarding/founder',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { [TEST_AUTH_HEADER]: 'maya.greenfield@mentorme.test' },
       payload: {
         ventureName: 'Greenfield Robotics',
         domain: 'Robotics',
@@ -1367,7 +838,7 @@ describe('MentorMe backend workflow', () => {
     const afterRes = await app.inject({
       method: 'GET',
       url: '/me/onboarding',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { [TEST_AUTH_HEADER]: 'maya.greenfield@mentorme.test' },
     })
     const after = parseJson<{ onboarded: boolean; nextStep: string; ventureCount: number }>(afterRes)
     expect(after.onboarded).toBe(true)
@@ -1376,23 +847,21 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects founder onboarding when required fields are missing', async () => {
-    const { app } = await buildTestApp()
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Patchy Founder',
-        email: 'patchy.founder@mentorme.test',
-        password: 'PatchPass-1234',
-        role: 'founder',
-      },
+    const { app, repository } = await buildTestApp()
+
+    await repository.saveUser({
+      id: 'user-founder-patchy',
+      organizationId: 'org-mentorme',
+      email: 'patchy.founder@mentorme.test',
+      name: 'Patchy Founder',
+      role: 'founder',
+      emailVerified: true,
     })
-    const token = parseJson<{ accessToken: string }>(registerRes).accessToken
 
     const wizardRes = await app.inject({
       method: 'POST',
       url: '/onboarding/founder',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { [TEST_AUTH_HEADER]: 'patchy.founder@mentorme.test' },
       payload: {
         ventureName: 'Tiny',
         domain: 'X',
@@ -1409,7 +878,7 @@ describe('MentorMe backend workflow', () => {
     const wizardRes = await app.inject({
       method: 'POST',
       url: '/onboarding/founder',
-      headers: { authorization: `Bearer ${studentToken}` },
+      headers: { [TEST_AUTH_HEADER]: studentToken },
       payload: {
         ventureName: 'Wrong Role Co',
         domain: 'NA',
@@ -1442,7 +911,7 @@ describe('MentorMe backend workflow', () => {
     const optionsRes = await app.inject({
       method: 'GET',
       url: '/onboarding/student/options',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { [TEST_AUTH_HEADER]: token },
     })
 
     expect(optionsRes.statusCode).toBe(200)
@@ -1468,7 +937,7 @@ describe('MentorMe backend workflow', () => {
     const joinRes = await app.inject({
       method: 'POST',
       url: '/onboarding/student',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { [TEST_AUTH_HEADER]: token },
       payload: { ventureId: 'v-medimesh' },
     })
 
@@ -1500,7 +969,7 @@ describe('MentorMe backend workflow', () => {
     const joinRes = await app.inject({
       method: 'POST',
       url: '/onboarding/student',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { [TEST_AUTH_HEADER]: token },
       payload: {},
     })
 
@@ -1514,7 +983,7 @@ describe('MentorMe backend workflow', () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         email: 'invitee.founder@mentorme.test',
         role: 'founder',
@@ -1541,7 +1010,7 @@ describe('MentorMe backend workflow', () => {
     const listRes = await app.inject({
       method: 'GET',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
     expect(listRes.statusCode).toBe(200)
     const listBody = parseJson<{ invitations: Array<{ id: string }> }>(listRes)
@@ -1561,7 +1030,7 @@ describe('MentorMe backend workflow', () => {
     const revokeRes = await app.inject({
       method: 'DELETE',
       url: `/invitations/${createBody.invitation.id}`,
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
     expect(revokeRes.statusCode).toBe(200)
     const revokeBody = parseJson<{ invitation: { status: string; revokedAt?: string } }>(revokeRes)
@@ -1571,7 +1040,7 @@ describe('MentorMe backend workflow', () => {
     const revokeAgainRes = await app.inject({
       method: 'DELETE',
       url: `/invitations/${createBody.invitation.id}`,
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
     })
     expect(revokeAgainRes.statusCode).toBe(400)
   })
@@ -1583,7 +1052,7 @@ describe('MentorMe backend workflow', () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
       payload: {
         email: 'should.not.invite@mentorme.test',
         role: 'student',
@@ -1595,7 +1064,7 @@ describe('MentorMe backend workflow', () => {
     const listRes = await app.inject({
       method: 'GET',
       url: '/invitations',
-      headers: { authorization: `Bearer ${founderToken}` },
+      headers: { [TEST_AUTH_HEADER]: founderToken },
     })
     expect(listRes.statusCode).toBe(400)
   })
@@ -1607,7 +1076,7 @@ describe('MentorMe backend workflow', () => {
     const createRes = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         email: 'aarav.sharma@mentorme.test',
         role: 'founder',
@@ -1625,7 +1094,7 @@ describe('MentorMe backend workflow', () => {
     const first = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: { email: 'dup.invite@mentorme.test', role: 'founder' },
     })
     expect(first.statusCode).toBe(201)
@@ -1633,7 +1102,7 @@ describe('MentorMe backend workflow', () => {
     const second = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: { email: 'dup.invite@mentorme.test', role: 'founder' },
     })
 
@@ -1648,7 +1117,7 @@ describe('MentorMe backend workflow', () => {
     const inviteRes = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: {
         email: 'accept.test@mentorme.test',
         role: 'student',
@@ -1657,22 +1126,19 @@ describe('MentorMe backend workflow', () => {
     })
     const invite = parseJson<{ invitation: { id: string }; debugToken: string }>(inviteRes)
 
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Accept Tester',
-        email: 'accept.test@mentorme.test',
-        password: 'AcceptPass-1234',
-        role: 'student',
-      },
+    await repository.saveUser({
+      id: 'user-student-accept',
+      organizationId: 'org-mentorme',
+      email: 'accept.test@mentorme.test',
+      name: 'Accept Tester',
+      role: 'student',
+      emailVerified: true,
     })
-    const studentToken = parseJson<{ accessToken: string }>(registerRes).accessToken
 
     const acceptRes = await app.inject({
       method: 'POST',
       url: `/invitations/${invite.debugToken}/accept`,
-      headers: { authorization: `Bearer ${studentToken}` },
+      headers: { [TEST_AUTH_HEADER]: 'accept.test@mentorme.test' },
     })
 
     expect(acceptRes.statusCode).toBe(200)
@@ -1692,33 +1158,30 @@ describe('MentorMe backend workflow', () => {
   })
 
   it('rejects accepting an invitation when the role does not match', async () => {
-    const { app } = await buildTestApp()
+    const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
     const inviteRes = await app.inject({
       method: 'POST',
       url: '/invitations',
-      headers: { authorization: `Bearer ${cfeToken}` },
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
       payload: { email: 'mismatch@mentorme.test', role: 'founder' },
     })
     const invite = parseJson<{ debugToken: string }>(inviteRes)
 
-    const registerRes = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        name: 'Mismatch User',
-        email: 'mismatch@mentorme.test',
-        password: 'MismatchPass-9',
-        role: 'student',
-      },
+    await repository.saveUser({
+      id: 'user-student-mismatch',
+      organizationId: 'org-mentorme',
+      email: 'mismatch@mentorme.test',
+      name: 'Mismatch User',
+      role: 'student',
+      emailVerified: true,
     })
-    const userToken = parseJson<{ accessToken: string }>(registerRes).accessToken
 
     const acceptRes = await app.inject({
       method: 'POST',
       url: `/invitations/${invite.debugToken}/accept`,
-      headers: { authorization: `Bearer ${userToken}` },
+      headers: { [TEST_AUTH_HEADER]: 'mismatch@mentorme.test' },
     })
 
     expect(acceptRes.statusCode).toBe(400)
@@ -1737,18 +1200,6 @@ describe('MentorMe backend workflow', () => {
   })
 })
 
-async function loginAs(app: Awaited<ReturnType<typeof createApp>>, email: string) {
-  const requestRes = await app.inject({
-    method: 'POST',
-    url: '/auth/magic-link/request',
-    payload: { email },
-  })
-
-  const verifyRes = await app.inject({
-    method: 'POST',
-    url: '/auth/magic-link/verify',
-    payload: { token: parseJson<{ debugToken: string }>(requestRes).debugToken },
-  })
-
-  return parseJson<{ accessToken: string }>(verifyRes).accessToken
+function loginAs(_app: Awaited<ReturnType<typeof createApp>>, email: string) {
+  return email
 }

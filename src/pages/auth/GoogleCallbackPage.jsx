@@ -1,54 +1,39 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import AuthLayout from '../../layouts/AuthLayout'
 import { FormError } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
-import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
-
-const parseGoogleCallbackParams = (search) => {
-  const params = new URLSearchParams(search)
-  const oauthError = params.get('error')
-
-  if (oauthError) {
-    return { code: null, state: null, error: `Google rejected the sign-in: ${oauthError}.` }
-  }
-
-  const code = params.get('code')
-  const state = params.get('state')
-
-  if (!code || !state) {
-    return { code: null, state: null, error: 'Missing OAuth code or state. Try signing in again.' }
-  }
-
-  return { code, state, error: null }
-}
+import { authClient } from '../../auth/authClient'
 
 function GoogleCallbackPage() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const { completeGoogleOAuth } = useAppState()
-  const calledRef = useRef(false)
-  const callback = useMemo(() => parseGoogleCallbackParams(location.search), [location.search])
-  const [error, setError] = useState(callback.error)
+  const { bootStatus } = useAppState()
+  const checkedRef = useRef(false)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (callback.error || calledRef.current) {
-      return undefined
+    if (checkedRef.current) {
+      return
     }
-    calledRef.current = true
+    checkedRef.current = true
+
+    if (!authClient) {
+      setError('Auth backend is not configured.')
+      return
+    }
 
     let active = true
     void (async () => {
       try {
-        const session = await completeGoogleOAuth({ code: callback.code, state: callback.state })
-        if (!active) {
-          return
+        const session = await authClient.getSession()
+        if (!active) return
+        if (session?.data?.user) {
+          navigate('/', { replace: true })
+        } else {
+          setError('Google sign-in did not complete. Try again.')
         }
-        navigate(sanitizeNextPath(session?.redirectAfter || '/'), { replace: true })
       } catch (caught) {
-        if (!active) {
-          return
-        }
+        if (!active) return
         setError(caught?.message || 'Google sign-in did not complete. Try again.')
       }
     })()
@@ -56,7 +41,13 @@ function GoogleCallbackPage() {
     return () => {
       active = false
     }
-  }, [callback, completeGoogleOAuth, navigate])
+  }, [navigate])
+
+  useEffect(() => {
+    if (bootStatus === 'authenticated') {
+      navigate('/', { replace: true })
+    }
+  }, [bootStatus, navigate])
 
   return (
     <AuthLayout
@@ -74,7 +65,7 @@ function GoogleCallbackPage() {
       <FormError>{error}</FormError>
       {!error ? (
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          One moment — we are exchanging the authorization code for a MentorMe session.
+          One moment — completing your Google sign-in.
         </div>
       ) : null}
     </AuthLayout>

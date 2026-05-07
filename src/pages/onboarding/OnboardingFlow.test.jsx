@@ -53,9 +53,6 @@ describe('Onboarding flow (API mode)', () => {
 
   it('redirects an authenticated founder without a venture to the founder onboarding wizard', async () => {
     fetch.mockImplementation(async (url) => {
-      if (url.endsWith('/auth/refresh')) {
-        return jsonResponse({ accessToken: 'session-token' })
-      }
       if (url.endsWith('/me')) {
         return jsonResponse({
           user: {
@@ -89,7 +86,7 @@ describe('Onboarding flow (API mode)', () => {
     ).toBeInTheDocument()
 
     const calls = getCallUrls()
-    expect(calls.some((url) => url.endsWith('/auth/refresh'))).toBe(true)
+    expect(calls.some((url) => url.endsWith('/me'))).toBe(true)
     expect(calls.some((url) => url.endsWith('/me/onboarding'))).toBe(true)
     expect(window.location.pathname).toBe('/onboarding/founder')
   })
@@ -98,9 +95,6 @@ describe('Onboarding flow (API mode)', () => {
     let onboardedAt = null
 
     fetch.mockImplementation(async (url, init) => {
-      if (url.endsWith('/auth/refresh')) {
-        return jsonResponse({ accessToken: 'session-token' })
-      }
       if (url.endsWith('/me')) {
         return jsonResponse({
           user: {

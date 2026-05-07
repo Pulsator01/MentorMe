@@ -12,13 +12,13 @@ import { PlatformService } from './domain/platformService'
 import type {
   AiGateway,
   EmailGateway,
-  GoogleOAuthGateway,
   PlatformRepository,
   QueuePublisher,
   StorageService,
 } from './domain/interfaces'
-import type { PasswordHasher } from './infra/passwordHasher'
 import { verifyCalendlyWebhookSignature } from './infra/calendlyWebhookSignature'
+import { fromNodeHeaders, toNodeHandler } from 'better-auth/node'
+import type { BetterAuthInstance } from './infra/betterAuth'
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -28,20 +28,11 @@ declare module 'fastify' {
 }
 
 export type HttpSecurityOptions = {
-  /** When true, skips @fastify/helmet (tests only). */
   disableHelmet?: boolean
-  /** When true, skips @fastify/rate-limit entirely (tests only). */
   disableRateLimit?: boolean
-  /**
-   * Allowed browser origins for credentialed CORS. When empty or omitted,
-   * the API reflects the request `Origin` header (development / Vitest).
-   */
   corsAllowedOrigins?: string[]
   rateLimitGlobalMax?: number
   rateLimitGlobalWindowMs?: number
-  /** Stricter per-route bucket for high-abuse auth endpoints. */
-  rateLimitAuthMax?: number
-  rateLimitAuthWindowMs?: number
 }
 
 type AppOptions = {
@@ -50,24 +41,15 @@ type AppOptions = {
   storage: StorageService
   queue: QueuePublisher
   ai: AiGateway
-  passwordHasher: PasswordHasher
-  googleOAuth?: GoogleOAuthGateway
+  auth?: BetterAuthInstance
   exposeTokens?: boolean
-  jwtIssuer: string
-  jwtAudience: string
-  jwtSecret: string
+  /** When set, readAuthUser falls back to looking up user by this header value (tests only). */
+  testAuthBypassHeader?: string
   cookieSecret: string
-  cookieDomain?: string
-  cookieSecure?: boolean
   defaultOrganizationId: string
   appBaseUrl: string
-  /** Set true behind Render / other reverse proxies so rate limits use X-Forwarded-For. */
   trustProxy?: boolean
   httpSecurity?: HttpSecurityOptions
-  /**
-   * Calendly webhook signing key (UTF-8). When set, `Calendly-Webhook-Signature` must validate.
-   * In `NODE_ENV=production`, webhooks are rejected (503) if this is unset.
-   */
   calendlyWebhookSigningSecret?: string
 }
 
@@ -75,8 +57,7 @@ const artifactCompleteSchema = z.object({
   artifactId: z.string().min(1),
 })
 
-const bearerSecurity = [{ bearerAuth: [] }]
-const refreshSecurity = [{ refreshCookie: [] }]
+const cookieSecurity = [{ cookieAuth: [] }]
 
 const stringIdParamSchema = (name: string, description: string) => ({
   type: 'object',
@@ -85,86 +66,6 @@ const stringIdParamSchema = (name: string, description: string) => ({
   },
   required: [name],
 })
-
-const magicLinkRequestBodySchema = {
-  type: 'object',
-  properties: {
-    email: { type: 'string', format: 'email' },
-  },
-  required: ['email'],
-}
-
-const magicLinkVerifyBodySchema = {
-  type: 'object',
-  properties: {
-    token: { type: 'string' },
-  },
-  required: ['token'],
-}
-
-const registerBodySchema = {
-  type: 'object',
-  properties: {
-    name: { type: 'string', minLength: 2, maxLength: 120 },
-    email: { type: 'string', format: 'email' },
-    password: { type: 'string', minLength: 8, maxLength: 256 },
-    role: { type: 'string', enum: ['founder', 'student'] },
-    organizationId: { type: 'string' },
-    cohortId: { type: 'string' },
-  },
-  required: ['name', 'email', 'password'],
-}
-
-const loginBodySchema = {
-  type: 'object',
-  properties: {
-    email: { type: 'string', format: 'email' },
-    password: { type: 'string', minLength: 1, maxLength: 256 },
-  },
-  required: ['email', 'password'],
-}
-
-const forgotPasswordBodySchema = {
-  type: 'object',
-  properties: {
-    email: { type: 'string', format: 'email' },
-  },
-  required: ['email'],
-}
-
-const resetPasswordBodySchema = {
-  type: 'object',
-  properties: {
-    token: { type: 'string', minLength: 20 },
-    password: { type: 'string', minLength: 8, maxLength: 256 },
-  },
-  required: ['token', 'password'],
-}
-
-const changePasswordBodySchema = {
-  type: 'object',
-  properties: {
-    currentPassword: { type: 'string', minLength: 1, maxLength: 256 },
-    newPassword: { type: 'string', minLength: 8, maxLength: 256 },
-  },
-  required: ['currentPassword', 'newPassword'],
-}
-
-const googleAuthorizeBodySchema = {
-  type: 'object',
-  properties: {
-    redirectAfter: { type: 'string', maxLength: 512 },
-  },
-}
-
-const googleCallbackBodySchema = {
-  type: 'object',
-  properties: {
-    code: { type: 'string', minLength: 10, maxLength: 2048 },
-    state: { type: 'string', minLength: 10, maxLength: 2048 },
-  },
-  required: ['code', 'state'],
-}
 
 const founderOnboardingBodySchema = {
   type: 'object',
@@ -402,7 +303,7 @@ const openApiInfo = {
 
 const openApiTags = [
   { name: 'Infra', description: 'Operational health and deployment probes' },
-  { name: 'Auth', description: 'Magic-link auth and session management' },
+  { name: 'Auth', description: 'Session-based authentication (Better Auth)' },
   { name: 'Onboarding', description: 'First-run onboarding wizards for founders and students' },
   { name: 'Invitations', description: 'CFE-issued invitations to join an organization' },
   { name: 'Ventures', description: 'Venture and mentor-request intake flows' },
@@ -414,15 +315,10 @@ const openApiTags = [
 
 const openApiComponents = {
   securitySchemes: {
-    bearerAuth: {
-      type: 'http',
-      scheme: 'bearer',
-      bearerFormat: 'JWT',
-    },
-    refreshCookie: {
+    cookieAuth: {
       type: 'apiKey',
       in: 'cookie',
-      name: 'mentor_me_refresh',
+      name: 'mentor_me.session_token',
     },
   },
 }
@@ -491,124 +387,11 @@ const buildOpenApiDocument = () =>
         },
       },
     },
-    '/auth/magic-link/request': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Request a magic link',
-        requestBody: jsonRequestBody(magicLinkRequestBodySchema),
-        responses: {
-          202: jsonResponse('Accepted'),
-        },
-      },
-    },
-    '/auth/magic-link/verify': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Verify a magic link token',
-        requestBody: jsonRequestBody(magicLinkVerifyBodySchema),
-        responses: {
-          200: jsonResponse('Verified session'),
-        },
-      },
-    },
-    '/auth/register': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Register a new founder or student account with email and password',
-        requestBody: jsonRequestBody(registerBodySchema),
-        responses: {
-          201: jsonResponse('Registered user with session'),
-        },
-      },
-    },
-    '/auth/login': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Sign in with email and password',
-        requestBody: jsonRequestBody(loginBodySchema),
-        responses: {
-          200: jsonResponse('Authenticated session'),
-        },
-      },
-    },
-    '/auth/forgot-password': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Request a password-reset email (always returns 202)',
-        requestBody: jsonRequestBody(forgotPasswordBodySchema),
-        responses: {
-          202: jsonResponse('Accepted'),
-        },
-      },
-    },
-    '/auth/reset-password': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Consume a password-reset token and set a new password',
-        requestBody: jsonRequestBody(resetPasswordBodySchema),
-        responses: {
-          200: jsonResponse('Password reset and new session issued'),
-        },
-      },
-    },
-    '/auth/change-password': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Change the current user password (requires authentication)',
-        security: bearerSecurity,
-        requestBody: jsonRequestBody(changePasswordBodySchema),
-        responses: {
-          200: jsonResponse('Password changed and new session issued'),
-        },
-      },
-    },
-    '/auth/google/authorize-url': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Build a Google OAuth authorize URL with signed CSRF state',
-        requestBody: jsonRequestBody(googleAuthorizeBodySchema),
-        responses: {
-          200: jsonResponse('Google OAuth authorize URL'),
-          501: jsonResponse('Google sign-in is not configured on this server'),
-        },
-      },
-    },
-    '/auth/google/callback': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Exchange a Google OAuth authorization code for a MentorMe session',
-        requestBody: jsonRequestBody(googleCallbackBodySchema),
-        responses: {
-          200: jsonResponse('Google sign-in session'),
-          501: jsonResponse('Google sign-in is not configured on this server'),
-        },
-      },
-    },
-    '/auth/refresh': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Refresh an access token from the session cookie',
-        security: refreshSecurity,
-        responses: {
-          200: jsonResponse('Refreshed access token'),
-        },
-      },
-    },
-    '/auth/logout': {
-      post: {
-        tags: ['Auth'],
-        summary: 'Log out and clear the refresh cookie',
-        security: refreshSecurity,
-        responses: {
-          204: noContentResponse,
-        },
-      },
-    },
     '/me': {
       get: {
         tags: ['Auth'],
         summary: 'Get the current authenticated user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Authenticated user'),
         },
@@ -618,7 +401,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Onboarding'],
         summary: 'Read the current onboarding status for the signed-in user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Onboarding status'),
         },
@@ -628,7 +411,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Onboarding'],
         summary: 'Complete the founder onboarding wizard (creates the venture)',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(founderOnboardingBodySchema),
         responses: {
           201: jsonResponse('Onboarded user with new venture'),
@@ -639,7 +422,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Onboarding'],
         summary: 'Complete the student onboarding wizard (joins a venture)',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(studentOnboardingBodySchema),
         responses: {
           200: jsonResponse('Onboarded user with venture membership'),
@@ -650,7 +433,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Onboarding'],
         summary: 'List ventures the current student can join in their cohort',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Available ventures'),
         },
@@ -660,7 +443,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Invitations'],
         summary: 'List invitations issued by the current organization',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Invitations for the organization'),
         },
@@ -668,7 +451,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Invitations'],
         summary: 'Create and email an invitation to join the organization',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(createInvitationBodySchema),
         responses: {
           201: jsonResponse('Created invitation'),
@@ -689,7 +472,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Invitations'],
         summary: 'Accept an invitation as the currently signed-in user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('token', 'Invitation token')],
         responses: {
           200: jsonResponse('Accepted invitation'),
@@ -700,7 +483,7 @@ const buildOpenApiDocument = () =>
       delete: {
         tags: ['Invitations'],
         summary: 'Revoke a pending invitation',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('invitationId', 'Invitation identifier')],
         responses: {
           200: jsonResponse('Revoked invitation'),
@@ -711,7 +494,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Ventures'],
         summary: 'List ventures visible to the current user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Visible ventures'),
         },
@@ -721,7 +504,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Ventures'],
         summary: 'Get one venture by id',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('ventureId', 'Venture identifier')],
         responses: {
           200: jsonResponse('Venture detail'),
@@ -732,7 +515,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Ventures'],
         summary: 'List requests for a specific venture',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('ventureId', 'Venture identifier')],
         responses: {
           200: jsonResponse('Requests for the venture'),
@@ -741,7 +524,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Ventures'],
         summary: 'Create a mentor request for a venture',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('ventureId', 'Venture identifier')],
         requestBody: jsonRequestBody(createRequestBodySchema),
         responses: {
@@ -753,7 +536,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Requests'],
         summary: 'List mentor requests visible to the current user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Visible requests'),
         },
@@ -763,7 +546,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Submit or re-submit a request into CFE review',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         responses: {
           200: jsonResponse('Submitted request'),
@@ -774,7 +557,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Return a request for revision',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         requestBody: jsonRequestBody(returnRequestBodySchema),
         responses: {
@@ -786,7 +569,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Approve a request for mentor outreach',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         requestBody: jsonRequestBody(approveRequestBodySchema),
         responses: {
@@ -798,7 +581,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Close a request',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         responses: {
           200: jsonResponse('Closed request'),
@@ -809,7 +592,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Create a presigned artifact upload',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         requestBody: jsonRequestBody(presignArtifactBodySchema),
         responses: {
@@ -821,7 +604,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Mark an uploaded artifact as complete',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         requestBody: jsonRequestBody(artifactCompleteBodySchema),
         responses: {
@@ -833,7 +616,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Requests'],
         summary: 'Create a secure mentor outreach token',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('requestId', 'Mentor request identifier')],
         responses: {
           201: jsonResponse('Created mentor outreach token'),
@@ -844,7 +627,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Mentors'],
         summary: 'List mentors visible to the current user',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: jsonResponse('Visible mentors'),
         },
@@ -852,7 +635,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['Mentors'],
         summary: 'Create a mentor profile',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(mentorProfileBodySchema),
         responses: {
           201: jsonResponse('Created mentor'),
@@ -863,7 +646,7 @@ const buildOpenApiDocument = () =>
       patch: {
         tags: ['Mentors'],
         summary: 'Update a mentor profile',
-        security: bearerSecurity,
+        security: cookieSecurity,
         parameters: [pathParameter('mentorId', 'Mentor identifier')],
         requestBody: jsonRequestBody(mentorUpdateBodySchema),
         responses: {
@@ -932,7 +715,7 @@ const buildOpenApiDocument = () =>
       get: {
         tags: ['Integrations'],
         summary: 'Open the request update event stream',
-        security: bearerSecurity,
+        security: cookieSecurity,
         responses: {
           200: {
             description: 'Server-sent event stream',
@@ -951,7 +734,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['AI'],
         summary: 'Generate a mentor-ready founder brief from rough notes',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(requestBriefBodySchema),
         responses: {
           200: jsonResponse('Generated mentor-ready brief suggestion'),
@@ -962,7 +745,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['AI'],
         summary: 'Generate a structured meeting summary and follow-through tasks',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(meetingSummaryBodySchema),
         responses: {
           200: jsonResponse('Generated meeting summary'),
@@ -973,7 +756,7 @@ const buildOpenApiDocument = () =>
       post: {
         tags: ['AI'],
         summary: 'Rank active mentors from the database for a founder request',
-        security: bearerSecurity,
+        security: cookieSecurity,
         requestBody: jsonRequestBody(mentorRecommendationBodySchema),
         responses: {
           200: jsonResponse('Generated mentor recommendations'),
@@ -983,29 +766,6 @@ const buildOpenApiDocument = () =>
   },
 }) as OpenAPIV3_1.Document
 
-const mergeAuthBurstRoute = <T extends Record<string, unknown>>(
-  route: T,
-  auth: { disableRateLimit: boolean; authMax: number; authWindowMs: number },
-): T => {
-  if (auth.disableRateLimit) {
-    return route
-  }
-  const prevConfig =
-    typeof route.config === 'object' && route.config !== null && !Array.isArray(route.config)
-      ? (route.config as Record<string, unknown>)
-      : {}
-  return {
-    ...route,
-    config: {
-      ...prevConfig,
-      rateLimit: {
-        max: auth.authMax,
-        timeWindow: auth.authWindowMs,
-      },
-    },
-  }
-}
-
 export const createApp = async (options: AppOptions) => {
   const httpSec = {
     disableHelmet: options.httpSecurity?.disableHelmet === true,
@@ -1013,14 +773,6 @@ export const createApp = async (options: AppOptions) => {
     corsAllowedOrigins: (options.httpSecurity?.corsAllowedOrigins ?? []).map((o) => o.trim()).filter(Boolean),
     rateLimitGlobalMax: options.httpSecurity?.rateLimitGlobalMax ?? 400,
     rateLimitGlobalWindowMs: options.httpSecurity?.rateLimitGlobalWindowMs ?? 60_000,
-    rateLimitAuthMax: options.httpSecurity?.rateLimitAuthMax ?? 40,
-    rateLimitAuthWindowMs: options.httpSecurity?.rateLimitAuthWindowMs ?? 900_000,
-  }
-
-  const authBurst = {
-    disableRateLimit: httpSec.disableRateLimit,
-    authMax: httpSec.rateLimitAuthMax,
-    authWindowMs: httpSec.rateLimitAuthWindowMs,
   }
 
   const app = Fastify({ logger: false, trustProxy: options.trustProxy === true })
@@ -1031,22 +783,9 @@ export const createApp = async (options: AppOptions) => {
     storage: options.storage,
     queue: options.queue,
     ai: options.ai,
-    passwordHasher: options.passwordHasher,
-    googleOAuth: options.googleOAuth,
-    jwtIssuer: options.jwtIssuer,
-    jwtAudience: options.jwtAudience,
-    jwtSecret: options.jwtSecret,
     defaultOrganizationId: options.defaultOrganizationId,
     appBaseUrl: options.appBaseUrl,
   })
-
-  const refreshCookieOptions = {
-    httpOnly: true,
-    sameSite: 'lax' as const,
-    path: '/',
-    ...(options.cookieDomain ? { domain: options.cookieDomain } : {}),
-    ...(options.cookieSecure ? { secure: true } : {}),
-  }
 
   if (!httpSec.disableHelmet) {
     app.register(helmet, {
@@ -1098,18 +837,30 @@ export const createApp = async (options: AppOptions) => {
     staticCSP: true,
   })
 
-  const readAuthUser = async (request: { headers: Record<string, unknown> }) => {
-    const authorization = String(request.headers.authorization || '')
-
-    if (!authorization.startsWith('Bearer ')) {
-      throw app.httpErrors.unauthorized()
+  const readAuthUser = async (request: FastifyRequest) => {
+    if (options.testAuthBypassHeader) {
+      const email = String(request.headers[options.testAuthBypassHeader] || '')
+      if (email) {
+        const user = await options.repository.findUserByEmail(email)
+        if (!user) throw app.httpErrors.unauthorized()
+        return user
+      }
     }
 
-    try {
-      return await service.authenticate(authorization.replace('Bearer ', ''))
-    } catch {
+    if (!options.auth) {
+      throw app.httpErrors.unauthorized('Auth not configured')
+    }
+    const session = await options.auth.api.getSession({
+      headers: fromNodeHeaders(request.raw.headers),
+    })
+    if (!session) {
       throw app.httpErrors.unauthorized()
     }
+    const user = await options.repository.findUserById(session.user.id)
+    if (!user) {
+      throw app.httpErrors.unauthorized()
+    }
+    return user
   }
 
   const emitEvent = (name: string, detail: Record<string, unknown>) => {
@@ -1129,6 +880,13 @@ export const createApp = async (options: AppOptions) => {
     })
   }
 
+  if (options.auth) {
+    const betterAuthHandler = toNodeHandler(options.auth)
+    app.all('/api/auth/*', async (request, reply) => {
+      betterAuthHandler(request.raw, reply.raw)
+    })
+  }
+
   app.get('/healthz', {
     schema: {
       tags: ['Infra'],
@@ -1138,253 +896,11 @@ export const createApp = async (options: AppOptions) => {
     status: 'ok',
   }))
 
-  app.post('/auth/magic-link/request', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Request a magic link',
-        body: magicLinkRequestBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    const payload = z.object({ email: z.string().email() }).parse(request.body)
-    const result = await service.requestMagicLink(payload.email)
-    return reply.code(202).send({
-      accepted: true,
-      ...(options.exposeTokens && result.token ? { debugToken: result.token } : {}),
-    })
-  })
-
-  app.post('/auth/magic-link/verify', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Verify a magic link token',
-        body: magicLinkVerifyBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const payload = z.object({ token: z.string().min(10) }).parse(request.body)
-      const result = await service.verifyMagicLink(payload.token)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.send({
-        accessToken: result.accessToken,
-        user: result.user,
-      })
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/register', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Register a new founder or student account with email and password',
-        body: registerBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.register(request.body)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.code(201).send({
-        accessToken: result.accessToken,
-        user: result.user,
-      })
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/login', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Sign in with email and password',
-        body: loginBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.login(request.body)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.send({
-        accessToken: result.accessToken,
-        user: result.user,
-      })
-    } catch (error) {
-      return reply.unauthorized((error as Error).message)
-    }
-  })
-
-  app.post('/auth/forgot-password', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Request a password-reset email (always returns 202)',
-        body: forgotPasswordBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.requestPasswordReset(request.body)
-      return reply.code(202).send({
-        accepted: true,
-        ...(options.exposeTokens && result.token ? { debugToken: result.token } : {}),
-      })
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/reset-password', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Consume a password-reset token and set a new password',
-        body: resetPasswordBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.resetPassword(request.body)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.send({
-        accessToken: result.accessToken,
-        user: result.user,
-      })
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/change-password', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Change the current user password (requires authentication)',
-        security: bearerSecurity,
-        body: changePasswordBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const user = await readAuthUser(request)
-      const result = await service.changePassword(user, request.body)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.send({
-        accessToken: result.accessToken,
-        user: result.user,
-      })
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/google/authorize-url', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Build a Google OAuth authorize URL with signed CSRF state',
-        body: googleAuthorizeBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.googleAuthorizeUrl(request.body)
-      return reply.send(result)
-    } catch (error) {
-      const message = (error as Error).message
-      if (message.includes('not configured')) {
-        return reply.code(501).send({ error: message })
-      }
-      return reply.badRequest(message)
-    }
-  })
-
-  app.post('/auth/google/callback', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Exchange a Google OAuth authorization code for a MentorMe session',
-        body: googleCallbackBodySchema,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const result = await service.googleOAuthCallback(request.body)
-      reply.setCookie('mentor_me_refresh', result.refreshToken, refreshCookieOptions)
-      return reply.send({
-        accessToken: result.accessToken,
-        user: result.user,
-        isNewUser: result.isNewUser,
-        redirectAfter: result.redirectAfter,
-      })
-    } catch (error) {
-      const message = (error as Error).message
-      if (message.includes('not configured')) {
-        return reply.code(501).send({ error: message })
-      }
-      return reply.badRequest(message)
-    }
-  })
-
-  app.post('/auth/refresh', mergeAuthBurstRoute(
-    {
-      schema: {
-        tags: ['Auth'],
-        summary: 'Refresh an access token from the session cookie',
-        security: refreshSecurity,
-      },
-    },
-    authBurst,
-  ), async (request, reply) => {
-    try {
-      const refreshToken = request.cookies.mentor_me_refresh
-      if (!refreshToken) {
-        return reply.unauthorized()
-      }
-      const result = await service.refreshSession(refreshToken)
-      return reply.send(result)
-    } catch (error) {
-      return reply.badRequest((error as Error).message)
-    }
-  })
-
-  app.post('/auth/logout', {
-    schema: {
-      tags: ['Auth'],
-      summary: 'Log out and clear the refresh cookie',
-      security: refreshSecurity,
-    },
-  }, async (request, reply) => {
-    const refreshToken = request.cookies.mentor_me_refresh
-    if (refreshToken) {
-      await service.logout(refreshToken)
-    }
-    reply.clearCookie('mentor_me_refresh', {
-      path: '/',
-      ...(options.cookieDomain ? { domain: options.cookieDomain } : {}),
-    })
-    return reply.code(204).send()
-  })
-
   app.get('/me', {
     schema: {
       tags: ['Auth'],
       summary: 'Get the current authenticated user',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request) => {
     const user = await readAuthUser(request)
@@ -1395,7 +911,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Onboarding'],
       summary: 'Read the current onboarding status for the signed-in user',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {
@@ -1410,7 +926,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Onboarding'],
       summary: 'Complete the founder onboarding wizard (creates the venture)',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: founderOnboardingBodySchema,
     },
   }, async (request, reply) => {
@@ -1427,7 +943,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Onboarding'],
       summary: 'Complete the student onboarding wizard (joins a venture)',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: studentOnboardingBodySchema,
     },
   }, async (request, reply) => {
@@ -1444,7 +960,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Onboarding'],
       summary: 'List ventures the current student can join in their cohort',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {
@@ -1459,7 +975,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Invitations'],
       summary: 'Create and email an invitation to join the organization',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: createInvitationBodySchema,
     },
   }, async (request, reply) => {
@@ -1479,7 +995,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Invitations'],
       summary: 'List invitations issued by the current organization',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {
@@ -1509,7 +1025,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Invitations'],
       summary: 'Accept an invitation as the currently signed-in user',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('token', 'Invitation token'),
     },
   }, async (request, reply) => {
@@ -1527,7 +1043,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Invitations'],
       summary: 'Revoke a pending invitation',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('invitationId', 'Invitation identifier'),
     },
   }, async (request, reply) => {
@@ -1545,7 +1061,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Ventures'],
       summary: 'List ventures visible to the current user',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request) => {
     const user = await readAuthUser(request)
@@ -1556,7 +1072,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'List mentor requests visible to the current user',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {
@@ -1571,7 +1087,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Ventures'],
       summary: 'Get one venture by id',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('ventureId', 'Venture identifier'),
     },
   }, async (request, reply) => {
@@ -1588,7 +1104,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Ventures'],
       summary: 'List requests for a specific venture',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('ventureId', 'Venture identifier'),
     },
   }, async (request, reply) => {
@@ -1605,7 +1121,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Ventures'],
       summary: 'Create a mentor request for a venture',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('ventureId', 'Venture identifier'),
       body: createRequestBodySchema,
     },
@@ -1625,7 +1141,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Submit or re-submit a request into CFE review',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
     },
   }, async (request, reply) => {
@@ -1644,7 +1160,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Return a request for revision',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
       body: returnRequestBodySchema,
     },
@@ -1664,7 +1180,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Approve a request for mentor outreach',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
       body: approveRequestBodySchema,
     },
@@ -1684,7 +1200,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Close a request',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
     },
   }, async (request, reply) => {
@@ -1703,7 +1219,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Create a presigned artifact upload',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
       body: presignArtifactBodySchema,
     },
@@ -1721,7 +1237,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Mark an uploaded artifact as complete',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
       body: artifactCompleteBodySchema,
     },
@@ -1740,7 +1256,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Mentors'],
       summary: 'List mentors visible to the current user',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {
@@ -1755,7 +1271,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['AI'],
       summary: 'Generate a mentor-ready founder brief from rough notes',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: requestBriefBodySchema,
     },
   }, async (request, reply) => {
@@ -1771,7 +1287,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['AI'],
       summary: 'Generate a structured meeting summary and follow-through tasks',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: meetingSummaryBodySchema,
     },
   }, async (request, reply) => {
@@ -1787,7 +1303,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['AI'],
       summary: 'Rank active mentors from the database for a founder request',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: mentorRecommendationBodySchema,
     },
   }, async (request, reply) => {
@@ -1803,7 +1319,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Mentors'],
       summary: 'Create a mentor profile',
-      security: bearerSecurity,
+      security: cookieSecurity,
       body: mentorProfileBodySchema,
     },
   }, async (request, reply) => {
@@ -1835,7 +1351,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Mentors'],
       summary: 'Update a mentor profile',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('mentorId', 'Mentor identifier'),
       body: mentorUpdateBodySchema,
     },
@@ -1853,7 +1369,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Requests'],
       summary: 'Create a secure mentor outreach token',
-      security: bearerSecurity,
+      security: cookieSecurity,
       params: stringIdParamSchema('requestId', 'Mentor request identifier'),
     },
   }, async (request, reply) => {
@@ -1992,7 +1508,7 @@ export const createApp = async (options: AppOptions) => {
     schema: {
       tags: ['Integrations'],
       summary: 'Open the request update event stream',
-      security: bearerSecurity,
+      security: cookieSecurity,
     },
   }, async (request, reply) => {
     try {

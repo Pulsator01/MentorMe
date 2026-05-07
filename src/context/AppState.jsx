@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useReducer, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { initialPlatformData } from '../data/platformData'
+import { authClient } from '../auth/authClient'
 
 const AppStateContext = createContext(null)
 
@@ -305,7 +306,6 @@ export const buildMentorUpdatePayload = (updates) => {
 
 export const createApiClient = (baseUrl) => {
   const trim = baseUrl.replace(/\/$/, '')
-  let accessToken = null
 
   const buildJsonHeaders = (options = {}) => {
     const headers = {
@@ -351,56 +351,24 @@ export const createApiClient = (baseUrl) => {
     return await response.json()
   }
 
-  const authorizedFetch = async (path, options = {}, allowRefresh = true) => {
-    if (!accessToken) {
-      if (!allowRefresh) {
-        throw new Error('Not authenticated')
-      }
-
-      try {
-        const refreshBody = await json('/auth/refresh', { method: 'POST' })
-        accessToken = refreshBody.accessToken
-      } catch (error) {
-        throw new Error(error?.message || 'Not authenticated')
-      }
-    }
-
+  const authenticatedFetch = async (path, options = {}) => {
     const response = await request(path, {
       ...options,
-      headers: {
-        ...(options.headers || {}),
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: buildJsonHeaders(options),
     })
 
-    if (response.ok) {
-      return response
-    }
-
-    if (!allowRefresh || response.status !== 401) {
+    if (!response.ok) {
       const text = await response.text()
       const error = new Error(text || `Request failed for ${path} (${response.status})`)
       error.status = response.status
       throw error
     }
 
-    const refreshBody = await json('/auth/refresh', {
-      method: 'POST',
-    })
-
-    accessToken = refreshBody.accessToken
-    return await authorizedFetch(path, options, false)
+    return response
   }
 
-  const authorizedJson = async (path, options = {}, allowRefresh = true) => {
-    const response = await authorizedFetch(
-      path,
-      {
-        ...options,
-        headers: buildJsonHeaders(options),
-      },
-      allowRefresh,
-    )
+  const authenticatedJson = async (path, options = {}) => {
+    const response = await authenticatedFetch(path, options)
 
     if (response.status === 204) {
       return null
@@ -432,158 +400,50 @@ export const createApiClient = (baseUrl) => {
     return nextBuffer
   }
 
-  const captureSession = (body) => {
-    if (body?.accessToken) {
-      accessToken = body.accessToken
-    }
-    return body
-  }
-
   return {
-    async loginForPath(pathname) {
-      const email = getRoleEmailForPath(pathname)
-      const requestBody = await json('/auth/magic-link/request', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      })
-
-      if (!requestBody?.debugToken) {
-        throw new Error('Debug token is unavailable. Start the API with EXPOSE_DEBUG_TOKENS=true for local demo auth.')
-      }
-
-      const verifyBody = await json('/auth/magic-link/verify', {
-        method: 'POST',
-        body: JSON.stringify({ token: requestBody.debugToken }),
-      })
-
-      return captureSession(verifyBody)
-    },
-    async register({ name, email, password, role, organizationId, cohortId }) {
-      const body = await json('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          ...(role ? { role } : {}),
-          ...(organizationId ? { organizationId } : {}),
-          ...(cohortId ? { cohortId } : {}),
-        }),
-      })
-      return captureSession(body)
-    },
-    async login({ email, password }) {
-      const body = await json('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      })
-      return captureSession(body)
-    },
-    async forgotPassword(email) {
-      return await json('/auth/forgot-password', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      })
-    },
-    async resetPassword({ token, password }) {
-      const body = await json('/auth/reset-password', {
-        method: 'POST',
-        body: JSON.stringify({ token, password }),
-      })
-      return captureSession(body)
-    },
-    async changePassword({ currentPassword, newPassword }) {
-      const body = await authorizedJson('/auth/change-password', {
-        method: 'POST',
-        body: JSON.stringify({ currentPassword, newPassword }),
-      })
-      return captureSession(body)
-    },
-    async requestMagicLink(email) {
-      return await json('/auth/magic-link/request', {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-      })
-    },
-    async verifyMagicLink(token) {
-      const body = await json('/auth/magic-link/verify', {
-        method: 'POST',
-        body: JSON.stringify({ token }),
-      })
-      return captureSession(body)
-    },
-    async getGoogleAuthorizeUrl(redirectAfter) {
-      return await json('/auth/google/authorize-url', {
-        method: 'POST',
-        body: JSON.stringify(redirectAfter ? { redirectAfter } : {}),
-      })
-    },
-    async completeGoogleOAuth({ code, state }) {
-      const body = await json('/auth/google/callback', {
-        method: 'POST',
-        body: JSON.stringify({ code, state }),
-      })
-      return captureSession(body)
-    },
     async bootstrap() {
       try {
-        const refreshBody = await json('/auth/refresh', { method: 'POST' })
-        accessToken = refreshBody.accessToken
-        const me = await authorizedJson('/me', {}, false)
-        return { user: me.user, accessToken }
+        const me = await authenticatedJson('/me')
+        return { user: me.user }
       } catch (error) {
-        accessToken = null
         if (error?.status === 401 || error?.status === 400) {
           return null
         }
         throw error
       }
     },
-    async logout() {
-      try {
-        await json('/auth/logout', { method: 'POST' })
-      } finally {
-        accessToken = null
-      }
-    },
-    hasSession() {
-      return Boolean(accessToken)
-    },
-    clearSession() {
-      accessToken = null
-    },
     getMe() {
-      return authorizedJson('/me')
+      return authenticatedJson('/me')
     },
     getOnboardingStatus() {
-      return authorizedJson('/me/onboarding')
+      return authenticatedJson('/me/onboarding')
     },
     completeFounderOnboarding(payload) {
-      return authorizedJson('/onboarding/founder', {
+      return authenticatedJson('/onboarding/founder', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     completeStudentOnboarding(payload) {
-      return authorizedJson('/onboarding/student', {
+      return authenticatedJson('/onboarding/student', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     getStudentJoinOptions() {
-      return authorizedJson('/onboarding/student/options')
+      return authenticatedJson('/onboarding/student/options')
     },
     listInvitations() {
-      return authorizedJson('/invitations')
+      return authenticatedJson('/invitations')
     },
     createInvitation(payload) {
-      return authorizedJson('/invitations', {
+      return authenticatedJson('/invitations', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     revokeInvitation(invitationId) {
-      return authorizedJson(`/invitations/${invitationId}`, {
+      return authenticatedJson(`/invitations/${invitationId}`, {
         method: 'DELETE',
       })
     },
@@ -591,96 +451,96 @@ export const createApiClient = (baseUrl) => {
       return json(`/invitations/${encodeURIComponent(token)}`)
     },
     acceptInvitation(token) {
-      return authorizedJson(`/invitations/${encodeURIComponent(token)}/accept`, {
+      return authenticatedJson(`/invitations/${encodeURIComponent(token)}/accept`, {
         method: 'POST',
       })
     },
     getVentures() {
-      return authorizedJson('/ventures')
+      return authenticatedJson('/ventures')
     },
     getVenture(ventureId) {
-      return authorizedJson(`/ventures/${ventureId}`)
+      return authenticatedJson(`/ventures/${ventureId}`)
     },
     getRequests() {
-      return authorizedJson('/requests')
+      return authenticatedJson('/requests')
     },
     getRequestsForVenture(ventureId) {
-      return authorizedJson(`/ventures/${ventureId}/requests`)
+      return authenticatedJson(`/ventures/${ventureId}/requests`)
     },
     getMentors() {
-      return authorizedJson('/mentors')
+      return authenticatedJson('/mentors')
     },
     createRequest(ventureId, payload) {
-      return authorizedJson(`/ventures/${ventureId}/requests`, {
+      return authenticatedJson(`/ventures/${ventureId}/requests`, {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     submitRequest(requestId) {
-      return authorizedJson(`/requests/${requestId}/submit`, {
+      return authenticatedJson(`/requests/${requestId}/submit`, {
         method: 'POST',
       })
     },
     approveRequest(requestId, ownerName) {
-      return authorizedJson(`/requests/${requestId}/approve`, {
+      return authenticatedJson(`/requests/${requestId}/approve`, {
         method: 'POST',
         body: JSON.stringify({ ownerName }),
       })
     },
     returnRequest(requestId, reason) {
-      return authorizedJson(`/requests/${requestId}/return`, {
+      return authenticatedJson(`/requests/${requestId}/return`, {
         method: 'POST',
         body: JSON.stringify({ reason }),
       })
     },
     closeRequest(requestId) {
-      return authorizedJson(`/requests/${requestId}/close`, {
+      return authenticatedJson(`/requests/${requestId}/close`, {
         method: 'POST',
       })
     },
     presignArtifact(requestId, payload) {
-      return authorizedJson(`/requests/${requestId}/artifacts/presign`, {
+      return authenticatedJson(`/requests/${requestId}/artifacts/presign`, {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     completeArtifact(requestId, artifactId) {
-      return authorizedJson(`/requests/${requestId}/artifacts/complete`, {
+      return authenticatedJson(`/requests/${requestId}/artifacts/complete`, {
         method: 'POST',
         body: JSON.stringify({ artifactId }),
       })
     },
     addMentor(payload) {
-      return authorizedJson('/mentors', {
+      return authenticatedJson('/mentors', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     updateMentor(mentorId, updates) {
-      return authorizedJson(`/mentors/${mentorId}`, {
+      return authenticatedJson(`/mentors/${mentorId}`, {
         method: 'PATCH',
         body: JSON.stringify(updates),
       })
     },
     createMentorOutreach(requestId) {
-      return authorizedJson(`/requests/${requestId}/mentor-outreach`, {
+      return authenticatedJson(`/requests/${requestId}/mentor-outreach`, {
         method: 'POST',
       })
     },
     generateRequestBrief(payload) {
-      return authorizedJson('/ai/request-brief', {
+      return authenticatedJson('/ai/request-brief', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     generateMentorRecommendations(payload) {
-      return authorizedJson('/ai/mentor-recommendations', {
+      return authenticatedJson('/ai/mentor-recommendations', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
     },
     generateMeetingSummary(payload) {
-      return authorizedJson('/ai/meeting-summary', {
+      return authenticatedJson('/ai/meeting-summary', {
         method: 'POST',
         body: JSON.stringify(payload),
       })
@@ -707,7 +567,7 @@ export const createApiClient = (baseUrl) => {
       })
     },
     async openNotificationsStream(onMessage, signal) {
-      const response = await authorizedFetch('/notifications/stream', {
+      const response = await authenticatedFetch('/notifications/stream', {
         headers: {
           Accept: 'text/event-stream',
         },
@@ -879,24 +739,6 @@ export function AppStateProvider({ children }) {
         }
 
         if (!session) {
-          const playwrightAuto = import.meta.env.VITE_PLAYWRIGHT_AUTO_AUTH === 'true'
-          const pathAtBoot = pathRef.current
-          if (playwrightAuto && !isPublicPath(pathAtBoot)) {
-            try {
-              await client.loginForPath(pathAtBoot)
-              const retry = await client.bootstrap()
-              if (!active) {
-                return
-              }
-              if (retry) {
-                backendRef.current.ready = true
-                dispatch({ type: 'set-user', payload: { user: retry.user, bootStatus: 'authenticated' } })
-                return
-              }
-            } catch {
-              // fall through to unauthenticated
-            }
-          }
           backendRef.current.ready = false
           dispatch({ type: 'set-user', payload: { user: null, bootStatus: 'unauthenticated' } })
           return
@@ -963,64 +805,66 @@ export function AppStateProvider({ children }) {
     markNotificationRead: (id) => dispatch({ type: 'notification-mark-read', payload: { id } }),
     markAllNotificationsRead: () => dispatch({ type: 'notification-mark-all-read' }),
     clearNotifications: () => dispatch({ type: 'notifications-clear' }),
-    register: async (payload) => {
-      const client = ensureClient()
-      const session = await client.register(payload)
-      await refreshCurrentUser(session.user)
-      return session
+    authClient,
+    register: async ({ name, email, password, role }) => {
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.signUp.email({ name, email, password, role })
+      if (result.error) throw new Error(result.error.message || 'Registration failed')
+      await refreshCurrentUser(result.data?.user)
+      return result.data
     },
-    login: async (payload) => {
-      const client = ensureClient()
-      const session = await client.login(payload)
-      await refreshCurrentUser(session.user)
-      return session
+    login: async ({ email, password }) => {
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.signIn.email({ email, password })
+      if (result.error) throw new Error(result.error.message || 'Sign in failed')
+      await refreshCurrentUser(result.data?.user)
+      return result.data
     },
     logout: async () => {
-      if (backendRef.current.client) {
+      if (authClient) {
         try {
-          await backendRef.current.client.logout()
+          await authClient.signOut()
         } catch {
-          backendRef.current.client.clearSession()
+          // ignore signout errors
         }
       }
       backendRef.current.ready = false
       dispatch({ type: 'reset-session' })
     },
     forgotPassword: async (email) => {
-      const client = ensureClient()
-      return await client.forgotPassword(email)
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.forgetPassword({ email, redirectTo: '/reset-password' })
+      if (result.error) throw new Error(result.error.message || 'Could not send reset email')
+      return result.data
     },
-    resetPassword: async (payload) => {
-      const client = ensureClient()
-      const session = await client.resetPassword(payload)
-      await refreshCurrentUser(session.user)
-      return session
+    resetPassword: async ({ token, password }) => {
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.resetPassword({ newPassword: password, token })
+      if (result.error) throw new Error(result.error.message || 'Password reset failed')
+      return result.data
     },
-    changePassword: async (payload) => {
-      const client = ensureClient()
-      const session = await client.changePassword(payload)
-      await refreshCurrentUser(session.user)
-      return session
+    changePassword: async ({ currentPassword, newPassword }) => {
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.changePassword({ currentPassword, newPassword })
+      if (result.error) throw new Error(result.error.message || 'Password change failed')
+      return result.data
     },
-    startGoogleOAuth: async (redirectAfter) => {
-      const client = ensureClient()
-      return await client.getGoogleAuthorizeUrl(redirectAfter)
-    },
-    completeGoogleOAuth: async (payload) => {
-      const client = ensureClient()
-      const session = await client.completeGoogleOAuth(payload)
-      await refreshCurrentUser(session.user)
-      return session
+    startGoogleOAuth: async () => {
+      if (!authClient) throw new Error('Auth backend is not configured')
+      await authClient.signIn.social({ provider: 'google' })
     },
     requestMagicLink: async (email) => {
-      const client = ensureClient()
-      return await client.requestMagicLink(email)
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.signIn.magicLink({ email })
+      if (result.error) throw new Error(result.error.message || 'Could not send magic link')
+      return result.data
     },
     verifyMagicLink: async (token) => {
-      const client = ensureClient()
-      const session = await client.verifyMagicLink(token)
-      await refreshCurrentUser(session.user)
-      return session
+      if (!authClient) throw new Error('Auth backend is not configured')
+      const result = await authClient.magicLink.verify({ query: { token } })
+      if (result.error) throw new Error(result.error.message || 'Magic link verification failed')
+      await refreshCurrentUser(result.data?.user)
+      return result.data
     },
     getOnboardingStatus: async () => {
       const client = ensureClient()

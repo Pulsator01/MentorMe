@@ -7,16 +7,6 @@ import { createSeededInMemoryPlatformRepository } from './infra/inMemoryReposito
 import { createStubEmailGateway } from './infra/stubEmailGateway'
 import { createStubStorageService } from './infra/stubStorageService'
 import { createInlineQueuePublisher } from './infra/inlineQueuePublisher'
-import type { PasswordHasher } from './infra/passwordHasher'
-
-const stubPasswordHasher: PasswordHasher = {
-  async hash(plain: string) {
-    return `hashed:${plain}`
-  },
-  async verify(hash: string, plain: string) {
-    return hash === `hashed:${plain}`
-  },
-}
 
 const buildSecurityHarnessApp = async () =>
   await createApp({
@@ -25,11 +15,6 @@ const buildSecurityHarnessApp = async () =>
     storage: createStubStorageService(),
     queue: createInlineQueuePublisher(),
     ai: new HeuristicAiGateway(),
-    passwordHasher: stubPasswordHasher,
-    exposeTokens: true,
-    jwtIssuer: 'mentor-me-security',
-    jwtAudience: 'mentor-me-web',
-    jwtSecret: 'security-test-secret',
     cookieSecret: 'cookie-secret',
     defaultOrganizationId: 'org-mentorme',
     appBaseUrl: 'http://localhost:5173',
@@ -52,11 +37,6 @@ describe('HTTP security hardening', () => {
       storage: createStubStorageService(),
       queue: createInlineQueuePublisher(),
       ai: new HeuristicAiGateway(),
-      passwordHasher: stubPasswordHasher,
-      exposeTokens: true,
-      jwtIssuer: 'mentor-me-security',
-      jwtAudience: 'mentor-me-web',
-      jwtSecret: 'security-test-secret',
       cookieSecret: 'cookie-secret',
       defaultOrganizationId: 'org-mentorme',
       appBaseUrl: 'http://localhost:5173',
@@ -90,11 +70,6 @@ describe('HTTP security hardening', () => {
       storage: createStubStorageService(),
       queue: createInlineQueuePublisher(),
       ai: new HeuristicAiGateway(),
-      passwordHasher: stubPasswordHasher,
-      exposeTokens: true,
-      jwtIssuer: 'mentor-me-security',
-      jwtAudience: 'mentor-me-web',
-      jwtSecret: 'security-test-secret',
       cookieSecret: 'cookie-secret',
       defaultOrganizationId: 'org-mentorme',
       appBaseUrl: 'http://localhost:5173',
@@ -104,10 +79,9 @@ describe('HTTP security hardening', () => {
       },
     })
 
-    // Logout has no per-route rateLimit override; it uses the global bucket only.
-    const first = await app.inject({ method: 'POST', url: '/auth/logout' })
-    const second = await app.inject({ method: 'POST', url: '/auth/logout' })
-    const third = await app.inject({ method: 'POST', url: '/auth/logout' })
+    const first = await app.inject({ method: 'GET', url: '/me' })
+    const second = await app.inject({ method: 'GET', url: '/me' })
+    const third = await app.inject({ method: 'GET', url: '/me' })
 
     expect(first.headers['x-ratelimit-limit']).toBe('2')
     expect(second.headers['x-ratelimit-limit']).toBe('2')

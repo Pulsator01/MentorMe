@@ -6,9 +6,10 @@ import { HeuristicAiGateway } from '../src/ai/heuristicAiGateway'
 import { createInlineQueuePublisher } from '../src/infra/inlineQueuePublisher'
 import { createStubEmailGateway } from '../src/infra/stubEmailGateway'
 import { createStubStorageService } from '../src/infra/stubStorageService'
-import { createArgon2PasswordHasher } from '../src/infra/passwordHasher'
 import { createRuntimeRepository } from '../src/runtime'
 import { resetAndSeedDatabase } from '../prisma/seedData'
+
+const TEST_AUTH_HEADER = 'x-test-user-email'
 
 type JsonRecord = Record<string, unknown>
 
@@ -47,28 +48,11 @@ const requestJson = async <T>(baseUrl: string, path: string, init: RequestInit =
   return JSON.parse(text) as T
 }
 
-const loginAs = async (baseUrl: string, email: string) => {
-  const requestBody = await requestJson<{ debugToken: string }>(baseUrl, '/auth/magic-link/request', {
-    method: 'POST',
-    body: JSON.stringify({ email }),
-  })
-
-  assert.ok(requestBody.debugToken, `Expected a debug token for ${email}`)
-
-  const verifyBody = await requestJson<{ accessToken: string }>(baseUrl, '/auth/magic-link/verify', {
-    method: 'POST',
-    body: JSON.stringify({ token: requestBody.debugToken }),
-  })
-
-  assert.ok(verifyBody.accessToken, `Expected an access token for ${email}`)
-  return verifyBody.accessToken
-}
-
-const authorizedJson = async <T>(baseUrl: string, token: string, path: string, init: RequestInit = {}) =>
+const authorizedJson = async <T>(baseUrl: string, email: string, path: string, init: RequestInit = {}) =>
   await requestJson<T>(baseUrl, path, {
     ...init,
     headers: {
-      Authorization: `Bearer ${token}`,
+      [TEST_AUTH_HEADER]: email,
       ...(init.headers || {}),
     },
   })
@@ -90,11 +74,7 @@ const run = async () => {
     storage: createStubStorageService(),
     queue: createInlineQueuePublisher(),
     ai: new HeuristicAiGateway(),
-    passwordHasher: createArgon2PasswordHasher(),
-    exposeTokens: true,
-    jwtIssuer: process.env.JWT_ISSUER || 'mentor-me-local',
-    jwtAudience: process.env.JWT_AUDIENCE || 'mentor-me-web',
-    jwtSecret: process.env.JWT_SECRET || 'development-secret',
+    testAuthBypassHeader: TEST_AUTH_HEADER,
     cookieSecret: process.env.COOKIE_SECRET || 'development-cookie-secret',
     defaultOrganizationId: process.env.DEFAULT_ORGANIZATION_ID || 'org-mentorme',
     appBaseUrl: process.env.APP_BASE_URL || 'http://localhost:5173',
@@ -111,13 +91,13 @@ const run = async () => {
     assert.equal(docsBody.info.title, 'MentorMe API')
     assert.ok(docsBody.paths['/mentor-actions/{token}/respond'], 'OpenAPI document should include mentor action paths')
 
-    const founderToken = await loginAs(baseUrl, 'aarav.sharma@mentorme.test')
-    const founderVentures = await authorizedJson<{ ventures: Array<{ id: string }> }>(baseUrl, founderToken, '/ventures')
+    const founderEmail = 'aarav.sharma@mentorme.test'
+    const founderVentures = await authorizedJson<{ ventures: Array<{ id: string }> }>(baseUrl, founderEmail, '/ventures')
     assert.deepEqual(founderVentures.ventures.map((venture) => venture.id), ['v-ecodrone'])
 
     const createBody = await authorizedJson<{ request: { id: string; status: string; artifactList: string[] } }>(
       baseUrl,
-      founderToken,
+      founderEmail,
       '/ventures/v-ecodrone/requests',
       {
         method: 'POST',
@@ -136,10 +116,10 @@ const run = async () => {
     assert.equal(createBody.request.status, 'cfe_review')
     assert.deepEqual(createBody.request.artifactList, ['pilot-plan-v1.pdf', 'investor-update-v2.md'])
 
-    const cfeToken = await loginAs(baseUrl, 'ritu.cfe@mentorme.test')
+    const cfeEmail = 'ritu.cfe@mentorme.test'
     const approveBody = await authorizedJson<{ request: { status: string } }>(
       baseUrl,
-      cfeToken,
+      cfeEmail,
       `/requests/${createBody.request.id}/approve`,
       {
         method: 'POST',
@@ -150,7 +130,7 @@ const run = async () => {
 
     const outreachBody = await authorizedJson<{ mentorActionToken: string }>(
       baseUrl,
-      cfeToken,
+      cfeEmail,
       `/requests/${createBody.request.id}/mentor-outreach`,
       { method: 'POST' },
     )
@@ -196,7 +176,7 @@ const run = async () => {
 
     const founderRequests = await authorizedJson<{
       requests: Array<{ id: string; status: string; mentorNotes: string; artifactList: string[] }>
-    }>(baseUrl, founderToken, '/requests')
+    }>(baseUrl, founderEmail, '/requests')
 
     const createdRequest = founderRequests.requests.find((request) => request.id === createBody.request.id)
     assert.ok(createdRequest, 'Expected the founder to see the newly-created request')

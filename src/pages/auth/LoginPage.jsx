@@ -20,7 +20,7 @@ function LoginPage() {
   const params = new URLSearchParams(location.search)
   const nextPath = sanitizeNextPath(params.get('next'))
 
-  const { login, startGoogleOAuth, requestMagicLink, verifyMagicLink } = useAppState()
+  const { login, startGoogleOAuth, requestMagicLink } = useAppState()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -50,8 +50,7 @@ function LoginPage() {
     setInfo(null)
     setGoogleSubmitting(true)
     try {
-      const result = await startGoogleOAuth(nextPath)
-      window.location.assign(result.authorizeUrl)
+      await startGoogleOAuth()
     } catch (caught) {
       setGoogleSubmitting(false)
       setError(caught?.message || 'Google sign-in is not available right now.')
@@ -67,12 +66,7 @@ function LoginPage() {
     }
     setMagicSubmitting(true)
     try {
-      const response = await requestMagicLink(email.trim())
-      if (response?.debugToken) {
-        await verifyMagicLink(response.debugToken)
-        navigate(nextPath, { replace: true })
-        return
-      }
+      await requestMagicLink(email.trim())
       setInfo('Check your inbox for a sign-in link.')
     } catch (caught) {
       setError(caught?.message || 'Could not send magic link. Try again later.')

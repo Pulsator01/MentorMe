@@ -64,8 +64,7 @@ function SignupPage() {
     setError(null)
     setGoogleSubmitting(true)
     try {
-      const result = await startGoogleOAuth(nextPath)
-      window.location.assign(result.authorizeUrl)
+      await startGoogleOAuth()
     } catch (caught) {
       setGoogleSubmitting(false)
       setError(caught?.message || 'Google sign-in is not available right now.')

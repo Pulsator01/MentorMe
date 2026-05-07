@@ -5,17 +5,12 @@ import type {
   AuditEvent,
   ExternalActionToken,
   Invitation,
-  MagicLinkTokenRecord,
   Meeting,
   MeetingFeedback,
   MentorProfile,
   MentorRequest,
   MentorRequestShortlist,
-  OAuthAccount,
-  OAuthProvider,
   OutboxEvent,
-  PasswordResetTokenRecord,
-  SessionRecord,
   User,
   UserRole,
   Venture,
@@ -99,11 +94,6 @@ export interface PlatformRepository {
   findUserByEmail(email: string): Promise<User | undefined>
   findUserById(id: string): Promise<User | undefined>
   saveUser(user: User): Promise<User>
-  findOAuthAccount(provider: OAuthProvider, providerAccountId: string): Promise<OAuthAccount | undefined>
-  saveOAuthAccount(account: OAuthAccount): Promise<OAuthAccount>
-  savePasswordResetToken(token: PasswordResetTokenRecord): Promise<PasswordResetTokenRecord>
-  findPasswordResetTokenByHash(tokenHash: string): Promise<PasswordResetTokenRecord | undefined>
-  markPasswordResetTokenConsumed(id: string, consumedAt: string): Promise<void>
   listVentures(): Promise<Venture[]>
   findVentureById(id: string): Promise<Venture | undefined>
   saveVenture(venture: Venture): Promise<Venture>
@@ -123,12 +113,6 @@ export interface PlatformRepository {
   listMeetingsForRequest(requestId: string): Promise<Meeting[]>
   saveMeeting(meeting: Meeting): Promise<Meeting>
   saveFeedback(feedback: MeetingFeedback): Promise<MeetingFeedback>
-  listMagicLinks(): Promise<MagicLinkTokenRecord[]>
-  saveMagicLink(token: MagicLinkTokenRecord): Promise<MagicLinkTokenRecord>
-  saveSession(session: SessionRecord): Promise<SessionRecord>
-  findSessionByHash(refreshTokenHash: string): Promise<SessionRecord | undefined>
-  revokeSession(sessionId: string): Promise<void>
-  revokeAllSessionsForUser(userId: string): Promise<void>
   saveExternalActionToken(token: ExternalActionToken): Promise<ExternalActionToken>
   findExternalActionTokenByHash(tokenHash: string): Promise<ExternalActionToken | undefined>
   saveAuditEvent(event: AuditEvent): Promise<AuditEvent>
@@ -183,24 +167,3 @@ export interface AiGateway {
   recommendMentors(input: MentorRecommendationInput & { candidates: MentorRecommendationCandidate[] }): Promise<MentorRecommendationOutput>
 }
 
-export interface GoogleOAuthTokens {
-  accessToken: string
-  refreshToken?: string
-  idToken?: string
-  expiresInSeconds?: number
-  scope?: string
-}
-
-export interface GoogleOAuthProfile {
-  providerAccountId: string
-  email: string
-  emailVerified: boolean
-  name: string
-}
-
-export interface GoogleOAuthGateway {
-  redirectUri: string
-  buildAuthorizeUrl(state: string): string
-  exchangeCode(code: string): Promise<GoogleOAuthTokens>
-  fetchProfile(accessToken: string): Promise<GoogleOAuthProfile>
-}

@@ -8,6 +8,7 @@ type RuntimeMode = 'memory' | 'prisma'
 export type RuntimeRepository = {
   cleanup?: () => Promise<void>
   mode: RuntimeMode
+  prisma?: PrismaClient
   repository: PlatformRepository
 }
 
@@ -26,6 +27,7 @@ export const createRuntimeRepository = (): RuntimeRepository => {
 
     return {
       mode: 'prisma',
+      prisma,
       repository: createPrismaPlatformRepository(prisma),
       cleanup: async () => {
         await prisma.$disconnect()
