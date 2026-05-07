@@ -2,7 +2,7 @@
 
 MentorMe is a mentorship operations platform for incubators, entrepreneurship cells, and innovation programs. It turns mentor access into a controlled workflow: founders submit clear requests, CFE reviews and routes them, mentors respond from secure links, and students keep the prep and follow-up work moving.
 
-![MentorMe marketing page](docs/features/marketing-page.png)
+![MentorMe marketing page](docs/features/marketing-page.jpg)
 
 ## Product Map
 
@@ -22,13 +22,13 @@ flowchart LR
 
 The home screen separates the product by job, not by one giant dashboard. Founders, students, mentors, and the CFE team each get a focused entry point.
 
-![Workspace home](docs/features/workspace-home.png)
+![Workspace home](docs/features/workspace-home.jpg)
 
 ### Founder Workspace
 
 Founders can see the current venture, readiness signals, active requests, and the fastest next action. The workspace is built around the question: "What does CFE need from us before this gets routed?"
 
-![Founder overview](docs/features/founder-overview.png)
+![Founder overview](docs/features/founder-overview.jpg)
 
 Key founder features:
 
@@ -42,7 +42,7 @@ Key founder features:
 
 The request composer helps a founder turn a messy ask into a clean brief CFE can actually route. It supports artifacts, desired outcomes, AI-assisted brief writing, and mentor recommendations.
 
-![Request composer](docs/features/request-composer.png)
+![Request composer](docs/features/request-composer.jpg)
 
 Key request features:
 
@@ -56,7 +56,7 @@ Key request features:
 
 CFE gets the operational board. Requests move from review to needs-work, awaiting mentor, scheduled, follow-up, and closeout.
 
-![CFE pipeline](docs/features/cfe-pipeline.png)
+![CFE pipeline](docs/features/cfe-pipeline.jpg)
 
 Key CFE features:
 
@@ -70,7 +70,7 @@ Key CFE features:
 
 The mentor network gives CFE a roster view for visibility, capacity, fit, and contact details.
 
-![Mentor network](docs/features/mentor-network.png)
+![Mentor network](docs/features/mentor-network.jpg)
 
 Key mentor network features:
 
@@ -84,7 +84,7 @@ Key mentor network features:
 
 Students get a preparation and follow-through surface, including meeting summary support.
 
-![Student follow-up](docs/features/student-follow-up.png)
+![Student follow-up](docs/features/student-follow-up.jpg)
 
 Key student features:
 
@@ -98,7 +98,7 @@ Key student features:
 
 Mentors do not need a full internal account flow to respond. The mentor desk is built for secure, time-boxed action links.
 
-![Mentor desk](docs/features/mentor-desk.png)
+![Mentor desk](docs/features/mentor-desk.jpg)
 
 Key mentor features:
 
@@ -112,7 +112,7 @@ Key mentor features:
 
 MentorMe supports production auth flows while still keeping local demos easy.
 
-![Login and auth page](docs/features/auth-login.png)
+![Login and auth page](docs/features/auth-login.jpg)
 
 Key access features:
 
@@ -181,4 +181,3 @@ These screenshots were captured from local demo mode on `http://127.0.0.1:5173` 
 - `npm test` passes: 28 test files, 163 tests.
 - `npm run build` passes.
 - `npm audit --audit-level=moderate` currently reports 18 known dependency advisories.
-
