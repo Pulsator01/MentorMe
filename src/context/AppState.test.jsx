@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildMentorUpdatePayload, createApiClient } from './AppState'
+import { useEffect } from 'react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
+import { AppStateProvider, buildMentorUpdatePayload, createApiClient, useAppState } from './AppState'
 
 describe('AppState API helpers', () => {
   beforeEach(() => {
@@ -7,6 +10,8 @@ describe('AppState API helpers', () => {
   })
 
   afterEach(() => {
+    cleanup()
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -121,6 +126,127 @@ describe('AppState API helpers', () => {
       'http://localhost:3001/me/onboarding',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  it('keeps onboarding actions stable across API session hydration to avoid guard reload loops', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:3001')
+    const observedActions = {
+      getOnboardingStatus: [],
+      completeFounderOnboarding: [],
+      completeStudentOnboarding: [],
+      getStudentJoinOptions: [],
+    }
+
+    function ActionIdentityProbe() {
+      const appState = useAppState()
+      const navigate = useNavigate()
+      const {
+        bootStatus,
+        getOnboardingStatus,
+        completeFounderOnboarding,
+        completeStudentOnboarding,
+        getStudentJoinOptions,
+      } = appState
+
+      useEffect(() => {
+        observedActions.getOnboardingStatus.push(getOnboardingStatus)
+        observedActions.completeFounderOnboarding.push(completeFounderOnboarding)
+        observedActions.completeStudentOnboarding.push(completeStudentOnboarding)
+        observedActions.getStudentJoinOptions.push(getStudentJoinOptions)
+      }, [getOnboardingStatus, completeFounderOnboarding, completeStudentOnboarding, getStudentJoinOptions])
+
+      useEffect(() => {
+        if (bootStatus === 'authenticated') {
+          navigate('/founders')
+        }
+      }, [bootStatus, navigate])
+
+      return <div>{bootStatus}</div>
+    }
+
+    fetch.mockImplementation(async (url) => {
+      if (url.endsWith('/me')) {
+        return jsonResponse({
+          user: {
+            id: 'u-new-founder',
+            email: 'new.founder@mentorme.test',
+            name: 'New Founder',
+            role: 'founder',
+            organizationId: 'org-mentorme',
+            cohortId: 'cohort-2026',
+            onboardedAt: '2026-04-26T05:00:00.000Z',
+          },
+        })
+      }
+      if (url.endsWith('/ventures')) {
+        return jsonResponse({
+          ventures: [{
+            id: 'vnt-new',
+            name: 'Greenfield Robotics',
+            founderName: 'New Founder',
+            domain: 'Robotics',
+            stage: 'TRL 4',
+            trl: 4,
+            brl: 3,
+            location: 'Bengaluru, India',
+            summary: 'Modular robotics platform.',
+            nextMilestone: 'Sign first paid pilot.',
+            programNote: '',
+            cohortId: 'cohort-2026',
+            organizationId: 'org-mentorme',
+          }],
+        })
+      }
+      if (url.includes('/ventures/vnt-new/requests') || url.endsWith('/requests')) {
+        return jsonResponse({ requests: [] })
+      }
+      if (url.endsWith('/ventures/vnt-new')) {
+        return jsonResponse({
+          venture: {
+            id: 'vnt-new',
+            name: 'Greenfield Robotics',
+            founderName: 'New Founder',
+            domain: 'Robotics',
+            stage: 'TRL 4',
+            trl: 4,
+            brl: 3,
+            location: 'Bengaluru, India',
+            summary: 'Modular robotics platform.',
+            nextMilestone: 'Sign first paid pilot.',
+            programNote: '',
+            cohortId: 'cohort-2026',
+            organizationId: 'org-mentorme',
+          },
+        })
+      }
+      if (url.endsWith('/mentors')) {
+        return jsonResponse({ requests: [], mentors: [] })
+      }
+      if (url.endsWith('/notifications/stream')) {
+        return emptyStreamResponse()
+      }
+      return jsonResponse({})
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/onboarding/founder']}>
+        <AppStateProvider>
+          <ActionIdentityProbe />
+        </AppStateProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('authenticated')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(fetch.mock.calls.some((call) => call[0].endsWith('/notifications/stream'))).toBe(true)
+    })
+
+    expect(observedActions.getOnboardingStatus).toHaveLength(1)
+    expect(observedActions.completeFounderOnboarding).toHaveLength(1)
+    expect(observedActions.completeStudentOnboarding).toHaveLength(1)
+    expect(observedActions.getStudentJoinOptions).toHaveLength(1)
   })
 
   it('completes the founder onboarding wizard with venture payload', async () => {
@@ -286,4 +412,20 @@ const textResponse = (body, status) => ({
   status,
   json: vi.fn().mockResolvedValue({ message: body }),
   text: vi.fn().mockResolvedValue(body),
+})
+
+const emptyStreamResponse = () => ({
+  ok: true,
+  status: 200,
+  body: {
+    getReader: () => {
+      const blockedRead = new Promise(() => {})
+      return {
+        read: () => blockedRead,
+        releaseLock: () => {},
+      }
+    },
+  },
+  json: vi.fn().mockResolvedValue({}),
+  text: vi.fn().mockResolvedValue(''),
 })
