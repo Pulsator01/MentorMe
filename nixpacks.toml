@@ -1,0 +1,8 @@
+[phases.install]
+cmds = ["rm -rf node_modules/.vite", "npm ci"]
+
+[phases.build]
+cmds = ["npm run prisma:generate"]
+
+[start]
+cmd = "npm run start:api"
