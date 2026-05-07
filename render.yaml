@@ -167,15 +167,3 @@ services:
       - key: SENTRY_TRACES_SAMPLE_RATE
         value: "0"
 
-  - type: web
-    name: mentorme-web
-    runtime: static
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_BASE_URL
-        value: https://mentorme-api.onrender.com
