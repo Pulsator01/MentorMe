@@ -890,7 +890,19 @@ export const createApp = async (options: AppOptions) => {
   if (options.auth) {
     const betterAuthHandler = toNodeHandler(options.auth)
     app.all('/api/auth/*', async (request, reply) => {
-      betterAuthHandler(request.raw, reply.raw)
+      reply.hijack()
+
+      try {
+        await betterAuthHandler(request.raw, reply.raw)
+      } catch (error) {
+        app.log.error(error, 'Better Auth raw handler failed')
+
+        if (!reply.raw.headersSent && !reply.raw.writableEnded && !reply.raw.destroyed) {
+          reply.raw.statusCode = 500
+          reply.raw.setHeader('content-type', 'text/plain; charset=utf-8')
+          reply.raw.end('Internal Server Error')
+        }
+      }
     })
   }
 
