@@ -4,6 +4,14 @@ import { createAiGateway } from './ai/runtime'
 import { createInfraRuntime } from './infra/runtime'
 import { createRuntimeRepository } from './runtime'
 import { createBetterAuth } from './infra/betterAuth'
+import {
+  DEFAULT_COHORT_ID,
+  DEFAULT_COHORT_NAME,
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_ORGANIZATION_NAME,
+  DEFAULT_ORGANIZATION_SLUG,
+  ensureDefaultTenant,
+} from './infra/defaultTenant'
 
 const parsePositiveInt = (raw: string | undefined, fallback: number): number => {
   if (raw === undefined || raw === '') {
@@ -85,9 +93,23 @@ const bootstrap = async () => {
 
   const trustProxy = process.env.TRUST_PROXY === 'true' || process.env.RENDER === 'true'
 
-  const defaultOrgId = process.env.DEFAULT_ORGANIZATION_ID || 'org-mentorme'
+  const defaultOrgId = process.env.DEFAULT_ORGANIZATION_ID || DEFAULT_ORGANIZATION_ID
+  const defaultOrgName = process.env.DEFAULT_ORGANIZATION_NAME || DEFAULT_ORGANIZATION_NAME
+  const defaultOrgSlug = process.env.DEFAULT_ORGANIZATION_SLUG || DEFAULT_ORGANIZATION_SLUG
+  const defaultCohortId = process.env.DEFAULT_COHORT_ID || DEFAULT_COHORT_ID
+  const defaultCohortName = process.env.DEFAULT_COHORT_NAME || DEFAULT_COHORT_NAME
   const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173'
-  const apiBaseUrl = process.env.API_BASE_URL || `http://localhost:${port}`
+  const apiBaseUrl = process.env.API_BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${port}`
+
+  if (runtime.prisma) {
+    await ensureDefaultTenant(runtime.prisma, {
+      organizationId: defaultOrgId,
+      organizationName: defaultOrgName,
+      organizationSlug: defaultOrgSlug,
+      cohortId: defaultCohortId,
+      cohortName: defaultCohortName,
+    })
+  }
 
   const auth = runtime.prisma
     ? createBetterAuth({
@@ -98,6 +120,7 @@ const bootstrap = async () => {
         trustedOrigins: parseAllowedOrigins(process.env.ALLOWED_ORIGINS).concat(appBaseUrl),
         email: infra.email.gateway,
         defaultOrganizationId: defaultOrgId,
+        defaultCohortId,
         googleClientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
         googleClientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
         cookieSecure: process.env.NODE_ENV === 'production',

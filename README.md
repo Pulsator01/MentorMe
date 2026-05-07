@@ -95,7 +95,7 @@ For production or CI against an existing database, apply pending migrations with
 npx prisma migrate deploy --schema backend/prisma/schema.prisma
 ```
 
-The Render blueprint in `render.yaml` runs the same command as `preDeployCommand` on the API and worker services before each release.
+The Render blueprint in `render.yaml` runs the same command from the API web service build command before each API release.
 
 `npm run e2e:prisma` reads `DATABASE_URL` (and other vars) from a repo-root `.env` when they are not already present in the environment, matching the Playwright setup.
 
@@ -143,18 +143,24 @@ npm run start:api
 npm run start:worker
 ```
 
-For hosted deployments, the API now exposes `GET /healthz` and the repo includes a tracked [render.yaml](./render.yaml) blueprint for the frontend, API, worker, and PostgreSQL stack.
+For hosted deployments, the API exposes `GET /healthz`, the frontend runs on Vercel, and the repo includes a tracked [render.yaml](./render.yaml) blueprint for the Render API, worker, Redis, and PostgreSQL stack.
+
+Current hosted URLs:
+
+- Frontend: `https://mentor-me-sable.vercel.app`
+- API: `https://mentorme-api-tcs5.onrender.com`
 
 For a real deployment, set at least:
 
-- `VITE_API_BASE_URL`
+- Vercel `VITE_API_BASE_URL=https://mentorme-api-tcs5.onrender.com`
+- Render `API_BASE_URL=https://mentorme-api-tcs5.onrender.com`
+- Render `APP_BASE_URL=https://mentor-me-sable.vercel.app`
 - `DATABASE_URL`
+- `PERSISTENCE_BACKEND=prisma`
 - `REDIS_URL` (for BullMQ outbox workers; Render blueprint provisions Redis)
-- `JWT_SECRET` and `COOKIE_SECRET` (required, non-placeholder values when `NODE_ENV=production`; the API exits at startup otherwise)
-- `JWT_ISSUER`
-- `JWT_AUDIENCE`
+- `BETTER_AUTH_SECRET` and `COOKIE_SECRET` (required, non-empty values when `NODE_ENV=production`; the API exits at startup otherwise)
 - `CALENDLY_WEBHOOK_SIGNING_SECRET` when using Calendly webhooks (HMAC verification; in production the webhook endpoint returns 503 if unset)
-- `ALLOWED_ORIGINS` (comma-separated SPA origins for credentialed CORS in production)
+- `ALLOWED_ORIGINS=https://mentor-me-sable.vercel.app` (comma-separated SPA origins for credentialed CORS in production)
 - `TRUST_PROXY` or rely on `RENDER=true` so rate limits see real client IPs
 - `AI_PROVIDER`
 - `AI_JUDGE_PROVIDER`
@@ -165,7 +171,7 @@ For a real deployment, set at least:
 
 See [docs/infra-setup.md](./docs/infra-setup.md) for Resend, R2/S3, Redis, security headers, rate limits, and Sentry wiring.
 
-The frontend can stay on a static host such as Vercel with the existing [vercel.json](./vercel.json), or you can deploy the full stack with the tracked Render blueprint. The Fastify API honors the platform `PORT` env, and the worker shares the same Prisma-backed persistence contract.
+The frontend stays on Vercel with the existing [vercel.json](./vercel.json). The Fastify API honors the Render `PORT` env, and the worker shares the same Prisma-backed persistence contract.
 
 ## Changelog
 
