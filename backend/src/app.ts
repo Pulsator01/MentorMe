@@ -767,10 +767,17 @@ const buildOpenApiDocument = () =>
 }) as OpenAPIV3_1.Document
 
 export const createApp = async (options: AppOptions) => {
+  const normalizedAppBaseUrl = options.appBaseUrl.trim()
+  const configuredCorsOrigins = (options.httpSecurity?.corsAllowedOrigins ?? []).map((o) => o.trim()).filter(Boolean)
+  const corsAllowedOrigins =
+    configuredCorsOrigins.length > 0
+      ? Array.from(new Set([...configuredCorsOrigins, normalizedAppBaseUrl].filter(Boolean)))
+      : configuredCorsOrigins
+
   const httpSec = {
     disableHelmet: options.httpSecurity?.disableHelmet === true,
     disableRateLimit: options.httpSecurity?.disableRateLimit === true,
-    corsAllowedOrigins: (options.httpSecurity?.corsAllowedOrigins ?? []).map((o) => o.trim()).filter(Boolean),
+    corsAllowedOrigins,
     rateLimitGlobalMax: options.httpSecurity?.rateLimitGlobalMax ?? 400,
     rateLimitGlobalWindowMs: options.httpSecurity?.rateLimitGlobalWindowMs ?? 60_000,
   }

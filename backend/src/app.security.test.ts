@@ -63,6 +63,33 @@ describe('HTTP security hardening', () => {
     await app.close()
   })
 
+  it('allows the configured appBaseUrl even when not explicitly listed in corsAllowedOrigins', async () => {
+    const app = await createApp({
+      repository: createSeededInMemoryPlatformRepository(),
+      email: createStubEmailGateway(),
+      storage: createStubStorageService(),
+      queue: createInlineQueuePublisher(),
+      ai: new HeuristicAiGateway(),
+      cookieSecret: 'cookie-secret',
+      defaultOrganizationId: 'org-mentorme',
+      appBaseUrl: 'https://mentor-me-sable.vercel.app',
+      httpSecurity: {
+        disableRateLimit: true,
+        corsAllowedOrigins: ['https://old-frontend.example'],
+      },
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/healthz',
+      headers: { origin: 'https://mentor-me-sable.vercel.app' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.headers['access-control-allow-origin']).toBe('https://mentor-me-sable.vercel.app')
+    await app.close()
+  })
+
   it('returns 429 when the global rate limit is exceeded', async () => {
     const app = await createApp({
       repository: createSeededInMemoryPlatformRepository(),
