@@ -3,14 +3,23 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import App from './App'
 
 const renderAtRoute = (route = '/') => {
+  cleanup()
   window.history.pushState({}, 'Test route', route)
   return render(<App />)
 }
+
+const textResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  text: vi.fn().mockResolvedValue(body),
+  json: vi.fn().mockResolvedValue({ message: body }),
+})
 
 describe('MentorMe role-based frontend', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
   })
 
   beforeEach(() => {
@@ -24,7 +33,26 @@ describe('MentorMe role-based frontend', () => {
     expect(
       await screen.findByRole('heading', { name: /choose the role-specific workspace you actually need/i }),
     ).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: /open workspace/i })).toHaveLength(4)
+    expect(screen.getAllByRole('link', { name: /open workspace/i })).toHaveLength(3)
+    expect(screen.queryByRole('heading', { name: /students/i })).not.toBeInTheDocument()
+  })
+
+  it('shows founder, mentor, and CFE as the signup role options', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:3001')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(textResponse('Unauthorized', 401)))
+
+    renderAtRoute('/signup')
+
+    const roleSelect = await screen.findByLabelText(/i am a/i)
+    const optionLabels = within(roleSelect)
+      .getAllByRole('option')
+      .map((option) => option.textContent)
+
+    expect(optionLabels).toEqual([
+      'Founder (looking for mentorship)',
+      'Mentor',
+      'CFE',
+    ])
   })
 
   it('lets founders submit a mentor request from the new-request page', async () => {
@@ -127,13 +155,19 @@ describe('MentorMe role-based frontend', () => {
     expect(screen.queryByTestId('request-card-req-005')).not.toBeInTheDocument()
   })
 
-  it('gives students a separate workspace focused on prep and follow-through', async () => {
+  it('redirects legacy student workspace URLs to founder workspaces', async () => {
     renderAtRoute('/students')
 
     expect(
-      await screen.findByRole('heading', { name: /keep student-facing work simple: prepare, show up, and follow through/i }),
+      await screen.findByRole('heading', { name: /build the right mentor ask before cfe routes it/i }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /open readiness playbook/i })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/founders')
+
+    cleanup()
+    renderAtRoute('/students/follow-up')
+
+    expect(await screen.findByTestId('founder-request-req-002')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/founders/pipeline')
   })
 
   it('exposes a mid-sem readiness page with the coded progress sheet', async () => {

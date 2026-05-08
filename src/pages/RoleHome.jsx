@@ -1,4 +1,4 @@
-import { ArrowRight, Briefcase, GraduationCap, LayoutDashboard, Sparkles } from 'lucide-react'
+import { ArrowRight, Briefcase, LayoutDashboard, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -13,13 +13,6 @@ const roles = [
     icon: Sparkles,
     description: 'Request mentors, attach context, and track venture-level follow-through.',
     accent: 'border-l-amber-400',
-  },
-  {
-    title: 'Students',
-    path: '/students',
-    icon: GraduationCap,
-    description: 'Prepare meeting notes, upload material, and stay on top of nudges and follow-ups.',
-    accent: 'border-l-sky-400',
   },
   {
     title: 'Mentors',
@@ -51,12 +44,12 @@ function RoleHome() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">Workspace Home</p>
           <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-[2.5rem]">Choose the role-specific workspace you actually need.</h1>
           <p className="mt-4 max-w-2xl text-[15px] leading-7 text-slate-300">
-            Founders, students, mentors, and the CFE team each get their own focused flow.
+            Founders, mentors, and the CFE team each get their own focused flow.
           </p>
         </div>
       </SectionCard>
 
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5 lg:grid-cols-3">
         {roles.map((role, i) => (
           <MotionDiv
             key={role.title}

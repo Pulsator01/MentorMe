@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import App from '../../../App'
 
 const renderAtRoute = (route = '/') => {
@@ -7,7 +7,7 @@ const renderAtRoute = (route = '/') => {
   return render(<App />)
 }
 
-describe('Student workspace multi-page split', () => {
+describe('Legacy student workspace redirects', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_API_BASE_URL', '')
     window.history.pushState({}, 'Reset', '/')
@@ -18,62 +18,21 @@ describe('Student workspace multi-page split', () => {
     vi.unstubAllEnvs()
   })
 
-  it('renders the student overview with sidebar navigation and the prep checklist', async () => {
+  it('maps the old student overview URL to the founder overview', async () => {
     renderAtRoute('/students')
 
     expect(
       await screen.findByRole('heading', {
-        name: /keep student-facing work simple: prepare, show up, and follow through/i,
+        name: /build the right mentor ask before cfe routes it/i,
       }),
     ).toBeInTheDocument()
-
-    expect(screen.getAllByRole('link', { name: /overview/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('link', { name: /ai follow-up/i }).length).toBeGreaterThan(0)
-
-    expect(screen.getByRole('heading', { name: /pre-read pack/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /meeting prep/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /follow-up note/i })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /useful links/i })).toBeInTheDocument()
-
-    expect(screen.getByRole('link', { name: /open readiness playbook/i })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/founders')
   })
 
-  it('navigates from the overview into the AI follow-up page via the highlight card', async () => {
-    renderAtRoute('/students')
-
-    expect(await screen.findByRole('heading', {
-      name: /keep student-facing work simple/i,
-    })).toBeInTheDocument()
-
-    const highlight = screen.getByRole('link', { name: /open ai follow-up/i })
-    fireEvent.click(highlight)
-
-    expect(
-      await screen.findByRole('heading', { name: /turn raw meeting notes into clean next steps/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByLabelText(/meeting notes/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /summarize with ai/i })).toBeInTheDocument()
-  })
-
-  it('renders the AI follow-up page directly via its own route', async () => {
+  it('maps the old student follow-up URL to the founder pipeline', async () => {
     renderAtRoute('/students/follow-up')
 
-    expect(
-      await screen.findByRole('heading', { name: /turn raw meeting notes into clean next steps/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByLabelText(/meeting notes/i)).toBeInTheDocument()
-  })
-
-  it('lets users return to the overview via the back link on the follow-up page', async () => {
-    renderAtRoute('/students/follow-up')
-
-    const backLink = await screen.findByRole('link', { name: /back to student workspace/i })
-    fireEvent.click(backLink)
-
-    expect(
-      await screen.findByRole('heading', {
-        name: /keep student-facing work simple: prepare, show up, and follow through/i,
-      }),
-    ).toBeInTheDocument()
+    expect(await screen.findByTestId('founder-request-req-002')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/founders/pipeline')
   })
 })

@@ -15,8 +15,9 @@ import { useAppState } from '../../context/AppState'
 import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
 
 const roleOptions = [
-  { value: 'founder', label: 'Founder — leading a venture or product' },
-  { value: 'student', label: 'Student — supporting a venture team' },
+  { value: 'founder', label: 'Founder (looking for mentorship)' },
+  { value: 'mentor', label: 'Mentor' },
+  { value: 'cfe', label: 'CFE' },
 ]
 
 function SignupPage() {
@@ -75,7 +76,7 @@ function SignupPage() {
     <AuthLayout
       eyebrow="Create account"
       title="Get started with MentorMe"
-      description="Founders and students can self-register. Mentors and CFE staff are added by invitation."
+      description="Choose the role that matches how you will use MentorMe."
       brandHeadline="Bring your venture into the mentor pipeline."
       brandSubheadline="Create an account, request expert mentorship, and keep every session in one auditable place."
       footer={(

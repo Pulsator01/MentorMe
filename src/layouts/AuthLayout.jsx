@@ -7,7 +7,7 @@ const valueProps = [
   {
     icon: Sparkles,
     title: 'One workspace per role',
-    description: 'Founders, students, mentors, and the CFE team each get a focused dashboard instead of one crowded screen.',
+    description: 'Founders, mentors, and the CFE team each get a focused dashboard instead of one crowded screen.',
   },
   {
     icon: ShieldCheck,
@@ -61,7 +61,7 @@ function AuthLayout({
   title,
   description,
   footer,
-  brandHeadline = 'Mentor pipeline that respects everyone&rsquo;s time.',
+  brandHeadline = "Mentor pipeline that respects everyone\u2019s time.",
   brandSubheadline = 'Sign in to keep founders, mentors, and the CFE team aligned across requests, sessions, and follow-ups.',
   allowAuthenticated = false,
 }) {

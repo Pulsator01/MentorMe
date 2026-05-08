@@ -6,7 +6,6 @@ import {
   X,
   Globe,
   Sparkles,
-  GraduationCap,
   LayoutDashboard,
   Briefcase,
 } from 'lucide-react'
@@ -17,7 +16,6 @@ const MotionDiv = motion.div
 const links = [
   { label: 'Landing', path: '/welcome', icon: Globe },
   { label: 'Founders', path: '/founders', icon: Sparkles },
-  { label: 'Students', path: '/students', icon: GraduationCap },
   { label: 'CFE Team', path: '/cfe', icon: LayoutDashboard },
   { label: 'Mentor Desk', path: '/mentors/desk', icon: Briefcase },
 ]

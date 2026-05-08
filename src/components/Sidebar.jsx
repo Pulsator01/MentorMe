@@ -8,8 +8,6 @@ import {
   Sparkles,
   Send,
   GitPullRequestArrow,
-  GraduationCap,
-  BrainCircuit,
   BarChart3,
   Kanban,
   Users,
@@ -21,6 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAppState } from '../context/AppState'
+import { normalizeWorkspaceRole } from '../auth/roleUtils'
 import { cn } from './ui'
 
 const STORAGE_KEY = 'mentorme-sidebar-collapsed'
@@ -34,15 +33,6 @@ const ROLE_SECTIONS = {
       { path: '/founders', icon: Sparkles, label: 'Overview', end: true },
       { path: '/founders/new-request', icon: Send, label: 'New Request' },
       { path: '/founders/pipeline', icon: GitPullRequestArrow, label: 'Pipeline' },
-    ],
-  },
-  student: {
-    label: 'Workspace',
-    multiLabel: 'Students',
-    to: '/students',
-    items: [
-      { path: '/students', icon: GraduationCap, label: 'Overview', end: true },
-      { path: '/students/follow-up', icon: BrainCircuit, label: 'AI Follow-up' },
     ],
   },
   cfe: {
@@ -86,14 +76,13 @@ function getRoleSections(role, mode) {
   if (role === 'admin' || mode === 'local') {
     return Object.values(ROLE_SECTIONS)
   }
-  const section = ROLE_SECTIONS[role]
+  const section = ROLE_SECTIONS[normalizeWorkspaceRole(role)]
   return section ? [section] : []
 }
 
 function getRoleLabel(role) {
   const labels = {
     founder: 'Founder Workspace',
-    student: 'Student Workspace',
     cfe: 'CFE Command',
     mentor: 'Mentor Portal',
     admin: 'Admin Console',
@@ -158,7 +147,7 @@ function SidebarNavItem({ item, collapsed, unreadCount }) {
 function SidebarContent({ collapsed, onToggle, onMobileClose }) {
   const { currentUser, unreadNotificationCount, logout, mode } = useAppState()
   const location = useLocation()
-  const role = currentUser?.role || 'founder'
+  const role = normalizeWorkspaceRole(currentUser?.role || 'founder')
   const sections = getRoleSections(role, mode)
   const showMultiLabels = role === 'admin' || mode === 'local'
 
@@ -274,7 +263,7 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
             {!collapsed && (
               <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium text-slate-200">{currentUser.name || currentUser.email}</p>
-                <p className="text-[11px] capitalize text-slate-500">{currentUser.role}</p>
+                <p className="text-[11px] capitalize text-slate-500">{role}</p>
               </Motion.div>
             )}
             {!collapsed && (

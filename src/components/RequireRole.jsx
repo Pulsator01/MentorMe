@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAppState } from '../context/AppState'
+import { normalizeWorkspaceRole } from '../auth/roleUtils'
 import { SectionCard } from './ui'
 
 function ForbiddenScreen({ allowedRoles, currentRole }) {
@@ -31,8 +32,9 @@ function RequireRole({ allowedRoles, children }) {
     return <Navigate to={`/login?next=${encodeURIComponent(next)}`} replace />
   }
 
-  if (!allowedRoles.includes(currentUser.role)) {
-    return <ForbiddenScreen allowedRoles={allowedRoles} currentRole={currentUser.role} />
+  const role = normalizeWorkspaceRole(currentUser.role)
+  if (!allowedRoles.includes(role)) {
+    return <ForbiddenScreen allowedRoles={allowedRoles} currentRole={role} />
   }
 
   return children

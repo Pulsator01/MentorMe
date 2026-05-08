@@ -8,8 +8,6 @@ import RoleHome from './pages/RoleHome'
 import FounderOverviewPage from './pages/founders/FounderOverviewPage'
 import NewRequestPage from './pages/founders/NewRequestPage'
 import FounderPipelinePage from './pages/founders/FounderPipelinePage'
-import StudentOverviewPage from './pages/students/StudentOverviewPage'
-import StudentFollowUpPage from './pages/students/StudentFollowUpPage'
 import CfeOverviewPage from './pages/cfe/CfeOverviewPage'
 import CfePipelinePage from './pages/cfe/CfePipelinePage'
 import MentorDashboard from './pages/MentorDashboard'
@@ -115,26 +113,8 @@ function App() {
               </ProtectedShell>
             )}
           />
-          <Route
-            path="/students"
-            element={(
-              <ProtectedShell>
-                <RequireRole allowedRoles={['student', 'admin']}>
-                  <StudentOverviewPage />
-                </RequireRole>
-              </ProtectedShell>
-            )}
-          />
-          <Route
-            path="/students/follow-up"
-            element={(
-              <ProtectedShell>
-                <RequireRole allowedRoles={['student', 'admin']}>
-                  <StudentFollowUpPage />
-                </RequireRole>
-              </ProtectedShell>
-            )}
-          />
+          <Route path="/students" element={<Navigate to="/founders" replace />} />
+          <Route path="/students/follow-up" element={<Navigate to="/founders/pipeline" replace />} />
           <Route
             path="/cfe"
             element={(

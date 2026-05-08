@@ -23,12 +23,8 @@ const STATUS_TONES = {
 }
 
 const linkForRole = (role) => {
-  if (role === 'cfe' || role === 'admin') {
-    return '/cfe/pipeline'
-  }
-  if (role === 'student') {
-    return '/students'
-  }
+  if (role === 'cfe' || role === 'admin') return '/cfe/pipeline'
+  if (role === 'mentor') return '/mentors/desk'
   return '/founders/pipeline'
 }
 
