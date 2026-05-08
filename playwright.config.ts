@@ -60,6 +60,8 @@ export default defineConfig({
       env: {
         ...sharedEnv,
         API_PORT: '3301',
+        APP_BASE_URL: 'http://127.0.0.1:4175',
+        ALLOWED_ORIGINS: 'http://127.0.0.1:4175',
         EXPOSE_DEBUG_TOKENS: 'true',
       },
       stdout: 'pipe',

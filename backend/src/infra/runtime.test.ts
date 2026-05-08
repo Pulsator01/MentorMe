@@ -117,6 +117,11 @@ describe('createEmailRuntime', () => {
       replyTo: 'support@mentorme.test',
     })
   })
+
+  it('fails closed in production when email delivery is not configured', async () => {
+    const { createEmailRuntime } = await import('./runtime')
+    expect(() => createEmailRuntime({ ...baseEnv, NODE_ENV: 'production' })).toThrow(/RESEND_API_KEY/)
+  })
 })
 
 describe('createStorageRuntime', () => {
@@ -165,6 +170,11 @@ describe('createStorageRuntime', () => {
       S3_ACCESS_KEY_ID: 'AK1',
     })
     expect(runtime.mode).toBe('stub')
+  })
+
+  it('fails closed in production when object storage is not configured', async () => {
+    const { createStorageRuntime } = await import('./runtime')
+    expect(() => createStorageRuntime({ ...baseEnv, NODE_ENV: 'production' })).toThrow(/S3_BUCKET/)
   })
 
   it('cleanup destroys the S3 client', async () => {

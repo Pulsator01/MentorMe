@@ -14,8 +14,14 @@ export type RuntimeRepository = {
 
 export const createRuntimeRepository = (): RuntimeRepository => {
   const preference = process.env.PERSISTENCE_BACKEND
+  const isProduction = process.env.NODE_ENV === 'production'
+  const allowMemoryBackend = process.env.ALLOW_MEMORY_BACKEND === 'true'
 
   if (preference === 'memory') {
+    if (isProduction && !allowMemoryBackend) {
+      throw new Error('DATABASE_URL must be set when NODE_ENV=production; set ALLOW_MEMORY_BACKEND=true only for an explicit production demo mode')
+    }
+
     return {
       mode: 'memory',
       repository: createSeededInMemoryPlatformRepository(),
@@ -33,6 +39,10 @@ export const createRuntimeRepository = (): RuntimeRepository => {
         await prisma.$disconnect()
       },
     }
+  }
+
+  if (isProduction) {
+    throw new Error('DATABASE_URL must be set when NODE_ENV=production')
   }
 
   return {

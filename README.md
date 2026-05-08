@@ -80,7 +80,7 @@ The repo now includes a Fastify backend, Prisma schema, and worker scaffold unde
 
 ### Database and Prisma
 
-The backend uses Prisma automatically whenever `DATABASE_URL` is present. Set `PERSISTENCE_BACKEND=memory` if you want to force the seeded in-memory repository for demos or tests.
+The backend uses Prisma automatically whenever `DATABASE_URL` is present. Set `PERSISTENCE_BACKEND=memory` if you want to force the seeded in-memory repository for demos or tests. In production, missing `DATABASE_URL` is fatal unless `ALLOW_MEMORY_BACKEND=true` is deliberately set for a demo-only deployment.
 
 ```bash
 npm run prisma:generate
@@ -168,6 +168,8 @@ For a real deployment, set at least:
 - `RESEND_API_KEY` + `EMAIL_FROM` for real outbound email (optional in dev)
 - S3/R2 variables (`S3_BUCKET`, `S3_REGION`, keys, optional `S3_ENDPOINT`) for presigned artifact uploads (optional in dev)
 - `SENTRY_DSN` (optional) for API and worker error reporting
+
+Production startup now fails closed for missing database, email, and object-storage configuration. The `ALLOW_MEMORY_BACKEND`, `ALLOW_STUB_EMAIL`, and `ALLOW_STUB_STORAGE` overrides exist only for explicit demo deployments.
 
 See [docs/infra-setup.md](./docs/infra-setup.md) for Resend, R2/S3, Redis, security headers, rate limits, and Sentry wiring.
 

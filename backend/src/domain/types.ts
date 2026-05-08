@@ -215,6 +215,7 @@ export interface OutboxEvent {
 
 export interface RequestView {
   id: string
+  organizationId: string
   ventureId: string
   ventureName: string
   founderName: string

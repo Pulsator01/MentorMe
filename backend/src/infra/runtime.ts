@@ -34,6 +34,8 @@ export const createEmailRuntime = (env: NodeJS.ProcessEnv = process.env): EmailR
   const apiKey = env.RESEND_API_KEY
   const from = env.EMAIL_FROM
   const appBaseUrl = env.APP_BASE_URL || 'http://localhost:5173'
+  const isProduction = env.NODE_ENV === 'production'
+  const allowStubEmail = isTrue(env.ALLOW_STUB_EMAIL)
 
   if (apiKey && from) {
     return {
@@ -47,6 +49,10 @@ export const createEmailRuntime = (env: NodeJS.ProcessEnv = process.env): EmailR
     }
   }
 
+  if (isProduction && !allowStubEmail) {
+    throw new Error('RESEND_API_KEY and EMAIL_FROM must be set when NODE_ENV=production')
+  }
+
   return {
     mode: 'stub',
     gateway: createStubEmailGateway(),
@@ -58,6 +64,8 @@ export const createStorageRuntime = (env: NodeJS.ProcessEnv = process.env): Stor
   const region = env.S3_REGION || env.AWS_REGION
   const accessKeyId = env.S3_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID
   const secretAccessKey = env.S3_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY
+  const isProduction = env.NODE_ENV === 'production'
+  const allowStubStorage = isTrue(env.ALLOW_STUB_STORAGE)
 
   if (bucket && region && accessKeyId && secretAccessKey) {
     const service = createS3StorageService({
@@ -78,6 +86,10 @@ export const createStorageRuntime = (env: NodeJS.ProcessEnv = process.env): Stor
         ;(service as S3StorageService).destroy()
       },
     }
+  }
+
+  if (isProduction && !allowStubStorage) {
+    throw new Error('S3_BUCKET, S3_REGION/AWS_REGION, and S3 credentials must be set when NODE_ENV=production')
   }
 
   return {

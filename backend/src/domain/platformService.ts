@@ -509,20 +509,21 @@ export class PlatformService {
       throw new Error('This invitation was issued to a different email address')
     }
 
-    if (invitation.organizationId !== user.organizationId) {
-      throw new Error('This invitation is for a different organization')
+    if ((invitation.organizationId !== user.organizationId || invitation.role !== user.role) && user.onboardedAt) {
+      throw new Error('This invitation cannot change an already-onboarded account role or organization')
     }
 
-    if (invitation.role !== user.role) {
-      throw new Error(`Invitation role mismatch (expected ${invitation.role}, current ${user.role})`)
+    let updatedUser: User = {
+      ...user,
+      organizationId: invitation.organizationId,
+      role: invitation.role,
+      cohortId: invitation.organizationId === user.organizationId ? user.cohortId : undefined,
     }
-
-    let updatedUser: User = { ...user }
     let venture: Venture | undefined
 
     if (invitation.ventureId) {
       venture = await this.requireVenture(invitation.ventureId)
-      if (venture.organizationId !== user.organizationId) {
+      if (venture.organizationId !== invitation.organizationId) {
         throw new Error('Invitation venture is in another organization')
       }
 
@@ -535,7 +536,7 @@ export class PlatformService {
         }
         const membership: VentureMembership = {
           id: `mem-${randomToken().slice(0, 8)}`,
-          organizationId: user.organizationId,
+          organizationId: invitation.organizationId,
           ventureId: venture.id,
           userId: user.id,
           role: invitation.role === 'founder' ? 'founder' : 'student',
@@ -543,11 +544,11 @@ export class PlatformService {
         await this.deps.repository.saveMembership(membership)
       }
 
-      if (!user.cohortId) {
+      if (!updatedUser.cohortId) {
         updatedUser = { ...updatedUser, cohortId: venture.cohortId }
       }
-    } else if (invitation.cohortId && !user.cohortId) {
-      await this.requireCohortInOrganization(invitation.cohortId, user.organizationId)
+    } else if (invitation.cohortId && !updatedUser.cohortId) {
+      await this.requireCohortInOrganization(invitation.cohortId, invitation.organizationId)
       updatedUser = { ...updatedUser, cohortId: invitation.cohortId }
     }
 
@@ -566,7 +567,7 @@ export class PlatformService {
     })
 
     await this.recordAudit({
-      organizationId: user.organizationId,
+      organizationId: persistedUser.organizationId,
       entityType: 'auth',
       entityId: invitation.id,
       actorType: 'user',
@@ -622,8 +623,8 @@ export class PlatformService {
       this.deps.repository.listVentures(),
     ])
 
-    if (user.role === 'cfe') {
-      return { ventures }
+    if (user.role === 'cfe' || user.role === 'admin') {
+      return { ventures: ventures.filter((venture) => venture.organizationId === user.organizationId) }
     }
 
     const ventureIds = memberships.filter((membership) => membership.userId === user.id).map((membership) => membership.ventureId)
@@ -636,8 +637,10 @@ export class PlatformService {
   }
 
   async listRequests(user: User) {
-    if (user.role === 'cfe') {
-      return { requests: await this.listRequestViews() }
+    if (user.role === 'cfe' || user.role === 'admin') {
+      return {
+        requests: (await this.listRequestViews()).filter((request) => request.organizationId === user.organizationId),
+      }
     }
 
     const memberships = await this.deps.repository.listMemberships()
@@ -778,7 +781,7 @@ export class PlatformService {
   async approveRequest(user: User, requestId: string, input: unknown) {
     this.assertRole(user, 'cfe')
     const payload = approveSchema.parse(input)
-    const request = await this.requireRequest(requestId)
+    const request = await this.authorizeRequestAccess(user, requestId)
     const cfeOwner = await this.deps.repository.findUserByEmail(`${payload.ownerName.toLowerCase().replace(/\s+/g, '.')}@mentorme.test`)
     const next = {
       ...request,
@@ -804,7 +807,7 @@ export class PlatformService {
   async returnRequest(user: User, requestId: string, input: unknown) {
     this.assertRole(user, 'cfe')
     const payload = returnSchema.parse(input)
-    const request = await this.requireRequest(requestId)
+    const request = await this.authorizeRequestAccess(user, requestId)
     const next = {
       ...request,
       status: 'needs_work' as const,
@@ -828,7 +831,7 @@ export class PlatformService {
 
   async closeRequest(user: User, requestId: string) {
     this.assertRole(user, 'cfe')
-    const request = await this.requireRequest(requestId)
+    const request = await this.authorizeRequestAccess(user, requestId)
     const next = { ...request, status: 'closed' as const, updatedAt: nowIso() }
     await this.deps.repository.saveRequest(next)
     await this.recordAudit({
@@ -845,7 +848,8 @@ export class PlatformService {
   }
 
   async listMentors(user: User) {
-    const mentors = await this.deps.repository.listMentors()
+    const mentors = (await this.deps.repository.listMentors())
+      .filter((mentor) => mentor.organizationId === user.organizationId)
     return {
       mentors: user.role === 'cfe' ? mentors : mentors.filter((mentor) => mentor.visibility === 'Active'),
     }
@@ -874,6 +878,9 @@ export class PlatformService {
     const mentor = await this.deps.repository.findMentorById(mentorId)
     if (!mentor) {
       throw new Error('Mentor not found')
+    }
+    if (mentor.organizationId !== user.organizationId) {
+      throw new Error('Forbidden')
     }
     const next = {
       ...mentor,
@@ -964,11 +971,14 @@ export class PlatformService {
 
   async createMentorOutreach(user: User, requestId: string) {
     this.assertRole(user, 'cfe')
-    const request = await this.requireRequest(requestId)
+    const request = await this.authorizeRequestAccess(user, requestId)
     if (!request.mentorId) {
       throw new Error('Cannot create mentor outreach without a selected mentor')
     }
     const mentor = await this.requireMentor(request.mentorId)
+    if (mentor.organizationId !== user.organizationId) {
+      throw new Error('Forbidden')
+    }
     const token = randomToken()
     await this.deps.repository.saveExternalActionToken({
       id: `eat-${randomToken().slice(0, 10)}`,
@@ -1242,7 +1252,7 @@ export class PlatformService {
 
     const payload = mentorRecommendationSchema.parse(input)
     const candidates = (await this.deps.repository.listMentors())
-      .filter((mentor) => mentor.visibility === 'Active')
+      .filter((mentor) => mentor.organizationId === user.organizationId && mentor.visibility === 'Active')
       .map((mentor) => ({
         id: mentor.id,
         name: mentor.name,
@@ -1332,7 +1342,10 @@ export class PlatformService {
   private async authorizeVentureAccess(user: User, ventureId: string) {
     const venture = await this.requireVenture(ventureId)
 
-    if (user.role === 'cfe') {
+    if (user.role === 'cfe' || user.role === 'admin') {
+      if (venture.organizationId !== user.organizationId) {
+        throw new Error('Forbidden')
+      }
       return venture
     }
 
@@ -1379,6 +1392,7 @@ export class PlatformService {
 
       return {
         id: request.id,
+        organizationId: request.organizationId,
         ventureId: request.ventureId,
         ventureName: venture?.name || request.ventureId,
         founderName: venture?.founderName || 'Unknown founder',

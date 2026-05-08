@@ -814,9 +814,9 @@ export function AppStateProvider({ children }) {
     markAllNotificationsRead: () => dispatch({ type: 'notification-mark-all-read' }),
     clearNotifications: () => dispatch({ type: 'notifications-clear' }),
     authClient,
-    register: async ({ name, email, password, role }) => {
+    register: async ({ name, email, password }) => {
       if (!authClient) throw new Error('Auth backend is not configured')
-      const result = await authClient.signUp.email({ name, email, password, role })
+      const result = await authClient.signUp.email({ name, email, password })
       if (result.error) throw new Error(result.error.message || 'Registration failed')
       await refreshCurrentUser(result.data?.user)
       return result.data

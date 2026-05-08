@@ -9,16 +9,9 @@ import {
   GoogleIcon,
   PrimaryButton,
   SecondaryButton,
-  Select,
 } from '../../components/forms'
 import { useAppState } from '../../context/AppState'
 import { sanitizeNextPath } from '../../auth/sanitizeNextPath'
-
-const roleOptions = [
-  { value: 'founder', label: 'Founder (looking for mentorship)' },
-  { value: 'mentor', label: 'Mentor' },
-  { value: 'cfe', label: 'CFE' },
-]
 
 function SignupPage() {
   const navigate = useNavigate()
@@ -32,7 +25,6 @@ function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [role, setRole] = useState('founder')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -52,7 +44,7 @@ function SignupPage() {
 
     setSubmitting(true)
     try {
-      await register({ name: name.trim(), email: email.trim(), password, role })
+      await register({ name: name.trim(), email: email.trim(), password })
       navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(caught?.message || 'Could not create your account. Try a different email.')
@@ -76,7 +68,7 @@ function SignupPage() {
     <AuthLayout
       eyebrow="Create account"
       title="Get started with MentorMe"
-      description="Choose the role that matches how you will use MentorMe."
+      description="Founders can self-register. Mentors and CFE staff should use the invitation link sent by CFE."
       brandHeadline="Bring your venture into the mentor pipeline."
       brandSubheadline="Create an account, request expert mentorship, and keep every session in one auditable place."
       footer={(
@@ -151,14 +143,6 @@ function SignupPage() {
             onChange={(event) => setConfirmPassword(event.target.value)}
             required
             minLength={8}
-          />
-          <Select
-            id="signup-role"
-            label="I am a"
-            value={role}
-            options={roleOptions}
-            onChange={(event) => setRole(event.target.value)}
-            required
           />
           <PrimaryButton type="submit" disabled={submitting}>
             {submitting ? 'Creating account…' : (
