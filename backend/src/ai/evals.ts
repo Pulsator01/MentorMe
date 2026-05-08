@@ -1,6 +1,7 @@
 import type { AiGateway } from '../domain/interfaces'
 import { meetingSummaryCases, mentorRecommendationCases, requestBriefCases } from '../../evals/cases'
 import { HeuristicAiGateway } from './heuristicAiGateway'
+import { OpenAiGateway } from './openAiGateway'
 import { createAiGateway } from './runtime'
 import type { JudgeResult } from './openAiGateway'
 
@@ -23,21 +24,35 @@ export type EvalReport = {
   total: number
 }
 
+export type EvalRunOptions = {
+  delayBetweenCasesMs?: number
+  startDelayMs?: number
+}
+
 type JudgeGateway = {
   judgeCase(payload: Record<string, unknown>): Promise<JudgeResult>
 }
 
 const cases = [...requestBriefCases, ...meetingSummaryCases, ...mentorRecommendationCases]
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export const runAiBenchmark = async (
   generator: AiGateway,
   judge: JudgeGateway,
   provider: 'heuristic' | 'openai',
   judgeProvider: 'heuristic' | 'openai',
+  options: EvalRunOptions = {},
 ): Promise<EvalReport> => {
   const results: EvalCaseResult[] = []
+  const startDelayMs = Math.max(0, options.startDelayMs || 0)
+  const delayBetweenCasesMs = Math.max(0, options.delayBetweenCasesMs || 0)
 
-  for (const currentCase of cases) {
+  if (startDelayMs > 0) {
+    await delay(startDelayMs)
+  }
+
+  for (const [index, currentCase] of cases.entries()) {
     const actualOutput =
       currentCase.task === 'request_brief'
         ? await generator.generateRequestBrief(currentCase.input)
@@ -62,6 +77,10 @@ export const runAiBenchmark = async (
       pass: judgement.pass,
       summary: judgement.summary,
     })
+
+    if (delayBetweenCasesMs > 0 && index < cases.length - 1) {
+      await delay(delayBetweenCasesMs)
+    }
   }
 
   const averageScore = Number((results.reduce((sum, item) => sum + item.overallScore, 0) / results.length).toFixed(2))
@@ -79,16 +98,25 @@ export const runAiBenchmark = async (
 export const buildAiBenchmark = () => {
   const { gateway, mode } = createAiGateway()
   const judgeProvider = process.env.AI_JUDGE_PROVIDER || 'auto'
+  const apiKey = process.env.OPENAI_API_KEY
 
   if (judgeProvider === 'openai') {
-    const judgeCapableGateway = gateway as AiGateway & JudgeGateway
-    if (typeof judgeCapableGateway.judgeCase !== 'function') {
-      throw new Error('AI_JUDGE_PROVIDER is openai but the configured AI gateway does not support judging')
+    if (!apiKey) {
+      throw new Error('AI_JUDGE_PROVIDER is openai but OPENAI_API_KEY is missing')
     }
 
     return {
       generator: gateway,
-      judge: judgeCapableGateway,
+      judge: new OpenAiGateway({
+        apiKey,
+        baseUrl: process.env.OPENAI_BASE_URL,
+        fallbackGateway: new HeuristicAiGateway(),
+        judgeModel: process.env.OPENAI_JUDGE_MODEL || 'gpt-5',
+        maxAttempts: Number(process.env.OPENAI_MAX_ATTEMPTS || 2),
+        model: process.env.OPENAI_MODEL || 'gpt-5-mini',
+        requestedProvider: 'openai',
+        timeoutMs: Number(process.env.OPENAI_TIMEOUT_MS || 15000),
+      }),
       mode,
       judgeMode: 'openai' as const,
     }

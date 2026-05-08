@@ -64,4 +64,62 @@ describe('runAiBenchmark', () => {
     expect(generator.recommendMentors).toHaveBeenCalledTimes(2)
     expect(judge.judgeCase).toHaveBeenCalledTimes(6)
   })
+
+  it('can throttle between cases for live LLM judge rate limits', async () => {
+    const generator = {
+      generateRequestBrief: vi.fn(async (input) => ({
+        provider: 'heuristic' as const,
+        briefSummary: `brief for ${input.ventureName}`,
+        challenge: 'challenge',
+        desiredOutcome: 'outcome',
+        mentorFitTags: ['fundraising'],
+        missingInformation: [],
+        readinessSignals: ['TRL 4'],
+        cfeRoutingNote: 'route it',
+      })),
+      generateMeetingSummary: vi.fn(async (input) => ({
+        provider: 'heuristic' as const,
+        executiveSummary: `summary for ${input.ventureName}`,
+        keyTakeaways: ['takeaway'],
+        founderActionItems: ['founder'],
+        studentActionItems: ['student'],
+        cfeActionItems: ['cfe'],
+        followUpQuestions: ['question'],
+        secondSessionRecommended: true,
+      })),
+      recommendMentors: vi.fn(async ({ candidates }) => ({
+        provider: 'heuristic' as const,
+        routingNote: 'route it',
+        searchTags: ['fundraising'],
+        shortlist: candidates.slice(0, 2).map((candidate: MentorRecommendationCandidate, index: number) => ({
+          mentorId: candidate.id,
+          mentorName: candidate.name,
+          title: candidate.title,
+          score: 95 - index,
+          reasons: ['Strong fit'],
+        })),
+      })),
+    }
+
+    const judge = {
+      judgeCase: vi.fn(async ({ task }) => ({
+        summary: `judged ${task}`,
+        overallScore: 4,
+        pass: true,
+        criteria: [
+          { name: 'relevance', score: 4, rationale: 'Relevant enough' },
+        ],
+      })),
+    }
+
+    const startedAt = Date.now()
+    const report = await runAiBenchmark(generator, judge, 'heuristic', 'openai', {
+      delayBetweenCasesMs: 1,
+      startDelayMs: 1,
+    })
+
+    expect(report.judgeProvider).toBe('openai')
+    expect(report.passed).toBe(6)
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(5)
+  })
 })

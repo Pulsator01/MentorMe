@@ -33,6 +33,8 @@ This report supersedes the earlier request-brief-only report at `docs/request-br
 | `backend/src/ai/meetingSummaryShowcase.ts` | Meeting-summary baselines, evaluator, and report runner. |
 | `backend/src/ai/mentorRecommendationShowcase.ts` | Mentor-recommendations baselines, evaluator, and report runner. |
 | `backend/src/ai/aiEndpointShowcase.ts` | Aggregates all three endpoint showcase reports. |
+| `backend/src/ai/evals.ts` | Supports heuristic or OpenAI generation, live OpenAI judging, and optional case throttling for low-RPM accounts. |
+| `backend/scripts/run-ai-evals.ts` | Reads `AI_EVAL_START_DELAY_MS` and `AI_EVAL_CASE_DELAY_MS` for live judge runs. |
 | `backend/scripts/run-request-brief-showcase.ts` | CLI runner for request brief showcase. |
 | `backend/scripts/run-meeting-summary-showcase.ts` | CLI runner for meeting summary showcase. |
 | `backend/scripts/run-mentor-recommendation-showcase.ts` | CLI runner for mentor recommendations showcase. |
@@ -155,14 +157,62 @@ Baseline scores:
 | `POST /ai/mentor-recommendations` | `agentic_baseline` | 3 | 3 | 4.37 |
 | `POST /ai/mentor-recommendations` | `production_heuristic_current` | 3 | 3 | 4.31 |
 
+## Live OpenAI Judge Result
+
+The live OpenAI path was run after the deterministic showcase. This was not simulated:
+
+- generation provider: `openai`
+- judge provider: `openai`
+- generator model: `gpt-5-mini`
+- judge model: `gpt-5-mini`
+- throttle: `45s` startup delay and `65s` between cases, because the account was limited to `3` requests per minute
+
+Command shape, with the key redacted:
+
+```bash
+OPENAI_API_KEY=<redacted> \
+AI_PROVIDER=openai \
+AI_JUDGE_PROVIDER=openai \
+OPENAI_MODEL=gpt-5-mini \
+OPENAI_JUDGE_MODEL=gpt-5-mini \
+OPENAI_TIMEOUT_MS=90000 \
+OPENAI_MAX_ATTEMPTS=1 \
+AI_EVAL_START_DELAY_MS=45000 \
+AI_EVAL_CASE_DELAY_MS=65000 \
+npm run eval:ai
+```
+
+Result:
+
+| Metric | Value |
+| --- | ---: |
+| Total eval cases | 6 |
+| Passed | 6 |
+| Average score | 4.75 |
+| Model provider | `openai` |
+| Judge provider | `openai` |
+
+Live judge case scores:
+
+| Case | Task | Score | Pass |
+| --- | --- | ---: | --- |
+| `brief-ecodrone-fundraising` | `request_brief` | 5.0 | yes |
+| `brief-healthsathi-regulatory` | `request_brief` | 5.0 | yes |
+| `meeting-ecodrone-followup` | `meeting_summary` | 5.0 | yes |
+| `meeting-healthsathi-regulatory` | `meeting_summary` | 5.0 | yes |
+| `mentor-ecodrone-fundraising` | `mentor_recommendation` | 4.0 | yes |
+| `mentor-healthsathi-regulatory` | `mentor_recommendation` | 4.5 | yes |
+
 ## Verification
 
 Commands run so far:
 
 ```bash
 npx vitest run backend/src/ai/requestBriefShowcase.test.ts backend/src/ai/meetingSummaryShowcase.test.ts backend/src/ai/mentorRecommendationShowcase.test.ts backend/src/ai/aiEndpointShowcase.test.ts
+npx vitest run backend/src/ai/evals.test.ts
 npm run eval:ai:showcases
 env AI_PROVIDER=heuristic AI_JUDGE_PROVIDER=heuristic npm run eval:ai
+OPENAI_API_KEY=<redacted> AI_PROVIDER=openai AI_JUDGE_PROVIDER=openai OPENAI_MODEL=gpt-5-mini OPENAI_JUDGE_MODEL=gpt-5-mini OPENAI_TIMEOUT_MS=90000 OPENAI_MAX_ATTEMPTS=1 AI_EVAL_START_DELAY_MS=45000 AI_EVAL_CASE_DELAY_MS=65000 npm run eval:ai
 npm run lint
 npx tsc --noEmit
 npm test
@@ -173,8 +223,10 @@ git diff --check
 Final results:
 
 - Focused showcase tests: `4` test files passed, `13` tests passed.
+- Focused eval runner tests: `1` test file passed, `2` tests passed.
 - `npm run eval:ai:showcases`: passed with `9` dataset cases and `27` evaluated outputs.
 - `env AI_PROVIDER=heuristic AI_JUDGE_PROVIDER=heuristic npm run eval:ai`: `6/6` eval cases passed, average score `4.05`.
+- Live OpenAI generation and live OpenAI judge run: `6/6` eval cases passed, average score `4.75`.
 - `npm run lint`: passed.
 - `npx tsc --noEmit`: passed.
 - `npm test`: `32` test files passed, `176` tests passed.
@@ -185,7 +237,7 @@ Final results:
 
 No API key is stored in the repository.
 
-The showcase uses deterministic local scoring so it can run without external credentials. If a live OpenAI judge run is needed later, set `OPENAI_API_KEY` in a shell or deployment secret store, not in source files.
+The deterministic showcase can run without external credentials. The live OpenAI judge run used `OPENAI_API_KEY` only as a shell environment variable with the value redacted from this report.
 
 ## Requirement Status
 
@@ -197,4 +249,5 @@ The showcase uses deterministic local scoring so it can run without external cre
 | Evaluation implementation for all three AI endpoints | Complete |
 | Single LLM prompt baseline for all three AI endpoints | Complete |
 | Agentic baseline for all three AI endpoints | Complete |
+| Live OpenAI generation and live OpenAI judge run | Complete |
 | Markdown status report | Complete |

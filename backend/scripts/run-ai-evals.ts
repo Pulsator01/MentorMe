@@ -1,5 +1,10 @@
 import { buildAiBenchmark, runAiBenchmark } from '../src/ai/evals'
 
+const numericEnv = (name: string) => {
+  const value = Number(process.env[name] || 0)
+  return Number.isFinite(value) ? value : 0
+}
+
 const main = async () => {
   const benchmark = buildAiBenchmark()
   const report = await runAiBenchmark(
@@ -7,6 +12,10 @@ const main = async () => {
     benchmark.judge,
     benchmark.mode,
     benchmark.judgeMode,
+    {
+      delayBetweenCasesMs: numericEnv('AI_EVAL_CASE_DELAY_MS'),
+      startDelayMs: numericEnv('AI_EVAL_START_DELAY_MS'),
+    },
   )
 
   console.log(JSON.stringify(report, null, 2))
