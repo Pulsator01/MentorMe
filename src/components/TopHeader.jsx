@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation, Link } from 'react-router-dom'
 import { Menu, Bell, LogOut, Settings, ChevronRight } from 'lucide-react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, motion as Motion } from 'framer-motion'
 import { useAppState } from '../context/AppState'
 import { cn } from './ui'
 
@@ -121,7 +121,7 @@ export default function TopHeader({ onMenuClick }) {
 
           <AnimatePresence>
             {dropdownOpen && (
-              <motion.div
+              <Motion.div
                 initial={{ opacity: 0, scale: 0.95, y: -4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -152,7 +152,7 @@ export default function TopHeader({ onMenuClick }) {
                     Sign out
                   </button>
                 </div>
-              </motion.div>
+              </Motion.div>
             )}
           </AnimatePresence>
         </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion as Motion } from 'framer-motion'
 import {
   LayoutDashboard,
   Bell,
@@ -121,7 +121,7 @@ function SidebarNavItem({ item, collapsed, unreadCount }) {
       {({ isActive }) => (
         <>
           {isActive && (
-            <motion.span
+            <Motion.span
               layoutId="sidebar-active"
               className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-amber-400"
               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
@@ -139,7 +139,7 @@ function SidebarNavItem({ item, collapsed, unreadCount }) {
             )}
           </span>
           {!collapsed && (
-            <motion.span
+            <Motion.span
               initial={{ opacity: 0, width: 0 }}
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
@@ -147,7 +147,7 @@ function SidebarNavItem({ item, collapsed, unreadCount }) {
               className="truncate"
             >
               {item.label}
-            </motion.span>
+            </Motion.span>
           )}
         </>
       )}
@@ -164,7 +164,7 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
 
   useEffect(() => {
     if (onMobileClose) onMobileClose()
-  }, [location.pathname])
+  }, [location.pathname, onMobileClose])
 
   const handleLogout = useCallback(async () => {
     await logout()
@@ -179,13 +179,13 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
             M
           </span>
           {!collapsed && (
-            <motion.span
+            <Motion.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               className="text-[15px] font-semibold tracking-tight text-white"
             >
               MentorMe
-            </motion.span>
+            </Motion.span>
           )}
         </Link>
         {onMobileClose && (
@@ -200,7 +200,7 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
 
       {/* Workspace Indicator */}
       {!collapsed && (
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="px-4 pb-1 pt-4"
@@ -208,7 +208,7 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
           <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
             {getRoleLabel(role)}
           </p>
-        </motion.div>
+        </Motion.div>
       )}
 
       {/* Navigation */}
@@ -272,10 +272,10 @@ function SidebarContent({ collapsed, onToggle, onMobileClose }) {
               {getInitials(currentUser.name)}
             </span>
             {!collapsed && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 flex-1">
+              <Motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-medium text-slate-200">{currentUser.name || currentUser.email}</p>
                 <p className="text-[11px] capitalize text-slate-500">{currentUser.role}</p>
-              </motion.div>
+              </Motion.div>
             )}
             {!collapsed && (
               <button
@@ -329,7 +329,9 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       const next = !prev
       try {
         localStorage.setItem(STORAGE_KEY, String(next))
-      } catch {}
+      } catch {
+        // Ignore storage failures in private browsing or locked-down browser contexts.
+      }
       return next
     })
   }, [])
@@ -337,7 +339,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
   return (
     <>
       {/* Desktop sidebar */}
-      <motion.aside
+      <Motion.aside
         initial={false}
         animate={{ width: collapsed ? 72 : 260 }}
         transition={{ type: 'spring', stiffness: 400, damping: 32 }}
@@ -345,10 +347,10 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
         style={{ background: 'linear-gradient(195deg, #0f172a 0%, #0c1220 50%, #0a0f1a 100%)' }}
       >
         <SidebarContent collapsed={collapsed} onToggle={handleToggle} />
-      </motion.aside>
+      </Motion.aside>
 
       {/* Desktop spacer */}
-      <motion.div
+      <Motion.div
         initial={false}
         animate={{ width: collapsed ? 72 : 260 }}
         transition={{ type: 'spring', stiffness: 400, damping: 32 }}
@@ -360,7 +362,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
       <AnimatePresence>
         {mobileOpen && (
           <>
-            <motion.div
+            <Motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -368,7 +370,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm lg:hidden"
               onClick={onMobileClose}
             />
-            <motion.aside
+            <Motion.aside
               initial={{ x: -280 }}
               animate={{ x: 0 }}
               exit={{ x: -280 }}
@@ -377,7 +379,7 @@ export default function Sidebar({ mobileOpen, onMobileClose }) {
               style={{ background: 'linear-gradient(195deg, #0f172a 0%, #0c1220 50%, #0a0f1a 100%)' }}
             >
               <SidebarContent collapsed={false} onToggle={handleToggle} onMobileClose={onMobileClose} />
-            </motion.aside>
+            </Motion.aside>
           </>
         )}
       </AnimatePresence>

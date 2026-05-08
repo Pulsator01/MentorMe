@@ -277,22 +277,6 @@ const reducer = (state, action) => {
   }
 }
 
-const getRoleEmailForPath = (path) => {
-  if (path.startsWith('/cfe')) {
-    return 'ritu.cfe@mentorme.test'
-  }
-
-  if (path.startsWith('/students')) {
-    return 'ria.student@mentorme.test'
-  }
-
-  if (path.startsWith('/mentors')) {
-    return 'radhika@mentorme.test'
-  }
-
-  return 'aarav.sharma@mentorme.test'
-}
-
 export const buildMentorUpdatePayload = (updates) => {
   const payload = Object.fromEntries(Object.entries(updates).filter(([, value]) => value !== undefined))
 

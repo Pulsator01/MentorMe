@@ -9,7 +9,7 @@ function GoogleCallbackPage() {
   const navigate = useNavigate()
   const { bootStatus } = useAppState()
   const checkedRef = useRef(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(() => (authClient ? null : 'Auth backend is not configured.'))
 
   useEffect(() => {
     if (checkedRef.current) {
@@ -18,7 +18,6 @@ function GoogleCallbackPage() {
     checkedRef.current = true
 
     if (!authClient) {
-      setError('Auth backend is not configured.')
       return
     }
 
