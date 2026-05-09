@@ -10,7 +10,6 @@ import {
   ClipboardList,
   LayoutDashboard,
   Mail,
-  ShieldCheck,
   Sparkles,
   Users,
 } from 'lucide-react'
@@ -160,12 +159,12 @@ function MarketingPage() {
           />
           <ul className="mt-6 grid gap-4 sm:grid-cols-2">
             <li className="flex gap-3 rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
-              <ShieldCheck className="mt-0.5 shrink-0 text-emerald-600" size={20} aria-hidden="true" />
+              <Users className="mt-0.5 shrink-0 text-indigo-600" size={20} aria-hidden="true" />
               <div>
-                <p className="text-sm font-semibold text-slate-900">Security-first API</p>
+                <p className="text-sm font-semibold text-slate-900">Role-tailored experience</p>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Helmet headers, IP rate limits (including tighter auth buckets), optional Sentry, and CORS allow-lists for
-                  cookie-backed deployments.
+                  Separate journeys for founders, CFEs, mentors, and students with focused dashboards, workflows, and
+                  actions at every stage.
                 </p>
               </div>
             </li>
