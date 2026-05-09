@@ -1376,7 +1376,25 @@ export class PlatformService {
       throw new Error('Multiple mentor profiles match this account name')
     }
 
-    throw new Error('Mentor profile not found for this account')
+    const createdMentor: MentorProfile = {
+      id: `m-${randomToken().slice(0, 10)}`,
+      organizationId: user.organizationId,
+      name: user.name,
+      email: user.email,
+      title: 'Mentor',
+      location: 'Remote',
+      focus: [],
+      stages: [],
+      domains: [],
+      tolerance: 'Medium',
+      monthlyLimit: 3,
+      visibility: 'Paused',
+      responseWindow: '72h',
+      calendlyUrl: '',
+      bio: '',
+    }
+    await this.deps.repository.saveMentor(createdMentor)
+    return createdMentor
   }
 
   private async requireAssignedMentorRequest(user: User, requestId: string) {

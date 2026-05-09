@@ -561,6 +561,36 @@ describe('MentorMe backend workflow', () => {
     expect((await repository.findMentorById('m-kavya-rao'))?.email).toBe('kavya.real@example.test')
   })
 
+  it('provisions a mentor profile for mentor accounts that have no roster profile yet', async () => {
+    const { app, repository } = await buildTestApp((state) => {
+      state.users.push({
+        id: 'user-mentor-new',
+        organizationId: state.organization.id,
+        cohortId: state.cohort.id,
+        email: 'new.mentor@example.test',
+        name: 'New Mentor',
+        role: 'mentor',
+      })
+    })
+    const mentorToken = await loginAs(app, 'new.mentor@example.test')
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/mentors/me/actions',
+      headers: { [TEST_AUTH_HEADER]: mentorToken },
+    })
+
+    expect(listRes.statusCode).toBe(200)
+    const listBody = parseJson<{
+      mentor: { id: string; email: string; visibility: string }
+      actions: Array<unknown>
+    }>(listRes)
+    expect(listBody.mentor.email).toBe('new.mentor@example.test')
+    expect(listBody.mentor.visibility).toBe('Paused')
+    expect(listBody.actions).toEqual([])
+    expect((await repository.findMentorById(listBody.mentor.id))?.email).toBe('new.mentor@example.test')
+  })
+
   it('records mentor accept and decline responses through secure action links', async () => {
     const { app, repository } = await buildTestApp((state) => {
       state.requests.push({
