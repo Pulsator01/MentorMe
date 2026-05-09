@@ -157,6 +157,174 @@ describe('MentorMe backend workflow', () => {
     )
   })
 
+  it('keeps CFE request, venture, mentor, outreach, and AI recommendation data inside the authenticated organization', async () => {
+    const { app, ai } = await buildTestApp((state) => {
+      state.users.push(
+        {
+          id: 'user-founder-other',
+          organizationId: 'org-other',
+          cohortId: 'cohort-other',
+          email: 'founder@other.test',
+          name: 'Other Founder',
+          role: 'founder',
+        },
+        {
+          id: 'user-cfe-other',
+          organizationId: 'org-other',
+          cohortId: 'cohort-other',
+          email: 'cfe@other.test',
+          name: 'Other CFE',
+          role: 'cfe',
+        },
+      )
+      state.ventures.push({
+        id: 'v-other',
+        organizationId: 'org-other',
+        cohortId: 'cohort-other',
+        name: 'OtherOrg Venture',
+        founderName: 'Other Founder',
+        domain: 'Robotics',
+        stage: 'Pilot',
+        trl: 5,
+        brl: 4,
+        location: 'Mumbai, India',
+        summary: 'A venture that belongs to another organization.',
+        nextMilestone: 'Do not leak across tenant boundary.',
+        programNote: 'Other cohort',
+      })
+      state.ventureMemberships.push({
+        id: 'vm-other',
+        organizationId: 'org-other',
+        ventureId: 'v-other',
+        userId: 'user-founder-other',
+        role: 'founder',
+      })
+      state.mentors.push({
+        id: 'm-other',
+        organizationId: 'org-other',
+        name: 'Other Org Mentor',
+        email: 'mentor@other.test',
+        title: 'Other org mentor',
+        location: 'Remote',
+        focus: ['Tenant isolation'],
+        stages: ['Pilot'],
+        domains: ['Robotics'],
+        tolerance: 'High',
+        monthlyLimit: 2,
+        visibility: 'Active',
+        responseWindow: '48h',
+        calendlyUrl: 'https://calendly.example/other',
+        bio: 'Should not be visible to MentorMe users.',
+      })
+      state.requests.push({
+        id: 'req-other',
+        organizationId: 'org-other',
+        ventureId: 'v-other',
+        founderUserId: 'user-founder-other',
+        mentorId: 'm-other',
+        stage: 'Pilot',
+        trl: 5,
+        brl: 4,
+        status: 'cfe_review',
+        challenge: 'Cross-tenant request should not be reachable.',
+        desiredOutcome: 'Keep this hidden from another organization.',
+        mentorNotes: '',
+        createdAt: '2026-04-30T00:00:00.000Z',
+        updatedAt: '2026-04-30T00:00:00.000Z',
+        submittedAt: '2026-04-30T00:00:00.000Z',
+      })
+    })
+    const recommendMentors = vi.spyOn(ai, 'recommendMentors')
+    const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
+
+    const venturesRes = await app.inject({
+      method: 'GET',
+      url: '/ventures',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+    })
+    expect(parseJson<{ ventures: Array<{ id: string }> }>(venturesRes).ventures.map((venture) => venture.id)).not.toContain('v-other')
+
+    const otherVentureRes = await app.inject({
+      method: 'GET',
+      url: '/ventures/v-other',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+    })
+    expect(otherVentureRes.statusCode).toBe(400)
+    expect(otherVentureRes.body).toContain('Forbidden')
+
+    const requestsRes = await app.inject({
+      method: 'GET',
+      url: '/requests',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+    })
+    expect(parseJson<{ requests: Array<{ id: string }> }>(requestsRes).requests.map((request) => request.id)).not.toContain('req-other')
+
+    const approveOtherRes = await app.inject({
+      method: 'POST',
+      url: '/requests/req-other/approve',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+      payload: { ownerName: 'Ritu from CFE' },
+    })
+    expect(approveOtherRes.statusCode).toBe(400)
+    expect(approveOtherRes.body).toContain('Forbidden')
+
+    const mentorsRes = await app.inject({
+      method: 'GET',
+      url: '/mentors',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+    })
+    expect(parseJson<{ mentors: Array<{ id: string }> }>(mentorsRes).mentors.map((mentor) => mentor.id)).not.toContain('m-other')
+
+    const patchOtherMentorRes = await app.inject({
+      method: 'PATCH',
+      url: '/mentors/m-other',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+      payload: { visibility: 'Paused' },
+    })
+    expect(patchOtherMentorRes.statusCode).toBe(400)
+    expect(patchOtherMentorRes.body).toContain('Forbidden')
+
+    const outreachOtherRes = await app.inject({
+      method: 'POST',
+      url: '/requests/req-other/mentor-outreach',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+    })
+    expect(outreachOtherRes.statusCode).toBe(400)
+    expect(outreachOtherRes.body).toContain('Forbidden')
+
+    const aiRes = await app.inject({
+      method: 'POST',
+      url: '/ai/mentor-recommendations',
+      headers: { [TEST_AUTH_HEADER]: cfeToken },
+      payload: {
+        ventureName: 'EcoDrone Systems',
+        challenge: 'Need a mentor for pilot routing.',
+        maxResults: 3,
+      },
+    })
+    expect(aiRes.statusCode).toBe(200)
+    const aiInput = recommendMentors.mock.calls.at(-1)?.[0]
+    expect(aiInput?.candidates.map((candidate) => candidate.id)).not.toContain('m-other')
+  })
+
+  it('does not allow arbitrary CORS origins when no explicit origin list is configured', async () => {
+    const { app } = await buildTestApp()
+
+    const disallowed = await app.inject({
+      method: 'GET',
+      url: '/healthz',
+      headers: { origin: 'https://evil.example' },
+    })
+    expect(disallowed.headers['access-control-allow-origin']).toBeUndefined()
+
+    const allowed = await app.inject({
+      method: 'GET',
+      url: '/healthz',
+      headers: { origin: 'http://localhost:5173' },
+    })
+    expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:5173')
+  })
+
   it('keeps request listings scoped by venture id even when ventures share the same display name', async () => {
     const { app } = await buildTestApp((state) => {
       state.users.push({
@@ -304,14 +472,14 @@ describe('MentorMe backend workflow', () => {
       method: 'OPTIONS',
       url: '/mentors/m-naval',
       headers: {
-        origin: 'http://127.0.0.1:4173',
+        origin: 'http://localhost:5173',
         'access-control-request-method': 'PATCH',
         'access-control-request-headers': 'authorization,content-type',
       },
     })
 
     expect(preflightRes.statusCode).toBe(204)
-    expect(preflightRes.headers['access-control-allow-origin']).toBe('http://127.0.0.1:4173')
+    expect(preflightRes.headers['access-control-allow-origin']).toBe('http://localhost:5173')
     expect(preflightRes.headers['access-control-allow-credentials']).toBe('true')
     expect(preflightRes.headers['access-control-allow-methods']).toContain('PATCH')
   })
@@ -1157,7 +1325,7 @@ describe('MentorMe backend workflow', () => {
     expect(stored?.acceptedById).toBe(acceptBody.user.id)
   })
 
-  it('rejects accepting an invitation when the role does not match', async () => {
+  it('lets an invitation assign the invited role after public signup defaults the user to founder', async () => {
     const { app, repository } = await buildTestApp()
     const cfeToken = await loginAs(app, 'ritu.cfe@mentorme.test')
 
@@ -1165,27 +1333,95 @@ describe('MentorMe backend workflow', () => {
       method: 'POST',
       url: '/invitations',
       headers: { [TEST_AUTH_HEADER]: cfeToken },
-      payload: { email: 'mismatch@mentorme.test', role: 'founder' },
+      payload: { email: 'invited.cfe@mentorme.test', role: 'cfe' },
     })
     const invite = parseJson<{ debugToken: string }>(inviteRes)
 
     await repository.saveUser({
-      id: 'user-student-mismatch',
+      id: 'user-public-signup-before-invite',
       organizationId: 'org-mentorme',
-      email: 'mismatch@mentorme.test',
-      name: 'Mismatch User',
-      role: 'student',
+      email: 'invited.cfe@mentorme.test',
+      name: 'Invited CFE',
+      role: 'founder',
       emailVerified: true,
     })
 
     const acceptRes = await app.inject({
       method: 'POST',
       url: `/invitations/${invite.debugToken}/accept`,
-      headers: { [TEST_AUTH_HEADER]: 'mismatch@mentorme.test' },
+      headers: { [TEST_AUTH_HEADER]: 'invited.cfe@mentorme.test' },
     })
 
-    expect(acceptRes.statusCode).toBe(400)
-    expect(acceptRes.body.toLowerCase()).toContain('role')
+    expect(acceptRes.statusCode).toBe(200)
+    const body = parseJson<{ user: { role: string; onboardedAt: string } }>(acceptRes)
+    expect(body.user.role).toBe('cfe')
+    expect(body.user.onboardedAt).toBeTruthy()
+
+    const stored = await repository.findUserByEmail('invited.cfe@mentorme.test')
+    expect(stored?.role).toBe('cfe')
+  })
+
+  it('assigns the invited venture cohort when a fresh public signup joins another organization', async () => {
+    const { app, repository } = await buildTestApp((state) => {
+      state.users.push({
+        id: 'user-other-invite-cfe',
+        organizationId: 'org-other-invite',
+        cohortId: 'cohort-other-invite',
+        email: 'cfe@other-invite.test',
+        name: 'Other Invite CFE',
+        role: 'cfe',
+      })
+      state.ventures.push({
+        id: 'v-other-invite',
+        organizationId: 'org-other-invite',
+        cohortId: 'cohort-other-invite',
+        name: 'Other Invite Venture',
+        founderName: 'Other Invite Founder',
+        domain: 'Climate',
+        stage: 'Pilot',
+        trl: 5,
+        brl: 4,
+        location: 'Pune, India',
+        summary: 'Venture used to verify invitation cohort assignment.',
+        nextMilestone: 'Complete the tenant-safe invitation flow.',
+        programNote: 'Other invite cohort',
+      })
+    })
+    const otherCfeToken = await loginAs(app, 'cfe@other-invite.test')
+
+    const inviteRes = await app.inject({
+      method: 'POST',
+      url: '/invitations',
+      headers: { [TEST_AUTH_HEADER]: otherCfeToken },
+      payload: {
+        email: 'fresh.signup.crossorg@mentorme.test',
+        role: 'student',
+        ventureId: 'v-other-invite',
+      },
+    })
+    const invite = parseJson<{ debugToken: string }>(inviteRes)
+
+    await repository.saveUser({
+      id: 'user-public-signup-crossorg',
+      organizationId: 'org-mentorme',
+      cohortId: 'cohort-2026',
+      email: 'fresh.signup.crossorg@mentorme.test',
+      name: 'Fresh Cross Org Signup',
+      role: 'founder',
+      emailVerified: true,
+    })
+
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: `/invitations/${invite.debugToken}/accept`,
+      headers: { [TEST_AUTH_HEADER]: 'fresh.signup.crossorg@mentorme.test' },
+    })
+
+    expect(acceptRes.statusCode).toBe(200)
+    const body = parseJson<{ user: { organizationId: string; role: string; cohortId: string } }>(acceptRes)
+    expect(body.user.organizationId).toBe('org-other-invite')
+    expect(body.user.role).toBe('student')
+    expect(body.user.cohortId).toBe('cohort-other-invite')
   })
 
   it('returns 404 for invitation preview with an unknown token', async () => {

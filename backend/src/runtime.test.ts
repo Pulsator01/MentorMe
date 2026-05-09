@@ -33,6 +33,8 @@ vi.mock('./infra/prismaRepository', () => ({
 describe('createRuntimeRepository', () => {
   const originalPersistenceBackend = process.env.PERSISTENCE_BACKEND
   const originalDatabaseUrl = process.env.DATABASE_URL
+  const originalNodeEnv = process.env.NODE_ENV
+  const originalAllowMemoryBackend = process.env.ALLOW_MEMORY_BACKEND
 
   beforeEach(() => {
     vi.resetModules()
@@ -41,6 +43,8 @@ describe('createRuntimeRepository', () => {
     mocks.createPrismaRepository.mockReturnValue(mocks.prismaRepository)
     delete process.env.PERSISTENCE_BACKEND
     delete process.env.DATABASE_URL
+    delete process.env.NODE_ENV
+    delete process.env.ALLOW_MEMORY_BACKEND
   })
 
   afterEach(() => {
@@ -54,6 +58,18 @@ describe('createRuntimeRepository', () => {
       delete process.env.DATABASE_URL
     } else {
       process.env.DATABASE_URL = originalDatabaseUrl
+    }
+
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV
+    } else {
+      process.env.NODE_ENV = originalNodeEnv
+    }
+
+    if (originalAllowMemoryBackend === undefined) {
+      delete process.env.ALLOW_MEMORY_BACKEND
+    } else {
+      process.env.ALLOW_MEMORY_BACKEND = originalAllowMemoryBackend
     }
   })
 
@@ -94,5 +110,14 @@ describe('createRuntimeRepository', () => {
     expect(runtime.repository).toBe(mocks.memoryRepository)
     expect(mocks.createMemoryRepository).toHaveBeenCalledTimes(1)
     expect(mocks.createPrismaRepository).not.toHaveBeenCalled()
+  })
+
+  it('fails closed in production when DATABASE_URL is missing', async () => {
+    process.env.NODE_ENV = 'production'
+
+    const { createRuntimeRepository } = await import('./runtime')
+
+    expect(() => createRuntimeRepository()).toThrow(/DATABASE_URL/)
+    expect(mocks.createMemoryRepository).not.toHaveBeenCalled()
   })
 })

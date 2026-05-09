@@ -37,22 +37,16 @@ describe('MentorMe role-based frontend', () => {
     expect(screen.queryByRole('heading', { name: /students/i })).not.toBeInTheDocument()
   })
 
-  it('shows founder, mentor, and CFE as the signup role options', async () => {
+  it('keeps public signup scoped to founder accounts', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:3001')
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(textResponse('Unauthorized', 401)))
 
     renderAtRoute('/signup')
 
-    const roleSelect = await screen.findByLabelText(/i am a/i)
-    const optionLabels = within(roleSelect)
-      .getAllByRole('option')
-      .map((option) => option.textContent)
-
-    expect(optionLabels).toEqual([
-      'Founder (looking for mentorship)',
-      'Mentor',
-      'CFE',
-    ])
+    expect(await screen.findByRole('heading', { name: /get started with mentorme/i })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/i am a/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^mentor$/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^cfe$/i)).not.toBeInTheDocument()
   })
 
   it('lets founders submit a mentor request from the new-request page', async () => {

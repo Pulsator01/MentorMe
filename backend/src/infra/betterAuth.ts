@@ -75,18 +75,18 @@ export function createBetterAuth(opts: {
 
     user: {
       additionalFields: {
-        role: { type: 'string', required: true, defaultValue: 'founder', input: true },
+        role: { type: 'string', required: true, defaultValue: 'founder', input: false },
         organizationId: {
           type: 'string',
           required: false,
           defaultValue: opts.defaultOrganizationId,
-          input: true,
+          input: false,
         },
         cohortId: {
           type: 'string',
           required: false,
           defaultValue: opts.defaultCohortId,
-          input: true,
+          input: false,
         },
         onboardedAt: { type: 'string', required: false },
         lastLoginAt: { type: 'string', required: false },

@@ -769,10 +769,7 @@ const buildOpenApiDocument = () =>
 export const createApp = async (options: AppOptions) => {
   const normalizedAppBaseUrl = options.appBaseUrl.trim()
   const configuredCorsOrigins = (options.httpSecurity?.corsAllowedOrigins ?? []).map((o) => o.trim()).filter(Boolean)
-  const corsAllowedOrigins =
-    configuredCorsOrigins.length > 0
-      ? Array.from(new Set([...configuredCorsOrigins, normalizedAppBaseUrl].filter(Boolean)))
-      : configuredCorsOrigins
+  const corsAllowedOrigins = Array.from(new Set([...configuredCorsOrigins, normalizedAppBaseUrl].filter(Boolean)))
 
   const httpSec = {
     disableHelmet: options.httpSecurity?.disableHelmet === true,
@@ -805,7 +802,7 @@ export const createApp = async (options: AppOptions) => {
           frameAncestors: ["'self'"],
           imgSrc: ["'self'", 'data:', 'https:'],
           objectSrc: ["'none'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+          scriptSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
         },
       },
@@ -823,7 +820,7 @@ export const createApp = async (options: AppOptions) => {
   }
 
   app.register(cors, {
-    origin: httpSec.corsAllowedOrigins.length > 0 ? httpSec.corsAllowedOrigins : true,
+    origin: httpSec.corsAllowedOrigins,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   })
@@ -895,7 +892,7 @@ export const createApp = async (options: AppOptions) => {
     const setAuthCorsHeaders = (request: FastifyRequest, reply: FastifyReply) => {
       const origin = request.headers.origin
       if (!origin) return
-      if (httpSec.corsAllowedOrigins.length > 0 && !httpSec.corsAllowedOrigins.includes(origin)) return
+      if (!httpSec.corsAllowedOrigins.includes(origin)) return
 
       reply.raw.setHeader('access-control-allow-origin', origin)
       reply.raw.setHeader('access-control-allow-credentials', 'true')
