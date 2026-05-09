@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
 const MotionDiv = motion.div
@@ -31,14 +31,19 @@ function MentorDashboard() {
     mentors,
     requests,
     getMentorAction,
+    getCurrentMentorActions,
     respondToMentorAction,
+    respondToMentorRequest,
     scheduleMentorAction,
+    scheduleMentorRequest,
     saveMentorActionFeedback,
+    saveMentorRequestFeedback,
   } = useAppState()
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') || ''
   const [detail, setDetail] = useState(null)
-  const [loading, setLoading] = useState(Boolean(token))
+  const [actions, setActions] = useState([])
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
   const [decisionReason, setDecisionReason] = useState('')
@@ -55,35 +60,83 @@ function MentorDashboard() {
     secondSessionRecommended: false,
   })
 
+  const applyDetail = (body) => {
+    setDetail(body)
+    setScheduleDraft({
+      calendlyLink: body.request?.calendlyLink || body.mentor?.calendly || body.mentor?.calendlyUrl || '',
+      meetingAt: toDatetimeLocal(body.request?.meetingAt),
+    })
+    setFeedbackDraft({
+      mentorNotes: body.request?.mentorNotes || '',
+      nextStepRequired: true,
+      secondSessionRecommended: false,
+    })
+  }
+
   useEffect(() => {
     if (!token) {
-      setLoading(false)
-
       if (mode !== 'api') {
         const localRequest = requests.find((request) => request.status === 'awaiting_mentor') || requests[0]
         const localMentor = mentors.find((mentor) => mentor.id === localRequest?.mentorId) || mentors[0]
 
         if (localRequest && localMentor) {
-          setDetail({
+          const localDetail = {
             mentor: localMentor,
             mentorAction: {
               purpose: 'mentor_request',
-              response: localRequest.status === 'awaiting_mentor' ? undefined : 'accepted',
+              response: ['scheduled', 'follow_up', 'closed'].includes(localRequest.status) ? 'accepted' : undefined,
             },
             request: localRequest,
-          })
-          setScheduleDraft({
-            calendlyLink: localRequest.calendlyLink || localMentor.calendly || '',
-            meetingAt: toDatetimeLocal(localRequest.meetingAt),
-          })
-          setFeedbackDraft((current) => ({
-            ...current,
-            mentorNotes: localRequest.mentorNotes || '',
-          }))
+          }
+          setActions([localDetail])
+          applyDetail(localDetail)
+        } else {
+          setDetail(null)
+          setActions([])
+        }
+
+        setLoading(false)
+        setError('')
+        return undefined
+      }
+
+      let active = true
+      setLoading(true)
+      setError('')
+
+      const load = async () => {
+        try {
+          const body = await getCurrentMentorActions()
+
+          if (!active) {
+            return
+          }
+
+          const nextActions = body.actions || []
+          setActions(nextActions)
+          if (nextActions[0]) {
+            applyDetail({ mentor: body.mentor, ...nextActions[0] })
+          } else {
+            setDetail(body.mentor ? { mentor: body.mentor, mentorAction: null, request: null } : null)
+          }
+        } catch (loadError) {
+          if (!active) {
+            return
+          }
+
+          setError(loadError instanceof Error ? loadError.message : 'Unable to load your mentor workspace.')
+        } finally {
+          if (active) {
+            setLoading(false)
+          }
         }
       }
 
-      return undefined
+      void load()
+
+      return () => {
+        active = false
+      }
     }
 
     let active = true
@@ -98,16 +151,8 @@ function MentorDashboard() {
           return
         }
 
-        setDetail(body)
-        setScheduleDraft({
-          calendlyLink: body.request.calendlyLink || body.mentor.calendly || '',
-          meetingAt: toDatetimeLocal(body.request.meetingAt),
-        })
-        setFeedbackDraft({
-          mentorNotes: body.request.mentorNotes || '',
-          nextStepRequired: true,
-          secondSessionRecommended: false,
-        })
+        setActions([{ mentorAction: body.mentorAction, request: body.request }])
+        applyDetail(body)
       } catch (loadError) {
         if (!active) {
           return
@@ -126,18 +171,19 @@ function MentorDashboard() {
     return () => {
       active = false
     }
-  }, [getMentorAction, mentors, mode, requests, token])
+  }, [getCurrentMentorActions, getMentorAction, mentors, mode, requests, token])
 
   const mentor = detail?.mentor
   const request = detail?.request
   const mentorAction = detail?.mentorAction
   const response = mentorAction?.response
   const hasToken = Boolean(token)
-  const canSchedule = hasToken && response === 'accepted' && request?.status === 'awaiting_mentor'
-  const canLeaveFeedback = hasToken && ['scheduled', 'follow_up'].includes(request?.status || '')
+  const hasLoadedRequest = Boolean(request?.id)
+  const canSchedule = hasLoadedRequest && response === 'accepted' && request?.status === 'awaiting_mentor'
+  const canLeaveFeedback = hasLoadedRequest && ['scheduled', 'follow_up'].includes(request?.status || '')
 
   const handleDecision = async (decision) => {
-    if (!hasToken) {
+    if (!request?.id) {
       return
     }
 
@@ -145,10 +191,13 @@ function MentorDashboard() {
     setError('')
 
     try {
-      const body = await respondToMentorAction(token, {
+      const payload = {
         decision,
         ...(decision === 'declined' ? { reason: decisionReason } : {}),
-      })
+      }
+      const body = hasToken
+        ? await respondToMentorAction(token, payload)
+        : await respondToMentorRequest(request.id, payload)
 
       setDetail((current) => ({
         ...current,
@@ -181,10 +230,13 @@ function MentorDashboard() {
     setError('')
 
     try {
-      const body = await scheduleMentorAction(token, {
+      const payload = {
         calendlyLink: scheduleDraft.calendlyLink,
         meetingAt: new Date(scheduleDraft.meetingAt).toISOString(),
-      })
+      }
+      const body = hasToken
+        ? await scheduleMentorAction(token, payload)
+        : await scheduleMentorRequest(request.id, payload)
 
       setDetail((current) => ({
         ...current,
@@ -207,7 +259,9 @@ function MentorDashboard() {
     setError('')
 
     try {
-      const body = await saveMentorActionFeedback(token, feedbackDraft)
+      const body = hasToken
+        ? await saveMentorActionFeedback(token, feedbackDraft)
+        : await saveMentorRequestFeedback(request.id, feedbackDraft)
       setDetail((current) => ({
         ...current,
         request: body.request,
@@ -220,28 +274,6 @@ function MentorDashboard() {
     }
   }
 
-  if (!hasToken && mode === 'api') {
-    return (
-      <div className="space-y-6 pb-10">
-        <SectionCard className="bg-slate-950 text-white sm:p-10">
-          <Badge tone="amber">Secure mentor desk</Badge>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Open this page from a CFE-generated secure link.</h1>
-          <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
-            Generate a link from the CFE workspace, then open it here to accept or decline the request, schedule the meeting, and leave feedback.
-          </p>
-          <div className="mt-8">
-            <Link
-              to="/cfe"
-              className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-100"
-            >
-              Back to CFE workspace
-            </Link>
-          </div>
-        </SectionCard>
-      </div>
-    )
-  }
-
   return (
     <MotionDiv
       initial={{ opacity: 0, y: 12 }}
@@ -252,15 +284,15 @@ function MentorDashboard() {
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <SectionCard className="bg-slate-950 text-white sm:p-10">
           <Badge tone="amber">Mentor Desk</Badge>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Review one vetted request without the admin clutter.</h1>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl">Review your assigned mentor requests without the admin clutter.</h1>
           <p className="mt-4 max-w-xl text-[15px] leading-7 text-slate-300">
-            Decide quickly, share a slot, and leave one useful note after the meeting.
+            Sign in directly, or open a secure CFE link when one is shared, to decide, schedule, and leave feedback.
           </p>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Response"
               value={response ? response : loading ? 'Loading' : 'Pending'}
-              detail="Accept or decline without needing a login."
+              detail="Respond from your account or a secure link."
               accent="amber"
             />
             <StatCard
@@ -270,9 +302,9 @@ function MentorDashboard() {
               accent="cyan"
             />
             <StatCard
-              label="Artifacts"
-              value={request?.artifactList?.length || 0}
-              detail="Context attached before you engage."
+              label="Assignments"
+              value={actions.length}
+              detail="Requests currently routed to you."
               accent="emerald"
             />
           </div>
@@ -324,7 +356,7 @@ function MentorDashboard() {
         <SectionCard>
           <SectionHeading
             eyebrow="Request summary"
-            title={request ? request.ventureName : 'Waiting for a secure link'}
+            title={request ? request.ventureName : 'No assigned requests'}
             description="The problem, desired outcome, and supporting material."
           />
 
@@ -355,7 +387,7 @@ function MentorDashboard() {
                 </div>
               </div>
 
-              {!response && hasToken ? (
+              {!response && hasLoadedRequest ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-6">
                   <SectionHeading
                     eyebrow="Decision"
@@ -396,7 +428,7 @@ function MentorDashboard() {
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center text-sm text-slate-400">
-              Open the desk from a secure mentor link to load a specific request.
+              You do not have assigned mentor requests right now. Secure links will still open specific requests here.
             </div>
           )}
         </SectionCard>

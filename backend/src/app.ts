@@ -654,6 +654,52 @@ const buildOpenApiDocument = () =>
         },
       },
     },
+    '/mentors/me/actions': {
+      get: {
+        tags: ['Mentors'],
+        summary: 'List mentor requests assigned to the signed-in mentor',
+        security: cookieSecurity,
+        responses: {
+          200: jsonResponse('Assigned mentor actions'),
+        },
+      },
+    },
+    '/mentors/me/actions/{requestId}/respond': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Accept or decline an assigned mentor request as the signed-in mentor',
+        security: cookieSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(mentorRespondBodySchema),
+        responses: {
+          200: jsonResponse('Recorded mentor response'),
+        },
+      },
+    },
+    '/mentors/me/actions/{requestId}/schedule': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Schedule an assigned mentor request as the signed-in mentor',
+        security: cookieSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(mentorScheduleBodySchema),
+        responses: {
+          200: jsonResponse('Scheduled session'),
+        },
+      },
+    },
+    '/mentors/me/actions/{requestId}/feedback': {
+      post: {
+        tags: ['Mentors'],
+        summary: 'Submit feedback for an assigned mentor request as the signed-in mentor',
+        security: cookieSecurity,
+        parameters: [pathParameter('requestId', 'Mentor request identifier')],
+        requestBody: jsonRequestBody(mentorFeedbackBodySchema),
+        responses: {
+          200: jsonResponse('Recorded mentor feedback'),
+        },
+      },
+    },
     '/mentor-actions/{token}': {
       get: {
         tags: ['Mentors'],
@@ -1306,6 +1352,21 @@ export const createApp = async (options: AppOptions) => {
     }
   })
 
+  app.get('/mentors/me/actions', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'List mentor requests assigned to the signed-in mentor',
+      security: cookieSecurity,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      return await service.listCurrentMentorActions(user)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
   app.post('/ai/request-brief', {
     schema: {
       tags: ['AI'],
@@ -1399,6 +1460,66 @@ export const createApp = async (options: AppOptions) => {
       const user = await readAuthUser(request)
       const params = z.object({ mentorId: z.string().min(1) }).parse(request.params)
       return await service.updateMentor(user, params.mentorId, request.body as Record<string, unknown>)
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/mentors/me/actions/:requestId/respond', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Accept or decline an assigned mentor request as the signed-in mentor',
+      security: cookieSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: mentorRespondBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
+      const result = await service.mentorSessionRespond(user, params.requestId, request.body)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/mentors/me/actions/:requestId/schedule', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Schedule an assigned mentor request as the signed-in mentor',
+      security: cookieSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: mentorScheduleBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
+      const result = await service.mentorSessionSchedule(user, params.requestId, request.body)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
+    } catch (error) {
+      return reply.badRequest((error as Error).message)
+    }
+  })
+
+  app.post('/mentors/me/actions/:requestId/feedback', {
+    schema: {
+      tags: ['Mentors'],
+      summary: 'Submit feedback for an assigned mentor request as the signed-in mentor',
+      security: cookieSecurity,
+      params: stringIdParamSchema('requestId', 'Mentor request identifier'),
+      body: mentorFeedbackBodySchema,
+    },
+  }, async (request, reply) => {
+    try {
+      const user = await readAuthUser(request)
+      const params = z.object({ requestId: z.string().min(1) }).parse(request.params)
+      const result = await service.mentorSessionFeedback(user, params.requestId, request.body)
+      emitEvent('request.updated', { requestId: result.request.id })
+      return result
     } catch (error) {
       return reply.badRequest((error as Error).message)
     }

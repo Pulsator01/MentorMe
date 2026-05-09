@@ -181,10 +181,10 @@ describe('MentorMe role-based frontend', () => {
     expect(screen.getByText('/mentor-actions/:token/respond')).toBeInTheDocument()
   })
 
-  it('routes mentors to the secure mentor desk workspace', async () => {
+  it('routes mentors to the mentor desk workspace', async () => {
     renderAtRoute('/mentors/desk')
 
-    expect(await screen.findByRole('heading', { name: /review one vetted request without the admin clutter/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /review your assigned mentor requests without the admin clutter/i })).toBeInTheDocument()
     expect(screen.getAllByText(/medimesh labs/i).length).toBeGreaterThan(0)
   })
 })

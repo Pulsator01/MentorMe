@@ -18,7 +18,7 @@ const roles = [
     title: 'Mentors',
     path: '/mentors/desk',
     icon: Briefcase,
-    description: 'Open the secure outreach desk, accept or decline requests, and leave feedback after the call.',
+    description: 'Sign in to review assigned requests, or use a secure CFE link when one is shared.',
     accent: 'border-l-emerald-400',
   },
   {

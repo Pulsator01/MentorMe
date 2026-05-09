@@ -71,6 +71,10 @@ const mentorRespondSchema = z.object({
   }
 })
 
+type MentorFeedbackPayload = z.infer<typeof feedbackSchema>
+type MentorRespondPayload = z.infer<typeof mentorRespondSchema>
+type MentorSchedulePayload = z.infer<typeof scheduleSchema>
+
 const requestBriefSchema = z.object({
   ventureName: z.string().min(2),
   domain: z.string().min(2).optional(),
@@ -893,6 +897,49 @@ export class PlatformService {
     return { mentor: next }
   }
 
+  async listCurrentMentorActions(user: User) {
+    const mentor = await this.requireCurrentMentorProfile(user)
+    const requestViews = await this.listRequestViews()
+    const assignedRequests = requestViews.filter((request) =>
+      request.mentorId === mentor.id && ['awaiting_mentor', 'scheduled', 'follow_up'].includes(request.status),
+    )
+
+    return {
+      mentor,
+      actions: await Promise.all(assignedRequests.map((request) => this.toSessionMentorAction(mentor, request))),
+    }
+  }
+
+  async mentorSessionRespond(user: User, requestId: string, input: unknown) {
+    const payload = mentorRespondSchema.parse(input)
+    const { mentor, request } = await this.requireAssignedMentorRequest(user, requestId)
+    const existingResponse = await this.resolveMentorResponse(request.id, mentor.id, request.status)
+
+    if (existingResponse) {
+      throw new Error('Mentor response has already been recorded')
+    }
+
+    return await this.recordMentorResponse(request, mentor.id, payload, user)
+  }
+
+  async mentorSessionSchedule(user: User, requestId: string, input: unknown) {
+    const payload = scheduleSchema.parse(input)
+    const { mentor, request } = await this.requireAssignedMentorRequest(user, requestId)
+    const response = await this.resolveMentorResponse(request.id, mentor.id, request.status)
+
+    if (request.status === 'awaiting_mentor' && response !== 'accepted') {
+      throw new Error('Accept the request before scheduling it')
+    }
+
+    return await this.recordMentorSchedule(request, mentor.id, payload, user)
+  }
+
+  async mentorSessionFeedback(user: User, requestId: string, input: unknown) {
+    const payload = feedbackSchema.parse(input)
+    const { mentor, request } = await this.requireAssignedMentorRequest(user, requestId)
+    return await this.recordMentorFeedback(request, mentor.id, payload, user)
+  }
+
   async presignArtifact(user: User, requestId: string, input: unknown) {
     await this.authorizeRequestAccess(user, requestId)
     const payload = presignSchema.parse(input)
@@ -1026,44 +1073,7 @@ export class PlatformService {
     })
 
     const request = await this.requireRequest(actionToken.requestId)
-
-    if (payload.decision === 'accepted') {
-      await this.recordAudit({
-        entityType: 'mentor_request',
-        entityId: request.id,
-        actorType: 'mentor',
-        action: 'mentor.accepted',
-        fromStatus: request.status,
-        toStatus: request.status,
-        payload: { mentorId: actionToken.mentorId },
-      })
-      await this.recordOutbox('mentor.accepted', 'mentor_request', request.id, { mentorId: actionToken.mentorId })
-
-      return { decision: payload.decision, request: await this.requireRequestView(request.id) }
-    }
-
-    const next = {
-      ...request,
-      mentorId: undefined,
-      status: 'awaiting_mentor' as const,
-      updatedAt: nowIso(),
-    }
-    await this.deps.repository.saveRequest(next)
-    await this.recordAudit({
-      entityType: 'mentor_request',
-      entityId: request.id,
-      actorType: 'mentor',
-      action: 'mentor.declined',
-      fromStatus: request.status,
-      toStatus: next.status,
-      payload: { mentorId: actionToken.mentorId, reason: payload.reason || '' },
-    })
-    await this.recordOutbox('mentor.declined', 'mentor_request', request.id, {
-      mentorId: actionToken.mentorId,
-      reason: payload.reason || '',
-    })
-
-    return { decision: payload.decision, request: await this.requireRequestView(request.id) }
+    return await this.recordMentorResponse(request, actionToken.mentorId, payload)
   }
 
   async mentorSchedule(token: string, input: unknown) {
@@ -1075,83 +1085,14 @@ export class PlatformService {
     }
 
     const request = await this.requireRequest(actionToken.requestId)
-    const existingMeetingIds = (await this.deps.repository.listMeetingsForRequest(request.id)).map((meeting) => meeting.id)
-    const meetingId = nextPrefixedId(
-      'meet',
-      existingMeetingIds,
-    )
-    await this.deps.repository.saveMeeting({
-      id: meetingId,
-      organizationId: request.organizationId,
-      requestId: request.id,
-      mentorId: actionToken.mentorId,
-      provider: 'manual',
-      scheduledAt: payload.meetingAt,
-      joinLink: payload.calendlyLink,
-      status: 'scheduled',
-    })
-    const next = {
-      ...request,
-      status: 'scheduled' as const,
-      meetingAt: payload.meetingAt,
-      calendlyLink: payload.calendlyLink,
-      updatedAt: nowIso(),
-    }
-    await this.deps.repository.saveRequest(next)
-    await this.recordAudit({
-      entityType: 'meeting',
-      entityId: meetingId,
-      actorType: 'mentor',
-      action: 'meeting.scheduled',
-      payload: { requestId: request.id },
-    })
-    await this.recordOutbox('meeting.scheduled', 'mentor_request', request.id, { meetingId })
-    return { request: await this.requireRequestView(request.id) }
+    return await this.recordMentorSchedule(request, actionToken.mentorId, payload)
   }
 
   async mentorFeedback(token: string, input: unknown) {
     const payload = feedbackSchema.parse(input)
     const actionToken = await this.requireExternalToken(token)
     const request = await this.requireRequest(actionToken.requestId)
-    const meeting = (await this.deps.repository.listMeetingsForRequest(request.id))[0]
-
-    if (!meeting) {
-      throw new Error('No meeting exists for this request')
-    }
-
-    await this.deps.repository.saveFeedback({
-      id: `mf-${randomToken().slice(0, 10)}`,
-      organizationId: request.organizationId,
-      requestId: request.id,
-      meetingId: meeting.id,
-      mentorId: actionToken.mentorId,
-      mentorNotes: payload.mentorNotes,
-      nextStepRequired: payload.nextStepRequired,
-      secondSessionRecommended: payload.secondSessionRecommended,
-      createdAt: nowIso(),
-    })
-
-    const next = {
-      ...request,
-      status: 'follow_up' as const,
-      mentorNotes: payload.mentorNotes,
-      updatedAt: nowIso(),
-    }
-    await this.deps.repository.saveRequest(next)
-    await this.recordAudit({
-      entityType: 'mentor_request',
-      entityId: request.id,
-      actorType: 'mentor',
-      action: 'request.feedback_recorded',
-      fromStatus: request.status,
-      toStatus: next.status,
-      payload: {
-        nextStepRequired: payload.nextStepRequired,
-        secondSessionRecommended: payload.secondSessionRecommended,
-      },
-    })
-    await this.recordOutbox('request.feedback_recorded', 'mentor_request', request.id, {})
-    return { request: await this.requireRequestView(request.id) }
+    return await this.recordMentorFeedback(request, actionToken.mentorId, payload)
   }
 
   async calendlyWebhook(eventId: string, payload: Record<string, unknown>) {
@@ -1398,6 +1339,197 @@ export class PlatformService {
         calendlyLink: request.calendlyLink,
       }
     }))
+  }
+
+  private async requireCurrentMentorProfile(user: User) {
+    if (user.role !== 'mentor' && user.role !== 'admin') {
+      throw new Error('Forbidden')
+    }
+
+    const mentors = await this.deps.repository.listMentors()
+    const userEmail = user.email.toLowerCase()
+    const mentor = mentors.find((item) =>
+      item.organizationId === user.organizationId && item.email.toLowerCase() === userEmail,
+    )
+
+    if (!mentor) {
+      throw new Error('Mentor profile not found for this account')
+    }
+
+    return mentor
+  }
+
+  private async requireAssignedMentorRequest(user: User, requestId: string) {
+    const mentor = await this.requireCurrentMentorProfile(user)
+    const request = await this.requireRequest(requestId)
+
+    if (request.organizationId !== mentor.organizationId || request.mentorId !== mentor.id) {
+      throw new Error('Forbidden')
+    }
+
+    return { mentor, request }
+  }
+
+  private async toSessionMentorAction(mentor: MentorProfile, request: RequestView) {
+    return {
+      mentorAction: {
+        purpose: 'mentor_request' as const,
+        response: await this.resolveMentorResponse(request.id, mentor.id, request.status),
+      },
+      request,
+    }
+  }
+
+  private async resolveMentorResponse(requestId: string, mentorId: string, status: RequestView['status']) {
+    if (['scheduled', 'follow_up', 'closed'].includes(status)) {
+      return 'accepted' as const
+    }
+
+    const events = await this.deps.repository.listAuditEventsForEntity('mentor_request', requestId)
+    const accepted = events.some((event) =>
+      event.action === 'mentor.accepted' && event.payload.mentorId === mentorId,
+    )
+
+    return accepted ? 'accepted' as const : undefined
+  }
+
+  private mentorAuditActor(user?: User) {
+    return {
+      actorType: 'mentor' as const,
+      ...(user ? { actorUserId: user.id, actorEmail: user.email } : {}),
+    }
+  }
+
+  private async recordMentorResponse(
+    request: MentorRequest,
+    mentorId: string,
+    payload: MentorRespondPayload,
+    actor?: User,
+  ) {
+    if (payload.decision === 'accepted') {
+      await this.recordAudit({
+        entityType: 'mentor_request',
+        entityId: request.id,
+        ...this.mentorAuditActor(actor),
+        action: 'mentor.accepted',
+        fromStatus: request.status,
+        toStatus: request.status,
+        payload: { mentorId },
+      })
+      await this.recordOutbox('mentor.accepted', 'mentor_request', request.id, { mentorId })
+
+      return { decision: payload.decision, request: await this.requireRequestView(request.id) }
+    }
+
+    const next = {
+      ...request,
+      mentorId: undefined,
+      status: 'awaiting_mentor' as const,
+      updatedAt: nowIso(),
+    }
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      ...this.mentorAuditActor(actor),
+      action: 'mentor.declined',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: { mentorId, reason: payload.reason || '' },
+    })
+    await this.recordOutbox('mentor.declined', 'mentor_request', request.id, {
+      mentorId,
+      reason: payload.reason || '',
+    })
+
+    return { decision: payload.decision, request: await this.requireRequestView(request.id) }
+  }
+
+  private async recordMentorSchedule(
+    request: MentorRequest,
+    mentorId: string,
+    payload: MentorSchedulePayload,
+    actor?: User,
+  ) {
+    const existingMeetingIds = (await this.deps.repository.listMeetingsForRequest(request.id)).map((meeting) => meeting.id)
+    const meetingId = nextPrefixedId(
+      'meet',
+      existingMeetingIds,
+    )
+    await this.deps.repository.saveMeeting({
+      id: meetingId,
+      organizationId: request.organizationId,
+      requestId: request.id,
+      mentorId,
+      provider: 'manual',
+      scheduledAt: payload.meetingAt,
+      joinLink: payload.calendlyLink,
+      status: 'scheduled',
+    })
+    const next = {
+      ...request,
+      status: 'scheduled' as const,
+      meetingAt: payload.meetingAt,
+      calendlyLink: payload.calendlyLink,
+      updatedAt: nowIso(),
+    }
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
+      entityType: 'meeting',
+      entityId: meetingId,
+      ...this.mentorAuditActor(actor),
+      action: 'meeting.scheduled',
+      payload: { requestId: request.id },
+    })
+    await this.recordOutbox('meeting.scheduled', 'mentor_request', request.id, { meetingId })
+    return { request: await this.requireRequestView(request.id) }
+  }
+
+  private async recordMentorFeedback(
+    request: MentorRequest,
+    mentorId: string,
+    payload: MentorFeedbackPayload,
+    actor?: User,
+  ) {
+    const meeting = (await this.deps.repository.listMeetingsForRequest(request.id))[0]
+
+    if (!meeting) {
+      throw new Error('No meeting exists for this request')
+    }
+
+    await this.deps.repository.saveFeedback({
+      id: `mf-${randomToken().slice(0, 10)}`,
+      organizationId: request.organizationId,
+      requestId: request.id,
+      meetingId: meeting.id,
+      mentorId,
+      mentorNotes: payload.mentorNotes,
+      nextStepRequired: payload.nextStepRequired,
+      secondSessionRecommended: payload.secondSessionRecommended,
+      createdAt: nowIso(),
+    })
+
+    const next = {
+      ...request,
+      status: 'follow_up' as const,
+      mentorNotes: payload.mentorNotes,
+      updatedAt: nowIso(),
+    }
+    await this.deps.repository.saveRequest(next)
+    await this.recordAudit({
+      entityType: 'mentor_request',
+      entityId: request.id,
+      ...this.mentorAuditActor(actor),
+      action: 'request.feedback_recorded',
+      fromStatus: request.status,
+      toStatus: next.status,
+      payload: {
+        nextStepRequired: payload.nextStepRequired,
+        secondSessionRecommended: payload.secondSessionRecommended,
+      },
+    })
+    await this.recordOutbox('request.feedback_recorded', 'mentor_request', request.id, {})
+    return { request: await this.requireRequestView(request.id) }
   }
 
   private async requireUser(userId: string) {

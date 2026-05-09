@@ -422,6 +422,79 @@ describe('MentorMe backend workflow', () => {
     expect(parseJson<{ request: { status: string } }>(feedbackRes).request.status).toBe('follow_up')
   })
 
+  it('lets logged-in mentors manage their assigned requests without a secure link token', async () => {
+    const { app, repository } = await buildTestApp()
+    const mentorToken = await loginAs(app, 'radhika@mentorme.test')
+
+    const listRes = await app.inject({
+      method: 'GET',
+      url: '/mentors/me/actions',
+      headers: { [TEST_AUTH_HEADER]: mentorToken },
+    })
+
+    expect(listRes.statusCode).toBe(200)
+    const listBody = parseJson<{
+      mentor: { id: string; email: string }
+      actions: Array<{ request: { id: string; mentorId?: string }; mentorAction: { response?: string } }>
+    }>(listRes)
+    expect(listBody.mentor.id).toBe('m-radhika')
+    expect(listBody.actions.map((action) => action.request.id)).toContain('REQ-003')
+    expect(listBody.actions.every((action) => action.request.mentorId === 'm-radhika')).toBe(true)
+
+    const acceptRes = await app.inject({
+      method: 'POST',
+      url: '/mentors/me/actions/REQ-003/respond',
+      headers: { [TEST_AUTH_HEADER]: mentorToken },
+      payload: {
+        decision: 'accepted',
+      },
+    })
+
+    expect(acceptRes.statusCode).toBe(200)
+    expect(parseJson<{ decision: string; request: { id: string } }>(acceptRes)).toMatchObject({
+      decision: 'accepted',
+      request: { id: 'REQ-003' },
+    })
+
+    const scheduleRes = await app.inject({
+      method: 'POST',
+      url: '/mentors/me/actions/REQ-003/schedule',
+      headers: { [TEST_AUTH_HEADER]: mentorToken },
+      payload: {
+        calendlyLink: 'https://calendly.com/radhika/mentor-hour',
+        meetingAt: '2026-03-15T09:00:00.000Z',
+      },
+    })
+
+    expect(scheduleRes.statusCode).toBe(200)
+    expect(parseJson<{ request: { status: string; calendlyLink: string } }>(scheduleRes).request).toMatchObject({
+      status: 'scheduled',
+      calendlyLink: 'https://calendly.com/radhika/mentor-hour',
+    })
+
+    const feedbackRes = await app.inject({
+      method: 'POST',
+      url: '/mentors/me/actions/REQ-003/feedback',
+      headers: { [TEST_AUTH_HEADER]: mentorToken },
+      payload: {
+        mentorNotes: 'Validated the pilot path and next technical milestone.',
+        nextStepRequired: true,
+        secondSessionRecommended: false,
+      },
+    })
+
+    expect(feedbackRes.statusCode).toBe(200)
+    expect(parseJson<{ request: { status: string; mentorNotes: string } }>(feedbackRes).request).toMatchObject({
+      status: 'follow_up',
+      mentorNotes: 'Validated the pilot path and next technical milestone.',
+    })
+
+    const events = await repository.listAuditEventsForEntity('mentor_request', 'REQ-003')
+    expect(events.map((event) => event.action)).toEqual(
+      expect.arrayContaining(['mentor.accepted', 'request.feedback_recorded']),
+    )
+  })
+
   it('records mentor accept and decline responses through secure action links', async () => {
     const { app, repository } = await buildTestApp((state) => {
       state.requests.push({
