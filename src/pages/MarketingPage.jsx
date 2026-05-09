@@ -226,11 +226,6 @@ function MarketingPage() {
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Ready</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight">Bring your next cohort onto MentorMe</h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
-                Start in local demo mode without an API, or point the SPA at your deployed Fastify instance with
-                <code className="mx-1 rounded bg-white/10 px-1.5 py-0.5 text-xs text-amber-200">VITE_API_BASE_URL</code>
-                and complete onboarding after first sign-in.
-              </p>
             </div>
             <div className="flex flex-wrap gap-3">
               <Link
