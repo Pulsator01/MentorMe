@@ -88,7 +88,7 @@ describe('MentorDashboard', () => {
     expect(appState.respondToMentorAction).not.toHaveBeenCalled()
   })
 
-  it('does not refetch mentor actions when unrelated mentor list updates occur in api mode', async () => {
+  it('does not refetch mentor actions across repeated global state churn in api mode', async () => {
     const { rerender } = render(
       <MemoryRouter initialEntries={['/mentors/desk']}>
         <MentorDashboard />
@@ -98,16 +98,19 @@ describe('MentorDashboard', () => {
     await screen.findByRole('heading', { name: /dr\. radhika gupta/i })
     expect(appState.getCurrentMentorActions).toHaveBeenCalledTimes(1)
 
-    appState = {
-      ...appState,
-      mentors: [{ ...mentor, title: 'Updated title from global hydrate' }],
-    }
+    for (let index = 0; index < 3; index += 1) {
+      appState = {
+        ...appState,
+        mentors: [{ ...mentor, title: `Updated title ${index}` }],
+        requests: [{ ...request, mentorNotes: `Updated notes ${index}` }],
+      }
 
-    rerender(
-      <MemoryRouter initialEntries={['/mentors/desk']}>
-        <MentorDashboard />
-      </MemoryRouter>,
-    )
+      rerender(
+        <MemoryRouter initialEntries={['/mentors/desk']}>
+          <MentorDashboard />
+        </MemoryRouter>,
+      )
+    }
 
     await waitFor(() => {
       expect(appState.getCurrentMentorActions).toHaveBeenCalledTimes(1)

@@ -831,9 +831,11 @@ export function AppStateProvider({ children }) {
 
   const getCurrentMentorActions = useCallback(async () => {
     if (!backendRef.current.client) {
+      const currentState = stateRef.current
       const localMentor =
-        state.mentors.find((mentor) => state.requests.some((request) => request.mentorId === mentor.id)) || state.mentors[0]
-      const actions = state.requests
+        currentState.mentors.find((mentor) => currentState.requests.some((request) => request.mentorId === mentor.id)) ||
+        currentState.mentors[0]
+      const actions = currentState.requests
         .filter((request) => request.mentorId === localMentor?.id)
         .map((request) => ({
           mentorAction: {
@@ -847,7 +849,7 @@ export function AppStateProvider({ children }) {
     }
 
     return await backendRef.current.client.getCurrentMentorActions()
-  }, [state.mentors, state.requests])
+  }, [])
 
   const respondToMentorAction = useCallback(async (token, payload) => {
     if (!backendRef.current.client) {

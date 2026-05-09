@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
@@ -59,6 +59,11 @@ function MentorDashboard() {
     nextStepRequired: true,
     secondSessionRecommended: false,
   })
+  const getCurrentMentorActionsRef = useRef(getCurrentMentorActions)
+
+  useEffect(() => {
+    getCurrentMentorActionsRef.current = getCurrentMentorActions
+  }, [getCurrentMentorActions])
 
   const applyDetail = (body) => {
     setDetail(body)
@@ -117,7 +122,7 @@ function MentorDashboard() {
 
     const load = async () => {
       try {
-        const body = await getCurrentMentorActions()
+        const body = await getCurrentMentorActionsRef.current()
 
         if (!active) {
           return
@@ -148,7 +153,7 @@ function MentorDashboard() {
     return () => {
       active = false
     }
-  }, [getCurrentMentorActions, mode, token])
+  }, [mode, token])
 
   useEffect(() => {
     if (!token) {
