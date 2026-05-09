@@ -87,4 +87,41 @@ describe('MentorDashboard', () => {
     })
     expect(appState.respondToMentorAction).not.toHaveBeenCalled()
   })
+
+  it('does not refetch mentor actions when unrelated mentor list updates occur in api mode', async () => {
+    const { rerender } = render(
+      <MemoryRouter initialEntries={['/mentors/desk']}>
+        <MentorDashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: /dr\. radhika gupta/i })
+    expect(appState.getCurrentMentorActions).toHaveBeenCalledTimes(1)
+
+    appState = {
+      ...appState,
+      mentors: [{ ...mentor, title: 'Updated title from global hydrate' }],
+    }
+
+    rerender(
+      <MemoryRouter initialEntries={['/mentors/desk']}>
+        <MentorDashboard />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(appState.getCurrentMentorActions).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('hides tolerance from the mentor dashboard context panel', async () => {
+    render(
+      <MemoryRouter initialEntries={['/mentors/desk']}>
+        <MentorDashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText(/dr\. radhika gupta/i)
+    expect(screen.queryByText(/high tolerance/i)).not.toBeInTheDocument()
+  })
 })

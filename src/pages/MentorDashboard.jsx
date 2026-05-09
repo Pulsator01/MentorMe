@@ -74,69 +74,85 @@ function MentorDashboard() {
   }
 
   useEffect(() => {
-    if (!token) {
-      if (mode !== 'api') {
-        const localRequest = requests.find((request) => request.status === 'awaiting_mentor') || requests[0]
-        const localMentor = mentors.find((mentor) => mentor.id === localRequest?.mentorId) || mentors[0]
+    if (token) {
+      return undefined
+    }
 
-        if (localRequest && localMentor) {
-          const localDetail = {
-            mentor: localMentor,
-            mentorAction: {
-              purpose: 'mentor_request',
-              response: ['scheduled', 'follow_up', 'closed'].includes(localRequest.status) ? 'accepted' : undefined,
-            },
-            request: localRequest,
-          }
-          setActions([localDetail])
-          applyDetail(localDetail)
+    if (mode === 'api') {
+      return undefined
+    }
+
+    const localRequest = requests.find((item) => item.status === 'awaiting_mentor') || requests[0]
+    const localMentor = mentors.find((item) => item.id === localRequest?.mentorId) || mentors[0]
+
+    if (localRequest && localMentor) {
+      const localDetail = {
+        mentor: localMentor,
+        mentorAction: {
+          purpose: 'mentor_request',
+          response: ['scheduled', 'follow_up', 'closed'].includes(localRequest.status) ? 'accepted' : undefined,
+        },
+        request: localRequest,
+      }
+      setActions([localDetail])
+      applyDetail(localDetail)
+    } else {
+      setDetail(null)
+      setActions([])
+    }
+
+    setLoading(false)
+    setError('')
+    return undefined
+  }, [mentors, mode, requests, token])
+
+  useEffect(() => {
+    if (token || mode !== 'api') {
+      return undefined
+    }
+
+    let active = true
+    setLoading(true)
+    setError('')
+
+    const load = async () => {
+      try {
+        const body = await getCurrentMentorActions()
+
+        if (!active) {
+          return
+        }
+
+        const nextActions = body.actions || []
+        setActions(nextActions)
+        if (nextActions[0]) {
+          applyDetail({ mentor: body.mentor, ...nextActions[0] })
         } else {
-          setDetail(null)
-          setActions([])
+          setDetail(body.mentor ? { mentor: body.mentor, mentorAction: null, request: null } : null)
+        }
+      } catch (loadError) {
+        if (!active) {
+          return
         }
 
-        setLoading(false)
-        setError('')
-        return undefined
-      }
-
-      let active = true
-      setLoading(true)
-      setError('')
-
-      const load = async () => {
-        try {
-          const body = await getCurrentMentorActions()
-
-          if (!active) {
-            return
-          }
-
-          const nextActions = body.actions || []
-          setActions(nextActions)
-          if (nextActions[0]) {
-            applyDetail({ mentor: body.mentor, ...nextActions[0] })
-          } else {
-            setDetail(body.mentor ? { mentor: body.mentor, mentorAction: null, request: null } : null)
-          }
-        } catch (loadError) {
-          if (!active) {
-            return
-          }
-
-          setError(loadError instanceof Error ? loadError.message : 'Unable to load your mentor workspace.')
-        } finally {
-          if (active) {
-            setLoading(false)
-          }
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load your mentor workspace.')
+      } finally {
+        if (active) {
+          setLoading(false)
         }
       }
+    }
 
-      void load()
+    void load()
 
-      return () => {
-        active = false
-      }
+    return () => {
+      active = false
+    }
+  }, [getCurrentMentorActions, mode, token])
+
+  useEffect(() => {
+    if (!token) {
+      return undefined
     }
 
     let active = true
@@ -171,7 +187,7 @@ function MentorDashboard() {
     return () => {
       active = false
     }
-  }, [getCurrentMentorActions, getMentorAction, mentors, mode, requests, token])
+  }, [getMentorAction, token])
 
   const mentor = detail?.mentor
   const request = detail?.request
@@ -323,7 +339,6 @@ function MentorDashboard() {
                   <h2 className="text-2xl font-semibold tracking-tight text-slate-950">{mentor.name}</h2>
                   <p className="mt-2 text-[15px] leading-7 text-slate-500">{mentor.title}</p>
                 </div>
-                <Badge tone="blue">{mentor.tolerance} tolerance</Badge>
               </div>
               <p className="mt-4 text-sm leading-6 text-slate-500">{mentor.bio}</p>
               <div className="mt-5 flex flex-wrap gap-2">

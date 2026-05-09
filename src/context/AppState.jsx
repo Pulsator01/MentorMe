@@ -821,6 +821,111 @@ export function AppStateProvider({ children }) {
     return await client.getStudentJoinOptions()
   }, [ensureClient])
 
+  const getMentorAction = useCallback(async (token) => {
+    if (!backendRef.current.client) {
+      throw new Error('Mentor action links require the API backend')
+    }
+
+    return await backendRef.current.client.getMentorAction(token)
+  }, [])
+
+  const getCurrentMentorActions = useCallback(async () => {
+    if (!backendRef.current.client) {
+      const localMentor =
+        state.mentors.find((mentor) => state.requests.some((request) => request.mentorId === mentor.id)) || state.mentors[0]
+      const actions = state.requests
+        .filter((request) => request.mentorId === localMentor?.id)
+        .map((request) => ({
+          mentorAction: {
+            purpose: 'mentor_request',
+            response: ['scheduled', 'follow_up', 'closed'].includes(request.status) ? 'accepted' : undefined,
+          },
+          request,
+        }))
+
+      return { mentor: localMentor, actions }
+    }
+
+    return await backendRef.current.client.getCurrentMentorActions()
+  }, [state.mentors, state.requests])
+
+  const respondToMentorAction = useCallback(async (token, payload) => {
+    if (!backendRef.current.client) {
+      throw new Error('Mentor action links require the API backend')
+    }
+
+    return await backendRef.current.client.mentorRespond(token, payload)
+  }, [])
+
+  const respondToMentorRequest = useCallback(async (requestId, payload) => {
+    if (!backendRef.current.client) {
+      const request = state.requests.find((item) => item.id === requestId)
+      return { decision: payload.decision, request }
+    }
+
+    const result = await backendRef.current.client.mentorSessionRespond(requestId, payload)
+    await syncFromApi()
+    return result
+  }, [state.requests, syncFromApi])
+
+  const scheduleMentorAction = useCallback(async (token, payload) => {
+    if (!backendRef.current.client) {
+      throw new Error('Mentor action links require the API backend')
+    }
+
+    return await backendRef.current.client.mentorSchedule(token, payload)
+  }, [])
+
+  const scheduleMentorRequest = useCallback(async (requestId, payload) => {
+    if (!backendRef.current.client) {
+      dispatch({
+        type: 'schedule-request',
+        payload: {
+          id: requestId,
+          calendlyLink: payload.calendlyLink,
+          meetingAt: payload.meetingAt,
+        },
+      })
+      return {
+        request: {
+          ...state.requests.find((item) => item.id === requestId),
+          status: 'scheduled',
+          calendlyLink: payload.calendlyLink,
+          meetingAt: payload.meetingAt,
+        },
+      }
+    }
+
+    const result = await backendRef.current.client.mentorSessionSchedule(requestId, payload)
+    await syncFromApi()
+    return result
+  }, [state.requests, syncFromApi])
+
+  const saveMentorActionFeedback = useCallback(async (token, payload) => {
+    if (!backendRef.current.client) {
+      throw new Error('Mentor action links require the API backend')
+    }
+
+    return await backendRef.current.client.mentorFeedback(token, payload)
+  }, [])
+
+  const saveMentorRequestFeedback = useCallback(async (requestId, payload) => {
+    if (!backendRef.current.client) {
+      dispatch({ type: 'save-feedback', payload: { id: requestId, notes: payload.mentorNotes } })
+      return {
+        request: {
+          ...state.requests.find((item) => item.id === requestId),
+          status: 'follow_up',
+          mentorNotes: payload.mentorNotes,
+        },
+      }
+    }
+
+    const result = await backendRef.current.client.mentorSessionFeedback(requestId, payload)
+    await syncFromApi()
+    return result
+  }, [state.requests, syncFromApi])
+
   const value = {
     currentUser: state.currentUser,
     venture: state.venture,
@@ -1054,104 +1159,14 @@ export function AppStateProvider({ children }) {
 
       return await backendRef.current.client.generateMeetingSummary(payload)
     },
-    getMentorAction: async (token) => {
-      if (!backendRef.current.client) {
-        throw new Error('Mentor action links require the API backend')
-      }
-
-      return await backendRef.current.client.getMentorAction(token)
-    },
-    getCurrentMentorActions: async () => {
-      if (!backendRef.current.client) {
-        const localMentor =
-          state.mentors.find((mentor) => state.requests.some((request) => request.mentorId === mentor.id)) ||
-          state.mentors[0]
-        const actions = state.requests
-          .filter((request) => request.mentorId === localMentor?.id)
-          .map((request) => ({
-            mentorAction: {
-              purpose: 'mentor_request',
-              response: ['scheduled', 'follow_up', 'closed'].includes(request.status) ? 'accepted' : undefined,
-            },
-            request,
-          }))
-
-        return { mentor: localMentor, actions }
-      }
-
-      return await backendRef.current.client.getCurrentMentorActions()
-    },
-    respondToMentorAction: async (token, payload) => {
-      if (!backendRef.current.client) {
-        throw new Error('Mentor action links require the API backend')
-      }
-
-      return await backendRef.current.client.mentorRespond(token, payload)
-    },
-    respondToMentorRequest: async (requestId, payload) => {
-      if (!backendRef.current.client) {
-        const request = state.requests.find((item) => item.id === requestId)
-        return { decision: payload.decision, request }
-      }
-
-      const result = await backendRef.current.client.mentorSessionRespond(requestId, payload)
-      await syncFromApi()
-      return result
-    },
-    scheduleMentorAction: async (token, payload) => {
-      if (!backendRef.current.client) {
-        throw new Error('Mentor action links require the API backend')
-      }
-
-      return await backendRef.current.client.mentorSchedule(token, payload)
-    },
-    scheduleMentorRequest: async (requestId, payload) => {
-      if (!backendRef.current.client) {
-        dispatch({
-          type: 'schedule-request',
-          payload: {
-            id: requestId,
-            calendlyLink: payload.calendlyLink,
-            meetingAt: payload.meetingAt,
-          },
-        })
-        return {
-          request: {
-            ...state.requests.find((item) => item.id === requestId),
-            status: 'scheduled',
-            calendlyLink: payload.calendlyLink,
-            meetingAt: payload.meetingAt,
-          },
-        }
-      }
-
-      const result = await backendRef.current.client.mentorSessionSchedule(requestId, payload)
-      await syncFromApi()
-      return result
-    },
-    saveMentorActionFeedback: async (token, payload) => {
-      if (!backendRef.current.client) {
-        throw new Error('Mentor action links require the API backend')
-      }
-
-      return await backendRef.current.client.mentorFeedback(token, payload)
-    },
-    saveMentorRequestFeedback: async (requestId, payload) => {
-      if (!backendRef.current.client) {
-        dispatch({ type: 'save-feedback', payload: { id: requestId, notes: payload.mentorNotes } })
-        return {
-          request: {
-            ...state.requests.find((item) => item.id === requestId),
-            status: 'follow_up',
-            mentorNotes: payload.mentorNotes,
-          },
-        }
-      }
-
-      const result = await backendRef.current.client.mentorSessionFeedback(requestId, payload)
-      await syncFromApi()
-      return result
-    },
+    getMentorAction,
+    getCurrentMentorActions,
+    respondToMentorAction,
+    respondToMentorRequest,
+    scheduleMentorAction,
+    scheduleMentorRequest,
+    saveMentorActionFeedback,
+    saveMentorRequestFeedback,
   }
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>
