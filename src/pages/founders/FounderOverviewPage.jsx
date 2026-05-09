@@ -8,6 +8,7 @@ import { useAppState } from '../../context/AppState'
 import NudgeFeed from '../../components/NudgeFeed'
 import ReadinessGauge from '../../components/ReadinessGauge'
 import { Badge, SectionCard, SectionHeading, StatCard } from '../../components/ui'
+import { normalizeLifecycleStage } from '../../data/stageOptions'
 import {
   buildFounderRequestNudge,
   filterFounderRequests,
@@ -36,6 +37,7 @@ const PRIMARY_ACTIONS = [
 
 function FounderOverviewPage() {
   const { venture, requests } = useAppState()
+  const ventureStage = normalizeLifecycleStage(venture.stage)
 
   const founderRequests = useMemo(
     () => filterFounderRequests(requests, venture),
@@ -92,7 +94,7 @@ function FounderOverviewPage() {
             </div>
             <p className="mt-4 text-sm leading-6 text-slate-300">{venture.summary}</p>
             <div className="mt-5 flex flex-wrap gap-2">
-              <Badge tone="amber">{venture.stage}</Badge>
+              <Badge tone="amber">{ventureStage}</Badge>
               <Badge tone="blue">{venture.domain}</Badge>
               <Badge tone="emerald">{venture.location}</Badge>
             </div>

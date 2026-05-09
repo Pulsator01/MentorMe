@@ -13,15 +13,7 @@ import {
   Textarea,
 } from '../../components/forms'
 import { FullPageLoader } from '../../components/RequireAuth'
-
-const STAGE_OPTIONS = [
-  { value: 'Idea', label: 'Idea / discovery' },
-  { value: 'Prototype', label: 'Prototype build' },
-  { value: 'TRL 4', label: 'TRL 4 — early validation' },
-  { value: 'TRL 6', label: 'TRL 6 — pilot ready' },
-  { value: 'Pilot', label: 'Pilot in progress' },
-  { value: 'Scale', label: 'Scaling commercial deployment' },
-]
+import { DEFAULT_LIFECYCLE_STAGE, lifecycleStageOptions } from '../../data/stageOptions'
 
 const TRL_OPTIONS = Array.from({ length: 9 }, (_, index) => ({
   value: String(index + 1),
@@ -47,7 +39,7 @@ function FounderOnboardingPage() {
   const [form, setForm] = useState({
     ventureName: '',
     domain: '',
-    stage: 'TRL 4',
+    stage: DEFAULT_LIFECYCLE_STAGE,
     trl: '4',
     brl: '3',
     location: '',
@@ -200,7 +192,7 @@ function FounderOnboardingPage() {
                 label="Current stage"
                 value={form.stage}
                 onChange={updateField('stage')}
-                options={STAGE_OPTIONS}
+                options={lifecycleStageOptions}
                 required
               />
               <div className="grid gap-4 md:grid-cols-2">

@@ -136,7 +136,7 @@ describe('Onboarding flow (API mode)', () => {
         name: 'Greenfield Robotics',
         founderName: 'New Founder',
         domain: 'Robotics',
-        stage: 'TRL 4',
+        stage: 'Prototype',
         trl: 4,
         brl: 3,
         location: 'Bengaluru, India',
@@ -178,6 +178,11 @@ describe('Onboarding flow (API mode)', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /continue/i }))
+
+    const stageSelect = await screen.findByLabelText(/current stage/i)
+    const stageLabels = Array.from(stageSelect.options).map((option) => option.textContent)
+    expect(stageSelect).toHaveValue('Prototype')
+    expect(stageLabels.some((label) => /trl 4/i.test(label))).toBe(false)
 
     fireEvent.change(await screen.findByLabelText(/where are you based/i), {
       target: { value: 'Bengaluru, India' },

@@ -1,4 +1,6 @@
-export const stageOptions = ['Idea', 'TRL 3+', 'MVP', 'Pilot', 'Scale']
+import { lifecycleStageValues } from '../../data/stageOptions'
+
+export const stageOptions = lifecycleStageValues
 
 export const statusTone = {
   draft: 'slate',

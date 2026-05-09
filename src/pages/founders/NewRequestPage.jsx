@@ -15,6 +15,7 @@ import {
   getMatchScore,
   stageOptions,
 } from './founderHelpers'
+import { normalizeLifecycleStage } from '../../data/stageOptions'
 
 const DEFAULT_AI_NOTES =
   'We have a working MVP and a few pilot conversations, but our fundraising story is still messy. I need help deciding what proof matters most and how to position the next mentor meeting so it produces a sharper investor narrative.'
@@ -32,6 +33,7 @@ function NewRequestPage() {
     generateAiRequestBrief,
   } = useAppState()
   const navigate = useNavigate()
+  const ventureStage = normalizeLifecycleStage(venture.stage)
 
   const [artifactInput, setArtifactInput] = useState('')
   const [flashMessage, setFlashMessage] = useState('')
@@ -44,7 +46,7 @@ function NewRequestPage() {
   const [isGeneratingMentorRecommendations, setIsGeneratingMentorRecommendations] = useState(false)
   const [form, setForm] = useState({
     ventureName: venture.name,
-    stage: venture.stage,
+    stage: ventureStage,
     domain: venture.domain,
     trl: venture.trl,
     brl: venture.brl,
@@ -225,7 +227,7 @@ function NewRequestPage() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Current venture</p>
             <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">{venture.name}</h2>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Badge>{venture.stage}</Badge>
+              <Badge>{ventureStage}</Badge>
               <Badge tone="blue">TRL {venture.trl}</Badge>
               <Badge tone="emerald">BRL {venture.brl}</Badge>
             </div>
