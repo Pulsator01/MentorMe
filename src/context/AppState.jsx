@@ -994,10 +994,11 @@ export function AppStateProvider({ children }) {
     saveFeedback: async (id, notes) => dispatch({ type: 'save-feedback', payload: { id, notes } }),
     addMentor: async (payload) => {
       if (backendRef.current.ready && backendRef.current.client) {
+        const fallbackEmail = `${payload.name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@mentorme.test`
         await backendRef.current.client.addMentor({
           id: `m-${payload.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
           name: payload.name,
-          email: `${payload.name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@mentorme.test`,
+          email: payload.email?.trim() || fallbackEmail,
           title: payload.title,
           location: payload.location,
           focus: payload.focus,

@@ -112,6 +112,8 @@ const lowercaseEmail = z
   .email()
   .transform((value) => value.trim().toLowerCase())
 
+const normalizeIdentityName = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase()
+
 const founderOnboardingSchema = z.object({
   ventureName: z.string().trim().min(2).max(120),
   domain: z.string().trim().min(2).max(80),
@@ -1348,15 +1350,33 @@ export class PlatformService {
 
     const mentors = await this.deps.repository.listMentors()
     const userEmail = user.email.toLowerCase()
-    const mentor = mentors.find((item) =>
+    const mentorByEmail = mentors.find((item) =>
       item.organizationId === user.organizationId && item.email.toLowerCase() === userEmail,
     )
 
-    if (!mentor) {
-      throw new Error('Mentor profile not found for this account')
+    if (mentorByEmail) {
+      return mentorByEmail
     }
 
-    return mentor
+    const userName = normalizeIdentityName(user.name)
+    const sameNameMentors = mentors.filter((item) =>
+      item.organizationId === user.organizationId && normalizeIdentityName(item.name) === userName,
+    )
+
+    if (sameNameMentors.length === 1) {
+      const linkedMentor = {
+        ...sameNameMentors[0],
+        email: user.email,
+      }
+      await this.deps.repository.saveMentor(linkedMentor)
+      return linkedMentor
+    }
+
+    if (sameNameMentors.length > 1) {
+      throw new Error('Multiple mentor profiles match this account name')
+    }
+
+    throw new Error('Mentor profile not found for this account')
   }
 
   private async requireAssignedMentorRequest(user: User, requestId: string) {

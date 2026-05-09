@@ -5,6 +5,7 @@ import { Badge, ProgressBar, SectionCard, SectionHeading } from '../components/u
 
 const emptyForm = {
   name: '',
+  email: '',
   title: '',
   focus: '',
   stages: '',
@@ -41,6 +42,7 @@ function MentorPortfolio() {
 
     addMentor({
       ...form,
+      email: form.email.trim(),
       focus: form.focus.split(',').map((item) => item.trim()).filter(Boolean),
       stages: form.stages.split(',').map((item) => item.trim()).filter(Boolean),
       domains: form.domains.split(',').map((item) => item.trim()).filter(Boolean),
@@ -96,6 +98,15 @@ function MentorPortfolio() {
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Email</span>
+                <input
+                  type="email"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition focus:border-amber-300 focus:bg-white"
+                  value={form.email}
+                  onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                 />
               </label>
               <label className="block">
